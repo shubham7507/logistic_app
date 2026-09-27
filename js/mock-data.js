@@ -1,5 +1,6 @@
+import {OPS_SEED} from './ops-data.js';
 export const SEED={
-  currentWorkspace:'personal', currentRoute:'home', demoRevision:4,
+  currentWorkspace:'personal', currentRoute:'home', demoRevision:5,
   auth:{status:'authenticated',mobile:'9876543210',mobileVerified:true,consentVersion:'2026-09-27',consentedAt:'2026-09-27T08:30:00.000Z',otpAttempts:0,otpSentAt:null,pendingMobile:null,isExistingIdentity:true},
   person:{id:'PER-1001',name:'Shubham Kumar'},
   purposeSelection:null,
@@ -133,3 +134,23 @@ export const HOME_CONTENT={
   staff:{greeting:'Welcome to your staff workspace',summary:'Only your assigned branch, role and work are visible.',metrics:[['Today’s work','0','Starts after approval'],['Joining status','Pending','Owner review'],['Messages','0','Business channels'],['Payment','Not active','Starts after approval']],quick:[['work','▦','My Work','Only assigned work'],['messages','◌','Messages','Permitted conversations'],['money','₹','My Money','Salary, advance and claims'],['profile','○','My Profile','Documents and joining status']]},
   admin:{greeting:'Good morning, Admin Neha',summary:'Platform Admin mock user · verification, safety and audit queues.',metrics:[['Approvals','7','Three business'],['Documents','12','Four expiring'],['Safety cases','2','One urgent'],['Audit alerts','1','Payment access']],quick:[['approvals','✓','Approvals','Business and capability'],['documents','▣','Documents','People and vehicles'],['users','♟','Users','Support and status'],['audit','◷','Audit','Sensitive actions']]},
 };
+
+// P5–P8 operations seed: trips, fleet documents, moving jobs, ledger, conversations, admin queue, exceptions.
+{
+  const {extraVehicles,goodsOrderExtras,...ops}=OPS_SEED;
+  Object.assign(SEED,JSON.parse(JSON.stringify(ops)));
+  for(const [k,list] of Object.entries(extraVehicles))SEED.ownedVehicles[k]=[...(SEED.ownedVehicles[k]||[]),...list];
+  SEED.goodsOrders=[...SEED.goodsOrders,...goodsOrderExtras];
+  SEED.goodsOrders.find(o=>o.id==='GO-401')&&(SEED.goodsOrders.find(o=>o.id==='GO-401').status='in_delivery');
+}
+
+// P5–P8 quick actions from the draw.io flows (each route is allowed for that workspace).
+Object.assign(HOME_CONTENT.personal,{quick:[['book','＋','Book a service','Moving, driver or home service'],['services','☰','My bookings','Track, message, pay and rate'],['search','⌕','Search products','Find products directly'],['invitations','✉','Invitations','Review business access']]});
+Object.assign(HOME_CONTENT.goods,{quick:[['work','▦','Loads','Sell, buy and arrange transport'],['trips','🧭','Trips','Track, receive and settle'],['fleet','▦','Fleet','Documents and calendar'],['money','₹','Money','Freight, advances and dues']]});
+Object.assign(HOME_CONTENT.transporter,{quick:[['trips','🧭','Trips','Assign vehicle and crew'],['work','▦','Work','Loads and opportunities'],['fleet','▦','Fleet','One calendar, no overlaps'],['money','₹','Money','Advances and settlements']]});
+Object.assign(HOME_CONTENT.vehicle,{quick:[['fleet','▦','My Trucks','Documents, GPS and calendar'],['trips','🧭','Trips','Offers and running trips'],['addVehicle','+','Add vehicle','Staff upload, owner review'],['money','₹','Money','Advances and earnings']]});
+Object.assign(HOME_CONTENT.movers,{quick:[['work','▦','Moving jobs','Auto-assigned queue'],['fleet','▦','Vehicles','One calendar across services'],['people','♟','Crew','Staff, temporary and platform'],['money','₹','Money','Customer and payouts']]});
+for(const k of ['commercialDriver','helper'])HOME_CONTENT[k].quick[0]=['myJobs','▦','My Jobs','Invites, offers and assigned trips'];
+HOME_CONTENT.personalDriver.quick=[['myJobs','▦','My Jobs','Customer requests near you'],['work','⌕','Find Work','Hiring openings'],['money','₹','My Money','Work payments'],['upgradeDriver','↑','Go commercial','Upgrade with a commercial licence']];
+HOME_CONTENT.staff.quick=[['work','▦','My Work','Only assigned work'],['trips','🧭','Trips','Your branch trips'],['money','₹','My Money','Salary, advance and claims'],['profile','○','My Profile','Documents and joining status']];
+HOME_CONTENT.admin.quick=[['verification','✓','Verification','People, vehicles, businesses'],['cases','⚑','Cases','Disputes and appeals'],['approvals','✓','Approvals','Business applications'],['audit','◷','Audit','Immutable history']];

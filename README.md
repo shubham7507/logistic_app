@@ -1,6 +1,29 @@
-# MoveAI One vNext — Phase P4
+# MoveAI One vNext — Phases P5–P8 (complete application flow)
 
 Phase P4 adds the goods and opportunity marketplace on the completed P0–P3 application. It also repairs the Commercial Driver availability, matching, application, withdrawal/reapplication and owner hiring pipeline. The v44 reference remains unchanged.
+
+## P5–P8: complete draw.io application flow
+
+P5–P8 implement every page of `MoveAI_One_All_Users_Complete_Application_Flow.drawio` that was not yet in P0–P4. See `P5-P8-USER-STORIES.md` for the page-by-page traceability map.
+
+- **P5 Trips and fleet** — trips created once from confirmed loads or own-vehicle assignment; ordered milestones with proof (loading photo, weighbridge slip only when Dharamkata is selected, signed POD); buyer receipt with quantity/condition; settlement and next load near drop; vehicle source (own fleet, external owner offer, posted truck) and crew source (staff, platform); document, capacity, licence and overlap checks; one shared fleet calendar; add vehicle → staff uploads → owner review → admin approval.
+- **P6 Customers, movers and workers** — book moving, personal driver, products or general services by typing or voice; full price before booking; automatic Mover branch assignment; inventory, loading proof, customer OTP and payouts; driver/helper invites, one-trip offers and assigned jobs; personal driver jobs and upgrade to commercial.
+- **P7 Messages, money and notifications** — job, internal and direct conversations with text, audio, proof and location; GPS only with Driver consent and stopped at closure; ledger with payer/payee/responsible, method and reference, approval limits, duplicate detection, payee confirmation, hold and reversal with audit; reimbursements and platform fees never counted as earnings; notification bell.
+- **P8 Admin, exceptions, staff events and AI** — verification queue for people, vehicles and businesses with reasons, notification, suspension, escalation and appeal/restore; seven exception types that hold work, notify only affected parties and recalculate dues without deleting; leave/unavailability with reassignment and rehire; "Ask MoveAI" assistant with voice, read-back confirmation for critical actions and no permission bypass.
+
+### Demo journeys
+
+1. **Personal → Book a service** → Review price → Book move. Switch to **SafeMove Packers → Moving jobs** to see it auto-assigned. Completion OTP for the seeded job MOV-601 is `4826`.
+2. **Raj Logistics → Trips → TRP-503 → Assign**: choosing UP16 RT 2201 is blocked by the MOV-603 moving booking on 2 Oct (see Fleet calendar).
+3. **Commercial Driver → My Jobs → TRP-501**: Dharamkata needs a weighbridge slip; then start transit, send location, deliver with POD.
+4. **Sharma Foods → Trips → TRP-502**: confirm received quantity and condition.
+5. **Raj Logistics → Money**: approve and pay; switch to **Raj Transport** to confirm receipt.
+6. **Ask MoveAI**: "summarize TRP-501" or "record advance 5000 to Raj Transport for TRP-501" (read back, then saved for approval only).
+7. **Platform Admin → Verification**: reject without a reason is refused; suspend and restore after appeal.
+
+### Tests
+
+`npm run test:unit` and `npm run test:static` include `tests/ops-rules.unit.mjs` and `tests/ops-screens.integration.mjs`. `npm run test:smoke` runs `tests/p5-p8-ops.smoke.py` (Python Playwright): every allowed route for every workspace plus the journeys above.
 
 ## Run locally
 

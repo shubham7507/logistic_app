@@ -1,16 +1,16 @@
-export const ICONS={home:'⌂',work:'▦',fleet:'▦',people:'♟',messages:'◌',money:'₹',business:'▤',search:'⌕',orders:'▥',profile:'○',approvals:'✓',documents:'▣',users:'♟',audit:'◷',more:'•••',states:'◇',invitations:'✉',welcome:'→',signup:'☎',otp:'✓',recover:'↻',branches:'⌘',bank:'₹',applicationStatus:'◷',serviceExpansion:'+',addStaff:'+',roles:'♟',staffAccess:'⌾',hiring:'⌕',postOpening:'+',findWorkers:'⌕',applications:'▦',candidateProfile:'○',ownerCover:'☂',offboarding:'↗',staffInvite:'✉',staffOtp:'✓',staffSubmission:'◷',staffReview:'✓',goodsOrder:'📦',transportRequirement:'🚚',arrangement:'✓',buyWithDelivery:'🛒',goodsRequirements:'🛒',postAvailableLoad:'📦',postLoadRequirement:'⌕',transporterRequirements:'▦',postAvailableTruck:'🚚',routeOpportunities:'🧭',opportunityDetail:'▦',opportunityChat:'◌'};
+export const ICONS={home:'⌂',work:'▦',fleet:'▦',people:'♟',messages:'◌',money:'₹',business:'▤',search:'⌕',orders:'▥',profile:'○',approvals:'✓',documents:'▣',users:'♟',audit:'◷',more:'•••',states:'◇',invitations:'✉',welcome:'→',signup:'☎',otp:'✓',recover:'↻',branches:'⌘',bank:'₹',applicationStatus:'◷',serviceExpansion:'+',addStaff:'+',roles:'♟',staffAccess:'⌾',hiring:'⌕',postOpening:'+',findWorkers:'⌕',applications:'▦',candidateProfile:'○',ownerCover:'☂',offboarding:'↗',staffInvite:'✉',staffOtp:'✓',staffSubmission:'◷',staffReview:'✓',goodsOrder:'📦',transportRequirement:'🚚',arrangement:'✓',buyWithDelivery:'🛒',goodsRequirements:'🛒',postAvailableLoad:'📦',postLoadRequirement:'⌕',transporterRequirements:'▦',postAvailableTruck:'🚚',routeOpportunities:'🧭',opportunityDetail:'▦',opportunityChat:'◌',book:'＋',services:'☰',trips:'🧭',myJobs:'▦',verification:'✓',cases:'⚑',exceptions:'⚠',notifications:'🔔',staffEvents:'◷',tripDetail:'▦',movingJob:'▦',conversation:'◌',paymentDetail:'₹',vehicleDetail:'🚚',addVehicle:'+'};
 
 const nav={
-  personal:[['home','Home'],['search','Search products'],['orders','My orders'],['messages','Messages'],['money','Payments'],['invitations','Invitations']],
-  goods:[['home','Home'],['work','Loads'],['fleet','Fleet'],['people','People'],['messages','Messages'],['money','Money'],['business','Business']],
-  transporter:[['home','Home'],['work','Work'],['fleet','Fleet'],['people','People'],['messages','Messages'],['money','Money'],['business','Business']],
-  vehicle:[['home','Home'],['fleet','My Trucks'],['work','Work'],['people','People'],['messages','Messages'],['money','Money'],['business','Business']],
+  personal:[['home','Home'],['book','Book a service'],['services','My bookings'],['search','Search products'],['orders','My orders'],['messages','Messages'],['money','Payments'],['invitations','Invitations']],
+  goods:[['home','Home'],['work','Loads'],['trips','Trips'],['fleet','Fleet'],['people','People'],['messages','Messages'],['money','Money'],['business','Business']],
+  transporter:[['home','Home'],['work','Work'],['trips','Trips'],['fleet','Fleet'],['people','People'],['messages','Messages'],['money','Money'],['business','Business']],
+  vehicle:[['home','Home'],['fleet','My Trucks'],['work','Work'],['trips','Trips'],['people','People'],['messages','Messages'],['money','Money'],['business','Business']],
   movers:[['home','Home'],['work','Moving jobs'],['fleet','Fleet'],['people','People'],['messages','Messages'],['money','Money'],['business','Business']],
-  commercialDriver:[['home','Home'],['work','Work'],['messages','Messages'],['money','My Money'],['profile','Profile']],
-  personalDriver:[['home','Home'],['work','Find Work'],['messages','Messages'],['money','My Money'],['profile','Profile']],
-  helper:[['home','Home'],['work','Work'],['messages','Messages'],['money','My Money'],['profile','Profile']],
-  staff:[['home','Home'],['work','My Work'],['messages','Messages'],['money','My Money'],['profile','My Profile']],
-  admin:[['home','Home'],['approvals','Approvals'],['documents','Documents'],['users','Users'],['audit','Audit']],
+  commercialDriver:[['home','Home'],['myJobs','My Jobs'],['work','Find Work'],['messages','Messages'],['money','My Money'],['profile','Profile']],
+  personalDriver:[['home','Home'],['myJobs','My Jobs'],['work','Find Work'],['messages','Messages'],['money','My Money'],['profile','Profile']],
+  helper:[['home','Home'],['myJobs','My Jobs'],['work','Find Work'],['messages','Messages'],['money','My Money'],['profile','Profile']],
+  staff:[['home','Home'],['work','My Work'],['trips','Trips'],['messages','Messages'],['money','My Money'],['profile','My Profile']],
+  admin:[['home','Home'],['verification','Verification'],['approvals','Approvals'],['cases','Cases'],['documents','Documents'],['users','Users'],['audit','Audit']],
 };
 
 export const ROLE_CONFIG={
@@ -36,6 +36,13 @@ export const ROUTES={
   addStaff:{title:'Add staff',phase:'P3'},staffDetail:{title:'Staff details',phase:'P3'},staffInvite:{title:'Staff invitation',phase:'P3'},staffOtp:{title:'Verify staff mobile',phase:'P3'},staffOnboarding:{title:'Staff onboarding',phase:'P3'},staffSubmission:{title:'Joining status',phase:'P3'},staffReview:{title:'Review staff onboarding',phase:'P3'},roles:{title:'Roles and permissions',phase:'P3'},staffAccess:{title:'Staff access',phase:'P3'},hiring:{title:'Hiring',phase:'P3'},postOpening:{title:'Post opening',phase:'P3'},findWorkers:{title:'Find workers',phase:'P3'},openingDetail:{title:'Opening details',phase:'P3'},applications:{title:'Applicants',phase:'P3'},candidateProfile:{title:'Work profile',phase:'P3'},ownerCover:{title:'Owner Cover',phase:'P3'},offboarding:{title:'Offboarding',phase:'P3'},
   goodsOrder:{title:'Goods order',phase:'P4'},transportRequirement:{title:'Transport requirement',phase:'P4'},arrangement:{title:'Transport arrangement',phase:'P4'},buyWithDelivery:{title:'Buy goods with delivery',phase:'P4'},goodsRequirements:{title:'Goods requirements',phase:'P4'},postAvailableLoad:{title:'Post available load',phase:'P4'},postLoadRequirement:{title:'Post load requirement',phase:'P4'},transporterRequirements:{title:'Transporters looking for loads',phase:'P4'},postAvailableTruck:{title:'Post available truck',phase:'P4'},routeOpportunities:{title:'Route opportunities',phase:'P4'},opportunityDetail:{title:'Opportunity details',phase:'P4'},opportunityChat:{title:'Opportunity conversation',phase:'P4'},
   ownVehicleAssignment:{title:'Assign owned vehicle',phase:'P4'},sellerSourcing:{title:'Source verified seller',phase:'P4'},transportOffer:{title:'Transport offer',phase:'P4'},truckOffer:{title:'Truck owner offer',phase:'P4'},applyOpening:{title:'Confirm application',phase:'P3'},candidateReview:{title:'Candidate verification',phase:'P3'},employmentChange:{title:'Employment change',phase:'P3'},
+  book:{title:'Book a service',phase:'P6'},bookingReview:{title:'Review price and book',phase:'P6'},services:{title:'My bookings',phase:'P6'},serviceDetail:{title:'Booking details',phase:'P6'},
+  trips:{title:'Trips',phase:'P5'},tripDetail:{title:'Trip details',phase:'P5'},assignTrip:{title:'Assign vehicle and crew',phase:'P5'},vehicleOffer:{title:'Vehicle offer',phase:'P5'},
+  vehicleDetail:{title:'Vehicle details',phase:'P5'},addVehicle:{title:'Add vehicle',phase:'P5'},movingJob:{title:'Moving job',phase:'P6'},
+  myJobs:{title:'My jobs',phase:'P6'},driverJob:{title:'Driver job',phase:'P6'},upgradeDriver:{title:'Upgrade to Commercial Driver',phase:'P6'},
+  conversation:{title:'Conversation',phase:'P7'},payment:{title:'Record payment',phase:'P7'},paymentDetail:{title:'Payment details',phase:'P7'},
+  exceptions:{title:'Exceptions',phase:'P8'},exceptionDetail:{title:'Exception details',phase:'P8'},verification:{title:'Verification queue',phase:'P8'},verificationItem:{title:'Verification review',phase:'P8'},cases:{title:'Cases and appeals',phase:'P8'},
+  staffEvents:{title:'Leave and rehire',phase:'P8'},notifications:{title:'Notifications',phase:'P7'},
 };
 
 export const MOBILE_PRIMARY=['home','work','messages','money'];
@@ -47,7 +54,18 @@ export function allowedRoutes(roleKey){
   const workerPeople=['candidateProfile','openingDetail'];
   const phase4ByRole={goods:['goodsOrder','transportRequirement','arrangement','buyWithDelivery','transporterRequirements','opportunityDetail','opportunityChat','ownVehicleAssignment','postAvailableTruck'],transporter:['goodsRequirements','postAvailableLoad','postLoadRequirement','transporterRequirements','postAvailableTruck','routeOpportunities','opportunityDetail','opportunityChat','sellerSourcing','transportOffer'],vehicle:['postAvailableTruck','routeOpportunities','opportunityDetail','opportunityChat','truckOffer'],movers:[]};
   const extra=roleKey==='personal'?['purpose','consentDetails','recoverySupport','businessStart','businessDetails','businessKyc','branches','bank','applicationStatus','candidateProfile','applyOpening']:roleKey==='admin'?['applicationReview','candidateReview']:roleKey==='staff'?['staffInvite','staffOtp','staffOnboarding','staffSubmission']:['commercialDriver','personalDriver','helper'].includes(roleKey)?[...workerPeople,'applyOpening']:role.branches?['branches','branchEditor','bank','serviceExpansion',...businessPeople,...(phase4ByRole[roleKey]||[])]:[];
-  return new Set([...role.nav.map(([id])=>id),'states',...extra]);
+  const common=['notifications','conversation','exceptions','exceptionDetail','paymentDetail'];
+  const tripRoutes=['trips','tripDetail'];
+  const opsExtra=role.branches?[...tripRoutes,'assignTrip','vehicleOffer','vehicleDetail','addVehicle','movingJob','payment','staffEvents']:
+    roleKey==='personal'?['book','bookingReview','services','serviceDetail','movingJob','tripDetail','payment']:
+    ['commercialDriver','helper'].includes(roleKey)?['myJobs','tripDetail','movingJob','vehicleOffer']:
+    roleKey==='personalDriver'?['myJobs','driverJob','upgradeDriver']:
+    roleKey==='staff'?[...tripRoutes,'assignTrip','movingJob','vehicleDetail','payment']:
+    roleKey==='admin'?['verification','verificationItem','cases','tripDetail']:[];
+  const blocked=roleKey==='goods'?['movingJob','staffEvents']:[];
+  const set=new Set([...role.nav.map(([id])=>id),'states',...extra,...common,...opsExtra]);blocked.forEach(r=>set.delete(r));
+  if(roleKey==='movers')set.delete('trips');
+  return set;
 }
 
 export function routeTitle(route){return ROUTES[route]?.title||'Page not found'}

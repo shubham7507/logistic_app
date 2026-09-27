@@ -1,0 +1,30 @@
+# P5–P8 user stories and draw.io traceability
+
+Every page of `MoveAI_One_All_Users_Complete_Application_Flow.drawio` is mapped to the routes, rules and tests that implement it. Pages already covered in P0–P4 are marked as such.
+
+| Draw.io page | User story | Routes | Rules / modules | Tests |
+|---|---|---|---|---|
+| 00 Actor map | Every actor has its own workspace, navigation and route boundary. | all workspaces | `config.js`, `permissions.js` | p0-static, ops-screens |
+| 01 Universal signup | One mobile identity, OTP, Personal workspace (P1). | welcome, signup, otp, recover | `identity.js` | p1 suites |
+| 02 General customer | As a customer I choose a service, describe it by text or voice, see the full price, book, track, message, confirm, pay and rate. | book, bookingReview, services, serviceDetail, movingJob | `quoteMoving`, `quoteDriver`, `quoteGeneral`, `assignMoverBranch`, `parseVoiceCommand` | ops-rules, smoke journey 1 |
+| 03 Goods seller | As a seller I confirm terms, get vehicle and crew, track pickup, Dharamkata (if selected), GPS and POD, then settle; one order can have many loads; the buyer may arrange transport. | work, trips, tripDetail, arrangement | `buildMilestones`, `canAdvanceMilestone`, `createTripFromLoad`, `createTripFromRequirement`, counterparty mode | ops-rules, smoke journey 3 |
+| 04 Goods buyer | As a buyer I see inbound goods, confirm quantity and condition, pay or dispute, and close. | trips, tripDetail (receipt form), money, exceptions | `advanceMilestone('received')` | ops-screens |
+| 05 Transporter | As a Transporter I accept/reject/counter, pick a vehicle source and crew source, pass validation, run the trip with GPS and chat, settle and see the next load near drop. | trips, assignTrip, vehicleOffer, tripDetail | `validateAssignment`, `crewEligible`, `findConflict`, `nextLoadsNear` | ops-rules, smoke journey 2 |
+| 06 Truck owner | As a Truck Owner I add a vehicle; staff upload RC, insurance, permit, fitness and pollution; I review; Admin approves; I use it for own work, post availability, answer offers or join a Mover; I pay advances and final dues. | fleet, addVehicle, vehicleDetail, vehicleOffer, money | `docsValid`, `DOC_TYPES` | ops-screens |
+| 07 Multi-service business | As a business with several services I see one fleet calendar and overlaps are blocked. | fleet | `overlaps`, `findConflict` | ops-rules, smoke |
+| 08 / 16 Packers & Movers | As a Mover I receive auto-assigned jobs, confirm slot and price, allocate owned/partner/platform crew, approve new vehicle owners, pack inventory, upload loading proof, track GPS, unload, verify the customer OTP and release payouts. | work (queue), movingJob, fleet | `MOVING_STEPS`, `canMoveJob` | ops-rules, smoke journey 1 |
+| 09 Commercial driver | As a Driver I see invites, one-trip offers and assigned trips, accept, run milestones and receive settlement. | myJobs, tripDetail, money | `gpsAllowed`, `earningsSummary` | ops-rules, smoke journey 3 |
+| 10 Personal driver | As a personal Driver I accept customer requests, chat, complete, get paid and rated, and can upgrade to commercial. | myJobs, driverJob, upgradeDriver | `crewEligible` (licence) | ops-screens |
+| 11 Khalasi / helper | As a helper I record multiple capabilities and engagement types and accept work. | myJobs, profile | helper-skills form | ops-screens |
+| 12 Hiring | Openings, applications, hiring pipeline (P3). | hiring and related | `people-rules.js` | p3 suites |
+| 13 Staff lifecycle | As an owner I mark leave/unavailability, reassign active work, and rehire former staff. | staffEvents | `validateLeave` | ops-rules |
+| 14 Roles | Role templates and staff scope (P3); every action is also permission-checked. | roles, staffAccess | `can()` in `ops.js` | p3 suites, ops-screens |
+| 15 Shared trip views | Each party sees only its own view of the same trip. | tripDetail | `visibleTrips` | ops-screens |
+| 17 Money | Payment types; payer, payee and responsible party; method, reference and proof; limits and duplicate check; pay or record outside; payee confirms; ledger; reversal with audit; reimbursements and platform fees separate from earnings. | money, payment, paymentDetail | `validatePayment`, `applyMoneyAction`, `earningsSummary`, `visibleLedger` | ops-rules, smoke journey 5 |
+| 18 Messages, GPS, voice AI | Job/internal/direct chats; text, audio, proof, location; GPS consent, stop at closure; voice → transcript → read back critical actions → execute with audit; AI never bypasses permissions. | messages, conversation, Ask MoveAI dialog | `visibleConversations`, `gpsAllowed`, `parseVoiceCommand`, `runAssistant`, `executeAssistant` | ops-rules, smoke journey 6 |
+| 19 Admin | Verification queue for people, vehicles and businesses; approve, correction, reject, suspend, escalate with reason; notify; immutable audit; appeal and restore. | verification, verificationItem, cases, audit | `validateAdminDecision`, `adminResultStatus` | ops-rules, smoke journey 7 |
+| 20 Exceptions | Seven exception types; notify affected parties only; capture reason, location, proof and responsible party; repair, replace, reassign, manual milestone or hold; recalculate dues without deleting; resume or close. | exceptions, exceptionDetail | `EXCEPTION_TYPES`, `validateException`, `affectedParties`, `recalcDues` | ops-rules, ops-screens |
+
+## Prototype limits
+
+This is a front-end prototype with local mock data. Server-side enforcement, real payments, real GPS, real SMS/OTP and real speech transcription (the browser Web Speech API is used where available, with typed fallback) are simulated and must be built on the backend before production.

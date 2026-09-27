@@ -2,6 +2,7 @@ export const ARRANGEMENT_MODES = {
   own_vehicle: {label: 'Use my own vehicle', audience: ['goods']},
   selected_transporters: {label: 'Send to selected Transporters', audience: ['goods', 'transporter']},
   eligible_network: {label: 'Publish to eligible Transporters', audience: ['goods', 'transporter']},
+  counterparty: {label: 'Buyer / Seller arranges transport', audience: ['goods']},
 };
 
 export function validateGoodsOrder(order) {
