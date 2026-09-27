@@ -14,7 +14,7 @@ Serve this directory with any static web server and open `index.html`.
 - Automatic Personal workspace creation exactly once
 - Safe workspace switching and strict route boundaries
 - Pending business invitations with accept, decline and history
-- Central configuration for 9 workspace contexts and 20 routes
+- Central configuration for 10 workspace contexts and 45 routes
 - Desktop sidebar, mobile bottom navigation and Netlify SPA routing
 - Resettable mock data and a complete signup demo from Personal Home
 - One legal business with Transport, Own Vehicles, Movers and Goods services
@@ -25,7 +25,10 @@ Serve this directory with any static web server and open `index.html`.
 - Later service expansion that reuses common KYC
 - A dedicated People hub for team, hiring, roles and temporary Owner Cover
 - Simple staff invitations with duplicate-mobile identity linking
+- Exact invited-mobile OTP verification before staff acceptance
 - Staff self-service for personal ID, bank, emergency contact and required documents
+- Separate owner review with correction, rejection and approval decisions
+- Permanent Staff ID creation only after owner approval
 - Seven plain-language role templates with branch and service scope
 - Strict staff visibility: each staff member sees only assigned work and permitted sections
 - Vacancy posting and candidate discovery for Drivers, Khalasis, Helpers and other staff
@@ -62,15 +65,18 @@ The browser E2E suite needs a Playwright Chromium binary. Without it, the unit, 
 
 ## Manual P3 owner journey
 
-1. Switch to **Raj Transport** and open **People**.
-2. Open **Add staff**, invite a worker, then open the pending invitation from the People list.
-3. Accept the invitation and complete the worker's own ID, bank, emergency and document information.
-4. Return as owner, review the submitted details and select **Finish onboarding**.
-5. Open the worker and choose **Access** to apply a role template plus branch/service scope.
-6. Use **Hiring** to post an opening, find a commercial Driver/Khalasi/Helper and move the application through the pipeline.
-7. Convert the selected candidate as permanent, fixed-term or trip-only. Trip-only workers do not become full staff.
-8. Use **Owner Cover** to delegate operations temporarily. Ownership, owner bank changes and business closure remain owner-only.
-9. Open a worker and choose **Offboard**. Reassign active trucks/tasks and record final dues before completion.
+1. Switch to **Raj Logistics** and open **People**.
+2. Select **Pankaj Meena · Test invitation as staff**.
+3. Confirm mobile `9876501199`, send OTP and enter `123456`.
+4. Accept the invitation and complete identity, emergency and Bank/UPI sections.
+5. Submit for owner review and choose **Return to owner test view**.
+6. Request one correction, return as staff, fix only that section and resubmit.
+7. Approve and activate. Confirm a `STF-TRA-` Staff ID is created.
+8. Open the worker and choose **Access** to apply a role template plus branch/service scope.
+9. Use **Hiring** to post an opening, find a commercial Driver/Khalasi/Helper and move the application through the pipeline.
+10. Convert the selected candidate as permanent, fixed-term or trip-only. Trip-only workers do not become full staff.
+11. Use **Owner Cover** to delegate operations temporarily. Ownership, owner bank changes and business closure remain owner-only.
+12. Open a worker and choose **Offboard**. Reassign active trucks/tasks and record final dues before completion.
 
 ## Manual P3 worker journey
 
@@ -78,3 +84,5 @@ The browser E2E suite needs a Playwright Chromium binary. Without it, the unit, 
 2. Open **Profile** to update licence, documents, availability, preferred routes and rate.
 3. Open **Work** to review suitable openings, apply or withdraw.
 4. Staff invited into a business sees only the sections, branches and services granted by the owner.
+
+Full traceability and expected results are in `P0-P3-USER-STORIES.md` and `P0-P3-E2E-TEST-PLAN.md`.

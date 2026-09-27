@@ -14,3 +14,12 @@ export function validateOwnerCover(c){if(!c.delegateId)return 'Select a delegate
 export function employmentResult(type){return type==='permanent'?{createsStaffId:true,assignmentOnly:false}:type==='fixed_term'?{createsStaffId:true,assignmentOnly:false}:{createsStaffId:false,assignmentOnly:true}}
 export function canOffboard(staff){return !staff.activeAssignments?.length}
 export function candidateMatches(candidate,opening){return candidate.status==='available'&&candidate.capabilities.includes(opening.role)&&candidate.locations.some(x=>opening.location.includes(x)||x.includes(opening.location.split(',')[0]))}
+export const STAFF_LIFECYCLE=['pending','mobile_verified','accepted','profile_pending','submitted','correction_required','approved','active','rejected','offboarded'];
+export function staffSubmissionReady(staff){return ['verified','complete'].includes(staff?.documentsStatus)&&['verified','complete'].includes(staff?.emergencyStatus)&&['verified','complete'].includes(staff?.bankStatus)}
+export function canAcceptStaffInvitation(invite,session){return Boolean(invite&&session?.verified&&session.inviteId===invite.id&&session.mobile===invite.mobile&&['pending','mobile_verified'].includes(invite.status))}
+export function staffReviewDecision(staff,decision,section='documentsStatus'){
+  if(!staffSubmissionReady(staff)&&decision==='approve')return 'All joining sections must be complete before approval.';
+  if(decision==='correction'&&!['documentsStatus','emergencyStatus','bankStatus'].includes(section))return 'Select the section that needs correction.';
+  if(!['approve','correction','reject'].includes(decision))return 'Select a valid review decision.';
+  return '';
+}

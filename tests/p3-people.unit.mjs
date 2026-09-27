@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {ROLE_TEMPLATES,OWNER_ONLY,validateStaffInvite,accessAllows,validateOwnerCover,employmentResult,canOffboard,candidateMatches} from '../js/people-rules.js';
+import {ROLE_TEMPLATES,OWNER_ONLY,validateStaffInvite,accessAllows,validateOwnerCover,employmentResult,canOffboard,candidateMatches,STAFF_LIFECYCLE,staffSubmissionReady,canAcceptStaffInvitation,staffReviewDecision} from '../js/people-rules.js';
 import {SEED} from '../js/mock-data.js';
 import {canOpen} from '../js/permissions.js';
 
@@ -20,4 +20,15 @@ assert.equal(canOpen('transporter','addStaff','authenticated'),true);
 assert.equal(canOpen('commercialDriver','addStaff','authenticated'),false);
 assert.equal(canOpen('commercialDriver','candidateProfile','authenticated'),true);
 assert.equal(canOpen('goods','ownerCover','authenticated'),true);
-console.log(JSON.stringify({status:'PASS',roleTemplates:7,ownerOnlyProtected:true,inviteValidation:true,branchScope:true,ownerCover:true,employmentTypes:3,offboardingGuard:true,candidateMatching:true,routeBoundaries:true},null,2));
+assert.equal(canOpen('staff','people','authenticated'),false);
+assert.equal(canOpen('staff','staffOnboarding','authenticated'),true);
+assert.ok(STAFF_LIFECYCLE.includes('correction_required'));
+const readyStaff={documentsStatus:'verified',emergencyStatus:'complete',bankStatus:'verified'};
+assert.equal(staffSubmissionReady(readyStaff),true);
+assert.equal(staffSubmissionReady({...readyStaff,bankStatus:'pending_staff'}),false);
+const invite={id:'SINV-1',mobile:'9876509999',status:'mobile_verified'};
+assert.equal(canAcceptStaffInvitation(invite,{inviteId:'SINV-1',mobile:'9876509999',verified:true}),true);
+assert.equal(canAcceptStaffInvitation(invite,{inviteId:'SINV-1',mobile:'9123400000',verified:true}),false);
+assert.equal(staffReviewDecision(readyStaff,'approve'),'');
+assert.equal(staffReviewDecision({...readyStaff,bankStatus:'pending_staff'},'approve'),'All joining sections must be complete before approval.');
+console.log(JSON.stringify({status:'PASS',roleTemplates:7,ownerOnlyProtected:true,inviteValidation:true,branchScope:true,ownerCover:true,employmentTypes:3,offboardingGuard:true,candidateMatching:true,routeBoundaries:true,staffLifecycle:true,staffOtpAcceptance:true,ownerReview:true},null,2));

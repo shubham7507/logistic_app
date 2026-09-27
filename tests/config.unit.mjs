@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {ROLE_CONFIG,ROUTES,allowedRoutes,MOBILE_PRIMARY} from '../js/config.js';
 
-assert.equal(Object.keys(ROLE_CONFIG).length,9);
+assert.equal(Object.keys(ROLE_CONFIG).length,10);
 assert.ok(Object.keys(ROUTES).includes('states'));
 for(const [key,role] of Object.entries(ROLE_CONFIG)){
   assert.ok(role.nav.length>=5,`${key} has fewer than five nav routes`);

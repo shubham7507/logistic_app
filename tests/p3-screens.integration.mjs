@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {SEED} from '../js/mock-data.js';
-import {peopleScreen,addStaffScreen,staffDetailScreen,staffOnboardingScreen,rolesScreen,staffAccessScreen,hiringScreen,postOpeningScreen,findWorkersScreen,openingDetailScreen,applicationsScreen,candidateProfileScreen,candidateWorkScreen,ownerCoverScreen,offboardingScreen} from '../js/people.js';
+import {peopleScreen,addStaffScreen,staffDetailScreen,staffInviteScreen,staffOtpScreen,staffOnboardingScreen,staffSubmissionScreen,staffReviewScreen,staffSelfProfileScreen,rolesScreen,staffAccessScreen,hiringScreen,postOpeningScreen,findWorkersScreen,openingDetailScreen,applicationsScreen,candidateProfileScreen,candidateWorkScreen,ownerCoverScreen,offboardingScreen} from '../js/people.js';
 
 const clone=v=>JSON.parse(JSON.stringify(v));
 const state=clone(SEED);state.currentWorkspace='transporter';state.selectedStaffId='STAFF-001';state.selectedOpeningId='JOB-301';state.selectedCandidateId='CAND-001';
@@ -12,6 +12,13 @@ assert.ok(staffOnboardingScreen(state).includes('owner does not upload')||staffO
 assert.ok(rolesScreen(state).includes('Owner-only actions cannot be delegated'));
 assert.ok(offboardingScreen(state).includes('history and dues remain'));
 
+state.staffSession={inviteId:'SINV-501',ownerWorkspace:'transporter',mobile:'9876501199',verified:false};
+state.currentWorkspace='staff';state.selectedStaffId='STAFF-001';
+for(const html of [staffInviteScreen(state),staffOtpScreen(state),staffOnboardingScreen(state),staffSubmissionScreen(state),staffReviewScreen({...state,currentWorkspace:'transporter'}),staffSelfProfileScreen(state)]){assert.ok(html.length>200);assert.ok(!html.includes('undefined'))}
+assert.ok(staffInviteScreen(state).includes('Send OTP'));
+assert.ok(staffOtpScreen(state).includes('123456'));
+assert.ok(staffReviewScreen({...state,currentWorkspace:'transporter'}).includes('Approve and activate'));
+
 state.currentWorkspace='commercialDriver';state.selectedCandidateId='CAND-001';
 for(const html of [candidateProfileScreen(state),candidateWorkScreen(state),openingDetailScreen(state,true)]){assert.ok(html.length>200);assert.ok(!html.includes('undefined'))}
-console.log(JSON.stringify({status:'PASS',businessPeopleScreens:13,workerScreens:3,mobileMasked:true,ownerOnlyVisible:true,offboardingHistory:true},null,2));
+console.log(JSON.stringify({status:'PASS',businessPeopleScreens:14,staffLifecycleScreens:6,workerScreens:3,mobileMasked:true,ownerOnlyVisible:true,offboardingHistory:true},null,2));
