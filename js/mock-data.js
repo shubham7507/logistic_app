@@ -48,7 +48,40 @@ export const SEED={
     {id:'JOB-301',workspace:'transporter',title:'Heavy Truck Driver',role:'driver',branchId:'BR-002',branch:'Jaipur Branch',location:'Jaipur, Rajasthan',count:2,payMin:3000,payMax:4500,payType:'per_trip',employmentType:'trip_only',startDate:'30 Sep 2026',endDate:'',requirements:['Heavy licence','2+ years experience'],approvalPolicy:'Manager can hire',status:'open'},
     {id:'JOB-302',workspace:'transporter',title:'Document Staff',role:'documents',branchId:'BR-001',branch:'Noida HQ',location:'Noida, Uttar Pradesh',count:1,payMin:28000,payMax:34000,payType:'monthly',employmentType:'permanent',startDate:'05 Oct 2026',endDate:'',requirements:['Document scanning','Hindi'],approvalPolicy:'Owner approval',status:'open'},
   ],
-  jobApplications:[{id:'JAPP-701',openingId:'JOB-301',candidateId:'CAND-001',status:'shortlisted',joiningDate:'30 Sep 2026',expectedPay:4000,voiceIntro:'18 sec voice introduction',history:[{status:'applied',at:'26 Sep 2026'},{status:'shortlisted',at:'27 Sep 2026'}]}],
+  jobApplications:[{id:'JAPP-701',openingId:'JOB-302',candidateId:'CAND-003',status:'shortlisted',joiningDate:'05 Oct 2026',expectedPay:32000,voiceIntro:'18 sec voice introduction',history:[{status:'applied',at:'26 Sep 2026'},{status:'reviewed',at:'26 Sep 2026'},{status:'shortlisted',at:'27 Sep 2026'}]}],
+  goodsOrders:[
+    {id:'GO-401',workspace:'goods',type:'sell',counterparty:'Metro Retail',goods:'Rice bags',quantity:20,unit:'tonnes',goodsPrice:760000,transportResponsibility:'seller',status:'confirmed',createdAt:'27 Sep 2026, 9:15 AM'},
+    {id:'GO-402',workspace:'goods',type:'buy',counterparty:'Bihar Agro',goods:'Packaging material',quantity:8,unit:'tonnes',goodsPrice:224000,transportResponsibility:'buyer',status:'draft',createdAt:'27 Sep 2026, 11:40 AM'},
+  ],
+  transportRequirements:[
+    {id:'TR-401',workspace:'goods',goodsOrderId:'GO-401',pickup:'Patna Warehouse, Bihar',drop:'Okhla, Delhi',pickupDate:'2026-09-30',truckType:'14-wheel open',capacity:20,goods:'Rice bags',dharamkata:true,paymentTerms:'₹12,000 advance; balance after POD',arrangement:'selected_transporters',selectedTransporters:['Raj Logistics'],status:'published',createdBy:'Sharma Foods'},
+  ],
+  availableLoads:[
+    {id:'AL-401',workspace:'transporter',requirementId:'TR-401',route:'Patna → Delhi',pickup:'Patna',drop:'Delhi',date:'30 Sep 2026',truckType:'14-wheel open',capacity:20,goods:'Rice bags',authority:'Authorized by Sharma Foods',goodsOwnerDisplay:'Verified Goods Business',goodsOwnerPrivate:'Sharma Foods · +91 98••••3210',status:'open'},
+  ],
+  loadRequirements:[
+    {id:'LR-401',workspace:'transporter',route:'Jaipur → Delhi',from:'Jaipur',to:'Delhi NCR',date:'01 Oct 2026',truckType:'22-ft closed',capacity:12,acceptedGoods:'FMCG, packaged food',status:'open',postedBy:'Raj Logistics',branch:'Jaipur Branch'},
+  ],
+  truckAvailability:[
+    {id:'TA-401',workspace:'vehicle',vehicleId:'VEH-201',registration:'BR01 GX 4421',location:'Jaipur',availableDate:'2026-10-01',truckType:'22-ft closed',capacity:12,destinationPreference:'Delhi NCR',crew:'Driver + Khalasi ready',documents:'approved',status:'available'},
+  ],
+  goodsRequirements:[
+    {id:'GR-401',workspace:'transporter',buyer:'Metro Retail',goods:'Premium rice',quantity:15,unit:'tonnes',delivery:'Noida by 04 Oct 2026',goodsBudget:615000,transportBudget:72000,status:'sourcing',seller:'Not selected'},
+  ],
+  opportunities:[
+    {id:'OPP-401',type:'goods_response',sourceId:'LR-401',createdByWorkspace:'goods',participants:['goods','transporter'],title:'Rice 12 tonnes for Jaipur → Delhi',summary:'Sharma Foods can supply a compatible confirmed load.',status:'discussion',canonicalLoadId:null,createdAt:'27 Sep 2026, 2:10 PM'},
+    {id:'OPP-402',type:'truck_match',sourceId:'TA-401',createdByWorkspace:'vehicle',participants:['vehicle','transporter'],title:'BR01 GX 4421 matches Jaipur → Delhi',summary:'22-ft closed truck, driver and Khalasi available.',status:'matched',canonicalLoadId:null,createdAt:'27 Sep 2026, 2:25 PM'},
+  ],
+  opportunityMessages:{
+    'OPP-401':[
+      {id:'MSG-401',sender:'Sharma Foods',text:'12 tonnes packaged rice is ready near Jaipur on 1 October.',kind:'text',at:'2:12 PM'},
+      {id:'MSG-402',sender:'Raj Logistics',text:'Please confirm loading time and Dharamkata requirement.',kind:'text',at:'2:14 PM'},
+      {id:'MSG-403',sender:'MoveAI summary',text:'Both parties agree on Jaipur pickup, Delhi delivery and a 12-tonne closed truck. Dharamkata is awaiting confirmation.',kind:'summary',at:'2:15 PM'},
+    ],
+    'OPP-402':[{id:'MSG-404',sender:'Raj Transport',text:'Truck documents are approved and crew can report by 8 AM.',kind:'voice',at:'2:26 PM'}],
+  },
+  canonicalLoads:[],
+  selectedOpportunityId:'OPP-401',selectedRequirementId:'TR-401',selectedGoodsOrderId:'GO-401',
   ownerCovers:[],
 };
 

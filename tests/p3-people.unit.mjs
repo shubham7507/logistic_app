@@ -16,6 +16,7 @@ assert.deepEqual(employmentResult('trip_only'),{createsStaffId:false,assignmentO
 assert.equal(canOffboard({activeAssignments:[]}),true);
 assert.equal(canOffboard({activeAssignments:['TRIP-1']}),false);
 assert.equal(candidateMatches(SEED.candidates[0],SEED.vacancies[0]),true);
+assert.equal(SEED.jobApplications.some(a=>a.openingId==='JOB-301'&&a.candidateId==='CAND-001'),false,'Commercial Driver must start with an available Apply path after reset');
 assert.equal(canOpen('transporter','addStaff','authenticated'),true);
 assert.equal(canOpen('commercialDriver','addStaff','authenticated'),false);
 assert.equal(canOpen('commercialDriver','candidateProfile','authenticated'),true);

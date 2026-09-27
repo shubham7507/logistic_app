@@ -21,4 +21,7 @@ assert.ok(staffReviewScreen({...state,currentWorkspace:'transporter'}).includes(
 
 state.currentWorkspace='commercialDriver';state.selectedCandidateId='CAND-001';
 for(const html of [candidateProfileScreen(state),candidateWorkScreen(state),openingDetailScreen(state,true)]){assert.ok(html.length>200);assert.ok(!html.includes('undefined'))}
-console.log(JSON.stringify({status:'PASS',businessPeopleScreens:14,staffLifecycleScreens:6,workerScreens:3,mobileMasked:true,ownerOnlyVisible:true,offboardingHistory:true},null,2));
+assert.ok(openingDetailScreen(state,true).includes('Apply with profile'),'Reset state must expose Apply for the seeded Commercial Driver');
+assert.ok(candidateWorkScreen(state).includes('Matching jobs (1)'));
+assert.ok(hiringScreen({...state,currentWorkspace:'transporter'}).includes('Open Commercial Driver profile'));
+console.log(JSON.stringify({status:'PASS',businessPeopleScreens:14,staffLifecycleScreens:6,workerScreens:3,driverApplyPath:true,mobileMasked:true,ownerOnlyVisible:true,offboardingHistory:true},null,2));

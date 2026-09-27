@@ -141,14 +141,16 @@ Expected: only staff navigation is visible; own profile is visible; every owner 
 
 ## P3 — Hiring and worker marketplace
 
-1. Transporter → People → Hiring → Post opening.
-2. Test invalid pay range; test fixed-term without end date.
-3. Publish Heavy Truck Driver, Jaipur Branch, trip-only, ₹3,000–₹4,500.
-4. Switch to Commercial Driver → Profile; publish compatible availability.
-5. Work → open matching job → Apply; then withdraw once and apply using a fresh reset.
-6. Owner → Applications; progress New → Reviewed → Shortlisted → Interview → Offer → Hired.
+1. Reset demo data. The seeded Commercial Driver must have no existing application for `JOB-301`.
+2. Transporter → People → Hiring. The **Test the complete driver journey** banner is visible.
+3. Open Commercial Driver → Profile; confirm Driver, Jaipur, Immediate and Per trip, then select **Save availability**.
+4. Work shows **Heavy Truck Driver** under Matching jobs. Open it and select **Apply with profile**.
+5. Confirm the status is New, then select **Withdraw application**. The same job now shows **Apply again**.
+6. Reset demo data and repeat Profile → Save availability → Work → Heavy Truck Driver → Apply with profile.
+7. Switch to Raj Logistics → People → Hiring → Applicants.
+8. Progress Amit Singh through New → Reviewed → Shortlisted → Interview → Offer → Hired.
 
-Expected: matching considers capability/location/availability; history retains every state; trip-only creates assignment only. Repeat with permanent and fixed-term to confirm a staff relationship is created.
+Expected: matching considers capability/location/availability; withdrawal and reapplication are both retained in history; a fresh reset exposes Apply; the owner sees the new application; every pipeline state persists; trip-only creates an assignment only. Permanent/fixed-term hiring creates a profile-pending staff relationship that must complete staff onboarding before active access.
 
 ## P3 — Role access, Owner Cover and offboarding
 
