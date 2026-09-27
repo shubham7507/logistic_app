@@ -1,6 +1,6 @@
-# MoveAI One vNext — Phase P2
+# MoveAI One vNext — Phase P3
 
-Phase P2 adds legal business, multi-service, branch, KYC, bank and Admin approval flows on the completed P0/P1 foundation. The v44 reference remains unchanged.
+Phase P3 adds the complete People, hiring, role access, Owner Cover and offboarding foundation on the completed P0–P2 application. The v44 reference remains unchanged.
 
 ## Run locally
 
@@ -23,6 +23,16 @@ Serve this directory with any static web server and open `index.html`.
 - Admin approve, request correction or reject with versioned history
 - Section-specific correction and resubmission
 - Later service expansion that reuses common KYC
+- A dedicated People hub for team, hiring, roles and temporary Owner Cover
+- Simple staff invitations with duplicate-mobile identity linking
+- Staff self-service for personal ID, bank, emergency contact and required documents
+- Seven plain-language role templates with branch and service scope
+- Strict staff visibility: each staff member sees only assigned work and permitted sections
+- Vacancy posting and candidate discovery for Drivers, Khalasis, Helpers and other staff
+- Candidate self-registration, availability and job application flows
+- Hiring pipeline with permanent, fixed-term and trip-only engagement choices
+- Owner Cover with expiry, reason, branch scope and owner-only restrictions
+- Safe offboarding with truck/task reassignment, retained history and outstanding-dues checks
 
 ## Tests
 
@@ -32,7 +42,7 @@ npm run test:static
 npm run test:e2e
 ```
 
-The browser E2E suite needs a Playwright Chromium binary. Without it, the unit, static integration and HTTP smoke gates still run. The included P1 browser suite covers new identity, duplicate recovery, invitations and workspace boundaries.
+The browser E2E suite needs a Playwright Chromium binary. Without it, the unit, static integration and HTTP smoke gates still run. Browser suites cover identity, business approval and Phase P3 People journeys when Chromium is available.
 
 ## Manual P1 journey
 
@@ -49,3 +59,22 @@ The browser E2E suite needs a Playwright Chromium binary. Without it, the unit, 
 4. Approve it, or request a correction and select the affected section.
 5. Return to Personal → Application status to fix and resubmit.
 6. After approval, open the business workspace. Use **Business** for services, branches, bank and expansion.
+
+## Manual P3 owner journey
+
+1. Switch to **Raj Transport** and open **People**.
+2. Open **Add staff**, invite a worker, then open the pending invitation from the People list.
+3. Accept the invitation and complete the worker's own ID, bank, emergency and document information.
+4. Return as owner, review the submitted details and select **Finish onboarding**.
+5. Open the worker and choose **Access** to apply a role template plus branch/service scope.
+6. Use **Hiring** to post an opening, find a commercial Driver/Khalasi/Helper and move the application through the pipeline.
+7. Convert the selected candidate as permanent, fixed-term or trip-only. Trip-only workers do not become full staff.
+8. Use **Owner Cover** to delegate operations temporarily. Ownership, owner bank changes and business closure remain owner-only.
+9. Open a worker and choose **Offboard**. Reassign active trucks/tasks and record final dues before completion.
+
+## Manual P3 worker journey
+
+1. Switch to **Commercial Driver**.
+2. Open **Profile** to update licence, documents, availability, preferred routes and rate.
+3. Open **Work** to review suitable openings, apply or withdraw.
+4. Staff invited into a business sees only the sections, branches and services granted by the owner.

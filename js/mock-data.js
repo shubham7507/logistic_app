@@ -24,6 +24,31 @@ export const SEED={
     vehicle:{businessId:'BIZ-006',legalName:'Raj Transport',services:['fleet'],kycStatus:'approved',bank:{maskedAccount:'•••• 7781',verificationStatus:'verified'},branches:[{id:'BR-020',name:'Patna Yard',serviceArea:'Bihar and Jharkhand',manager:'Rajesh Kumar',status:'active',isDefault:true,activeWork:2}]},
     movers:{businessId:'BIZ-009',legalName:'SafeMove Packers',services:['movers'],kycStatus:'approved',bank:{maskedAccount:'•••• 2204',verificationStatus:'verified'},branches:[{id:'BR-030',name:'Noida Moving Branch',serviceArea:'Delhi NCR',manager:'Neha Singh',status:'active',isDefault:true,activeWork:4},{id:'BR-031',name:'Gurugram Branch',serviceArea:'Gurugram',manager:'Ankit Rao',status:'active',isDefault:false,activeWork:0}]},
   },
+  selectedStaffId:'STAFF-001',selectedOpeningId:'JOB-301',selectedCandidateId:'CAND-003',
+  peopleByWorkspace:{
+    transporter:[
+      {id:'STAFF-001',name:'Ravi Kumar',mobile:'9876501101',role:'manager',designation:'Operations Manager',branchIds:['BR-001'],services:['transport','fleet','movers'],payType:'monthly',payAmount:42000,status:'active',documentsStatus:'verified',bankStatus:'verified',emergencyStatus:'complete',activeAssignments:['LD-10461'],vehicleAssignments:[],dues:0},
+      {id:'STAFF-002',name:'Sunita Verma',mobile:'9876501102',role:'accounts',designation:'Accounts Staff',branchIds:['BR-001','BR-002'],services:['transport','fleet','movers'],payType:'monthly',payAmount:35000,status:'active',documentsStatus:'verified',bankStatus:'verified',emergencyStatus:'complete',activeAssignments:[],vehicleAssignments:[],dues:12000},
+      {id:'WORKER-001',name:'Mohan Yadav',mobile:'9876501103',role:'driver',designation:'Commercial Driver',branchIds:['BR-001'],services:['transport','movers'],payType:'monthly',payAmount:30000,status:'active',documentsStatus:'verified',bankStatus:'verified',emergencyStatus:'complete',activeAssignments:['TRIP-10461'],vehicleAssignments:['VEH-001'],dues:4500},
+      {id:'WORKER-002',name:'Ramesh Yadav',mobile:'9876501104',role:'helper',designation:'Khalasi + Moving Helper',branchIds:['BR-001'],services:['transport','movers'],payType:'monthly',payAmount:22000,status:'active',documentsStatus:'pending_staff',bankStatus:'pending_staff',emergencyStatus:'pending_staff',activeAssignments:[],vehicleAssignments:[],dues:2200},
+    ],
+    goods:[{id:'STAFF-010',name:'Vijay Sharma',mobile:'9876502101',role:'manager',designation:'Warehouse Manager',branchIds:['BR-010'],services:['goods','fleet'],payType:'monthly',payAmount:38000,status:'active',documentsStatus:'verified',bankStatus:'verified',emergencyStatus:'complete',activeAssignments:['LOAD-001'],vehicleAssignments:[],dues:0}],
+    vehicle:[{id:'WORKER-020',name:'Suresh Paswan',mobile:'9876503101',role:'driver',designation:'Truck Driver',branchIds:['BR-020'],services:['fleet'],payType:'monthly',payAmount:28000,status:'active',documentsStatus:'verified',bankStatus:'verified',emergencyStatus:'complete',activeAssignments:['TRIP-2201'],vehicleAssignments:['VEH-201'],dues:3000}],
+    movers:[{id:'STAFF-030',name:'Neha Singh',mobile:'9876504101',role:'manager',designation:'Moving Coordinator',branchIds:['BR-030'],services:['movers'],payType:'monthly',payAmount:36000,status:'active',documentsStatus:'verified',bankStatus:'verified',emergencyStatus:'complete',activeAssignments:['MOVE-001'],vehicleAssignments:[],dues:0}],
+  },
+  staffInvitations:[{id:'SINV-501',workspace:'transporter',mobile:'9876501199',name:'Pankaj Meena',role:'operations',branchId:'BR-002',responsibilities:['Trip updates','Vehicle allocation'],payType:'monthly',employmentType:'permanent',status:'pending',expires:'04 Oct 2026'}],
+  candidates:[
+    {id:'CAND-001',name:'Amit Singh',mobile:'9876510001',capabilities:['driver'],licences:['Heavy vehicle'],locations:['Jaipur'],availability:'Immediate',workPreference:'Per trip',expectedPay:3500,status:'available',verified:true},
+    {id:'CAND-002',name:'Iqbal Khan',mobile:'9876510002',capabilities:['helper','driver'],licences:['Light commercial'],locations:['Noida','Delhi'],availability:'01 Oct 2026',workPreference:'Monthly',expectedPay:26000,status:'available',verified:true},
+    {id:'CAND-003',name:'Pooja Kumari',mobile:'9876510003',capabilities:['operations','documents'],licences:[],locations:['Patna'],availability:'Immediate',workPreference:'Monthly',expectedPay:30000,status:'available',verified:true},
+    {id:'CAND-004',name:'Anil Kumar',mobile:'9876510004',capabilities:['driver'],licences:['Personal car'],locations:['Noida','Delhi'],availability:'Today until 8 PM',workPreference:'Daily',expectedPay:1800,status:'available',verified:true},
+  ],
+  vacancies:[
+    {id:'JOB-301',workspace:'transporter',title:'Heavy Truck Driver',role:'driver',branchId:'BR-002',branch:'Jaipur Branch',location:'Jaipur, Rajasthan',count:2,payMin:3000,payMax:4500,payType:'per_trip',employmentType:'trip_only',startDate:'30 Sep 2026',endDate:'',requirements:['Heavy licence','2+ years experience'],approvalPolicy:'Manager can hire',status:'open'},
+    {id:'JOB-302',workspace:'transporter',title:'Document Staff',role:'documents',branchId:'BR-001',branch:'Noida HQ',location:'Noida, Uttar Pradesh',count:1,payMin:28000,payMax:34000,payType:'monthly',employmentType:'permanent',startDate:'05 Oct 2026',endDate:'',requirements:['Document scanning','Hindi'],approvalPolicy:'Owner approval',status:'open'},
+  ],
+  jobApplications:[{id:'JAPP-701',openingId:'JOB-301',candidateId:'CAND-001',status:'shortlisted',joiningDate:'30 Sep 2026',expectedPay:4000,voiceIntro:'18 sec voice introduction',history:[{status:'applied',at:'26 Sep 2026'},{status:'shortlisted',at:'27 Sep 2026'}]}],
+  ownerCovers:[],
 };
 
 export const HOME_CONTENT={

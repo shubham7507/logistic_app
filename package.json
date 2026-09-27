@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:unit": "node tests/config.unit.mjs && node tests/p1-identity.unit.mjs && node tests/p2-business.unit.mjs",
-    "test:static": "node tests/p0-static.integration.mjs && node tests/p2-screens.integration.mjs",
-    "test:e2e": "node tests/p0-foundation.e2e.cjs && node tests/p1-identity.e2e.cjs && node tests/p2-business.e2e.cjs"
+    "test:unit": "node tests/config.unit.mjs && node tests/p1-identity.unit.mjs && node tests/p2-business.unit.mjs && node tests/p3-people.unit.mjs",
+    "test:static": "node tests/p0-static.integration.mjs && node tests/p2-screens.integration.mjs && node tests/p3-screens.integration.mjs",
+    "test:e2e": "node tests/p0-foundation.e2e.cjs && node tests/p1-identity.e2e.cjs && node tests/p2-business.e2e.cjs && node tests/p3-people.e2e.cjs"
   }
 }

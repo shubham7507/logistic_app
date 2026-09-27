@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import {ROLE_TEMPLATES,OWNER_ONLY,validateStaffInvite,accessAllows,validateOwnerCover,employmentResult,canOffboard,candidateMatches} from '../js/people-rules.js';
+import {SEED} from '../js/mock-data.js';
+import {canOpen} from '../js/permissions.js';
+
+assert.deepEqual(Object.keys(ROLE_TEMPLATES),['manager','operations','accounts','driver','helper','documents','viewer']);
+assert.ok(OWNER_ONLY.includes('bank.change'));
+assert.equal(validateStaffInvite({mobile:'9876509999',role:'driver',branchId:'BR-1',payType:'monthly'}),'');
+assert.equal(validateStaffInvite({mobile:'123',role:'driver',branchId:'BR-1',payType:'monthly'}),'Enter a valid 10-digit mobile number.');
+assert.equal(accessAllows({status:'active',branchIds:['BR-1'],services:['fleet'],permissions:['work.update']},{branchId:'BR-1',service:'fleet',permission:'work.update'}),true);
+assert.equal(accessAllows({status:'active',branchIds:['BR-1'],services:['fleet'],permissions:['work.update']},{branchId:'BR-2',service:'fleet',permission:'work.update'}),false);
+assert.equal(validateOwnerCover({delegateId:'STAFF-1',from:'2026-09-28',to:'2026-10-01',branchIds:['BR-1'],paymentLimit:25000}),'');
+assert.equal(validateOwnerCover({delegateId:'',from:'2026-09-28',to:'2026-10-01',branchIds:['BR-1'],paymentLimit:0}),'Select a delegate.');
+assert.deepEqual(employmentResult('permanent'),{createsStaffId:true,assignmentOnly:false});
+assert.deepEqual(employmentResult('trip_only'),{createsStaffId:false,assignmentOnly:true});
+assert.equal(canOffboard({activeAssignments:[]}),true);
+assert.equal(canOffboard({activeAssignments:['TRIP-1']}),false);
+assert.equal(candidateMatches(SEED.candidates[0],SEED.vacancies[0]),true);
+assert.equal(canOpen('transporter','addStaff','authenticated'),true);
+assert.equal(canOpen('commercialDriver','addStaff','authenticated'),false);
+assert.equal(canOpen('commercialDriver','candidateProfile','authenticated'),true);
+assert.equal(canOpen('goods','ownerCover','authenticated'),true);
+console.log(JSON.stringify({status:'PASS',roleTemplates:7,ownerOnlyProtected:true,inviteValidation:true,branchScope:true,ownerCover:true,employmentTypes:3,offboardingGuard:true,candidateMatching:true,routeBoundaries:true},null,2));

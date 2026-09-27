@@ -1,4 +1,4 @@
-export const ICONS={home:'⌂',work:'▦',fleet:'▦',people:'♟',messages:'◌',money:'₹',business:'▤',search:'⌕',orders:'▥',profile:'○',approvals:'✓',documents:'▣',users:'♟',audit:'◷',more:'•••',states:'◇',invitations:'✉',welcome:'→',signup:'☎',otp:'✓',recover:'↻',branches:'⌘',bank:'₹',applicationStatus:'◷',serviceExpansion:'+'};
+export const ICONS={home:'⌂',work:'▦',fleet:'▦',people:'♟',messages:'◌',money:'₹',business:'▤',search:'⌕',orders:'▥',profile:'○',approvals:'✓',documents:'▣',users:'♟',audit:'◷',more:'•••',states:'◇',invitations:'✉',welcome:'→',signup:'☎',otp:'✓',recover:'↻',branches:'⌘',bank:'₹',applicationStatus:'◷',serviceExpansion:'+',addStaff:'+',roles:'♟',staffAccess:'⌾',hiring:'⌕',postOpening:'+',findWorkers:'⌕',applications:'▦',candidateProfile:'○',ownerCover:'☂',offboarding:'↗'};
 
 const nav={
   personal:[['home','Home'],['search','Search products'],['orders','My orders'],['messages','Messages'],['money','Payments'],['invitations','Invitations']],
@@ -30,6 +30,7 @@ export const ROUTES={
   approvals:{title:'Approvals',phase:'P2'},documents:{title:'Documents',phase:'P2'},users:{title:'Users',phase:'P2'},audit:{title:'Audit',phase:'P2'},states:{title:'Screen states',phase:'P0'},
   welcome:{title:'Welcome',phase:'P1'},signup:{title:'Mobile signup',phase:'P1'},otp:{title:'Verify mobile',phase:'P1'},recover:{title:'Account recovery',phase:'P1'},invitations:{title:'Pending invitations',phase:'P1'},
   businessStart:{title:'Add business',phase:'P2'},businessDetails:{title:'Business details',phase:'P2'},businessKyc:{title:'Business KYC',phase:'P2'},branches:{title:'Branches',phase:'P2'},bank:{title:'Bank information',phase:'P2'},applicationStatus:{title:'Application status',phase:'P2'},applicationReview:{title:'Review business application',phase:'P2'},serviceExpansion:{title:'Add business service',phase:'P2'},
+  addStaff:{title:'Add staff',phase:'P3'},staffDetail:{title:'Staff details',phase:'P3'},staffOnboarding:{title:'Staff onboarding',phase:'P3'},roles:{title:'Roles and permissions',phase:'P3'},staffAccess:{title:'Staff access',phase:'P3'},hiring:{title:'Hiring',phase:'P3'},postOpening:{title:'Post opening',phase:'P3'},findWorkers:{title:'Find workers',phase:'P3'},openingDetail:{title:'Opening details',phase:'P3'},applications:{title:'Applicants',phase:'P3'},candidateProfile:{title:'Work profile',phase:'P3'},ownerCover:{title:'Owner Cover',phase:'P3'},offboarding:{title:'Offboarding',phase:'P3'},
 };
 
 export const MOBILE_PRIMARY=['home','work','messages','money'];
@@ -37,7 +38,9 @@ export const PUBLIC_ROUTES=new Set(['welcome','signup','otp','recover']);
 
 export function allowedRoutes(roleKey){
   const role=ROLE_CONFIG[roleKey]||ROLE_CONFIG.personal;
-  const extra=roleKey==='personal'?['businessStart','businessDetails','businessKyc','branches','bank','applicationStatus']:roleKey==='admin'?['applicationReview']:role.branches?['branches','bank','serviceExpansion']:[];
+  const businessPeople=['addStaff','staffDetail','staffOnboarding','roles','staffAccess','hiring','postOpening','findWorkers','openingDetail','applications','ownerCover','offboarding'];
+  const workerPeople=['candidateProfile','openingDetail'];
+  const extra=roleKey==='personal'?['businessStart','businessDetails','businessKyc','branches','bank','applicationStatus','candidateProfile']:roleKey==='admin'?['applicationReview']:['commercialDriver','personalDriver','helper'].includes(roleKey)?workerPeople:role.branches?['branches','bank','serviceExpansion',...businessPeople]:[];
   return new Set([...role.nav.map(([id])=>id),'states',...extra]);
 }
 
