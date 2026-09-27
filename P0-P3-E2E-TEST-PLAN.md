@@ -13,6 +13,10 @@ Date: 27 September 2026
 - Primary owner workspace: Raj Logistics (`transporter`)
 - Reset before each major journey: sidebar **Reset demo data**
 
+## Named actors
+
+Do not test with generic labels such as “business user” or “commercial owner.” Use the exact mock user displayed in the profile card: Shubham Kumar · General Customer, Vijay Sharma · Goods Owner, Amit Raj · Transporter, Rajesh Kumar · Truck Owner, Neha Singh · Mover Owner, Mohan Yadav · Commercial Driver, Anil Kumar · Personal Driver, Ramesh Yadav · Khalasi / Helper, Pankaj Meena · Operations Staff and Admin Neha · Platform Admin. The full mapping is in `MOCK-PERSONA-E2E-MAP.md`.
+
 ## Required environments
 
 Test once at desktop width 1440×900 and once at mobile width 390×844. On Netlify, also reload every important hash route directly and use browser Back/Forward.

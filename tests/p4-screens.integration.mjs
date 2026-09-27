@@ -18,6 +18,6 @@ for(const html of screens){assert.ok(html.length>250);assert.ok(!html.includes('
 assert.ok(goodsOrderScreen(goods).includes('Goods and freight stay separate'));
 assert.ok(arrangementScreen(goods).includes('Send to selected Transporters'));
 assert.ok(postAvailableLoadScreen(transporter).includes('Privacy before matching'));
-assert.ok(routeOpportunitiesScreen(vehicle).includes('92% match'));
+assert.ok(routeOpportunitiesScreen(vehicle).includes('100% match'));
 assert.ok(opportunityChatScreen(goods).includes('AI voice-note summary'));
 console.log(JSON.stringify({status:'PASS',screens:screens.length,goodsFlow:true,transporterFlow:true,vehicleFlow:true,privacy:true,chat:true},null,2));

@@ -45,6 +45,25 @@ Serve this directory with any static web server and open `index.html`.
 - Opportunity-scoped text and voice-note conversations
 - Idempotent conversion from opportunity to one canonical Load
 
+## Mock personas for end-to-end testing
+
+The workspace is the business or activity context. The mock user is the person whose permissions and journey are being tested. The switcher, page header and profile card always show both.
+
+| Workspace | Test as | Exact role |
+|---|---|---|
+| Personal | Shubham Kumar | General Customer |
+| Sharma Foods | Vijay Sharma | Goods Owner |
+| Raj Logistics | Amit Raj | Transporter |
+| Raj Transport | Rajesh Kumar | Truck Owner |
+| SafeMove Packers | Neha Singh | Mover Owner |
+| Commercial Driver | Mohan Yadav | Commercial Driver |
+| Personal Driver | Anil Kumar | Personal Driver |
+| Khalasi & Helper | Ramesh Yadav | Khalasi / Helper |
+| Staff workspace | Pankaj Meena (or the selected invited staff member) | Operations Staff or assigned role |
+| Platform Admin | Admin Neha | Platform Admin |
+
+Example: **Raj Transport** is the business workspace; **Rajesh Kumar · Truck Owner** is the mock user. Never refer to Rajesh as a generic “commercial owner” during a test.
+
 ## Tests
 
 ```bash

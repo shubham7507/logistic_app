@@ -1,7 +1,21 @@
 export const SEED={
-  currentWorkspace:'personal', currentRoute:'home', demoRevision:3,
+  currentWorkspace:'personal', currentRoute:'home', demoRevision:4,
   auth:{status:'authenticated',mobile:'9876543210',mobileVerified:true,consentVersion:'2026-09-27',consentedAt:'2026-09-27T08:30:00.000Z',otpAttempts:0,otpSentAt:null,pendingMobile:null,isExistingIdentity:true},
   person:{id:'PER-1001',name:'Shubham Kumar'},
+  purposeSelection:null,
+  branchFilter:{goods:'all',transporter:'all',vehicle:'all',movers:'all'},
+  mockUsers:{
+    personal:{name:'Shubham Kumar',role:'General Customer',initials:'SK'},
+    goods:{name:'Vijay Sharma',role:'Goods Owner',initials:'VS'},
+    transporter:{name:'Amit Raj',role:'Transporter',initials:'AR'},
+    vehicle:{name:'Rajesh Kumar',role:'Truck Owner',initials:'RK'},
+    movers:{name:'Neha Singh',role:'Mover Owner',initials:'NS'},
+    commercialDriver:{name:'Mohan Yadav',role:'Commercial Driver',initials:'MY'},
+    personalDriver:{name:'Anil Kumar',role:'Personal Driver',initials:'AK'},
+    helper:{name:'Ramesh Yadav',role:'Khalasi / Helper',initials:'RY'},
+    staff:{name:'Pankaj Meena',role:'Operations Staff',initials:'PM'},
+    admin:{name:'Admin Neha',role:'Platform Admin',initials:'AN'},
+  },
   workspaces:['personal','goods','transporter','vehicle','movers','commercialDriver','personalDriver','helper','admin'],
   badges:{transporter:{work:3,messages:4},vehicle:{work:2,messages:5},goods:{work:3,messages:2},movers:{work:4},admin:{approvals:7}},
   branches:{goods:['All branches','Patna Warehouse','Bihta Plant','Ranchi Depot'],transporter:['All branches','Noida HQ','Jaipur Branch'],vehicle:['All branches','Patna Yard'],movers:['All branches','Noida Moving Branch','Gurugram Branch']},
@@ -57,10 +71,10 @@ export const SEED={
     {id:'TR-401',workspace:'goods',goodsOrderId:'GO-401',pickup:'Patna Warehouse, Bihar',drop:'Okhla, Delhi',pickupDate:'2026-09-30',truckType:'14-wheel open',capacity:20,goods:'Rice bags',dharamkata:true,paymentTerms:'₹12,000 advance; balance after POD',arrangement:'selected_transporters',selectedTransporters:['Raj Logistics'],status:'published',createdBy:'Sharma Foods'},
   ],
   availableLoads:[
-    {id:'AL-401',workspace:'transporter',requirementId:'TR-401',route:'Patna → Delhi',pickup:'Patna',drop:'Delhi',date:'30 Sep 2026',truckType:'14-wheel open',capacity:20,goods:'Rice bags',authority:'Authorized by Sharma Foods',goodsOwnerDisplay:'Verified Goods Business',goodsOwnerPrivate:'Sharma Foods · +91 98••••3210',status:'open'},
+    {id:'AL-401',workspace:'transporter',requirementId:'TR-401',route:'Patna → Delhi',pickup:'Patna',drop:'Delhi',date:'2026-09-30',truckType:'14-wheel open',capacity:20,goods:'Rice bags',authority:'Authorized by Sharma Foods',goodsOwnerDisplay:'Verified Goods Business',goodsOwnerPrivate:'Sharma Foods · +91 98••••3210',status:'open'},
   ],
   loadRequirements:[
-    {id:'LR-401',workspace:'transporter',route:'Jaipur → Delhi',from:'Jaipur',to:'Delhi NCR',date:'01 Oct 2026',truckType:'22-ft closed',capacity:12,acceptedGoods:'FMCG, packaged food',status:'open',postedBy:'Raj Logistics',branch:'Jaipur Branch'},
+    {id:'LR-401',workspace:'transporter',route:'Jaipur → Delhi',from:'Jaipur',to:'Delhi NCR',date:'2026-10-01',truckType:'22-ft closed',capacity:12,acceptedGoods:'FMCG, packaged food',status:'open',postedBy:'Raj Logistics',branch:'Jaipur Branch'},
   ],
   truckAvailability:[
     {id:'TA-401',workspace:'vehicle',vehicleId:'VEH-201',registration:'BR01 GX 4421',location:'Jaipur',availableDate:'2026-10-01',truckType:'22-ft closed',capacity:12,destinationPreference:'Delhi NCR',crew:'Driver + Khalasi ready',documents:'approved',status:'available'},
@@ -69,8 +83,8 @@ export const SEED={
     {id:'GR-401',workspace:'transporter',buyer:'Metro Retail',goods:'Premium rice',quantity:15,unit:'tonnes',delivery:'Noida by 04 Oct 2026',goodsBudget:615000,transportBudget:72000,status:'sourcing',seller:'Not selected'},
   ],
   opportunities:[
-    {id:'OPP-401',type:'goods_response',sourceId:'LR-401',createdByWorkspace:'goods',participants:['goods','transporter'],title:'Rice 12 tonnes for Jaipur → Delhi',summary:'Sharma Foods can supply a compatible confirmed load.',status:'discussion',canonicalLoadId:null,createdAt:'27 Sep 2026, 2:10 PM'},
-    {id:'OPP-402',type:'truck_match',sourceId:'TA-401',createdByWorkspace:'vehicle',participants:['vehicle','transporter'],title:'BR01 GX 4421 matches Jaipur → Delhi',summary:'22-ft closed truck, driver and Khalasi available.',status:'matched',canonicalLoadId:null,createdAt:'27 Sep 2026, 2:25 PM'},
+    {id:'OPP-401',type:'goods_response',sourceId:'LR-401',createdByWorkspace:'goods',participants:['goods','transporter'],participantWorkspaces:['goods','transporter'],title:'Rice 12 tonnes for Jaipur → Delhi',summary:'Sharma Foods can supply a compatible confirmed load.',status:'discussion',confirmations:{},terms:{route:'Jaipur → Delhi',freight:68000,advance:12000,advancePayer:'Goods Owner',dharamkata:true,reimbursements:'Toll and Dharamkata separate',cancellation:'Before dispatch: no charge'},canonicalLoadId:null,createdAt:'27 Sep 2026, 2:10 PM'},
+    {id:'OPP-402',type:'truck_match',sourceId:'TA-401',createdByWorkspace:'vehicle',participants:['vehicle','transporter'],participantWorkspaces:['vehicle','transporter'],title:'BR01 GX 4421 matches Jaipur → Delhi',summary:'22-ft closed truck, driver and Khalasi available.',status:'matched',confirmations:{},terms:{route:'Jaipur → Delhi',freight:68000,advance:12000,advancePayer:'Transporter',dharamkata:false,reimbursements:'Toll reimbursed',cancellation:'Before dispatch: no charge'},canonicalLoadId:null,createdAt:'27 Sep 2026, 2:25 PM'},
   ],
   opportunityMessages:{
     'OPP-401':[
@@ -83,17 +97,39 @@ export const SEED={
   canonicalLoads:[],
   selectedOpportunityId:'OPP-401',selectedRequirementId:'TR-401',selectedGoodsOrderId:'GO-401',
   ownerCovers:[],
+  products:[
+    {id:'PRD-101',name:'India Gate Basmati Rice',size:'5 kg',price:710,category:'Rice',fulfilmentPartner:'ABC Grocery',stock:'In stock'},
+    {id:'PRD-102',name:'Fortune Chakki Atta',size:'10 kg',price:485,category:'Flour',fulfilmentPartner:'Fresh Mart',stock:'In stock'},
+    {id:'PRD-103',name:'Tata Salt',size:'1 kg',price:28,category:'Essentials',fulfilmentPartner:'ABC Grocery',stock:'In stock'},
+  ],
+  customerOrders:[{id:'ORD-9001',customer:'Shubham Kumar',items:[{productId:'PRD-103',quantity:2}],total:56,status:'out_for_delivery',fulfilmentPartner:'ABC Grocery',eta:'Today, 12:40 PM'}],
+  ownedVehicles:{
+    goods:[{id:'VEH-G01',registration:'BR01 GH 9088',truckType:'14-wheel open',capacity:20,status:'idle',documents:'approved',documentExpiry:'2027-04-30',branchId:'BR-010',crew:'Driver + Khalasi ready'}],
+    transporter:[{id:'VEH-T01',registration:'UP16 RT 2201',truckType:'22-ft closed',capacity:12,status:'idle',documents:'approved',documentExpiry:'2027-02-15',branchId:'BR-002',crew:'Driver + Khalasi ready'}],
+    vehicle:[
+      {id:'VEH-201',registration:'BR01 GX 4421',truckType:'22-ft closed',capacity:12,status:'idle',documents:'approved',documentExpiry:'2027-03-31',branchId:'BR-020',crew:'Driver + Khalasi ready'},
+      {id:'VEH-202',registration:'BR01 GX 5522',truckType:'14-wheel open',capacity:20,status:'on_trip',documents:'approved',documentExpiry:'2027-01-31',branchId:'BR-020',crew:'Driver assigned'},
+      {id:'VEH-203',registration:'BR01 GX 6633',truckType:'22-ft closed',capacity:10,status:'idle',documents:'expired',documentExpiry:'2026-09-20',branchId:'BR-020',crew:'Need Driver and Khalasi'},
+    ],
+  },
+  marketplaceBusinesses:[
+    {id:'BIZ-001',workspace:'transporter',name:'Raj Logistics',owner:'Amit Raj',verified:true,services:['transport','fleet','movers'],routes:['Patna','Jaipur','Delhi NCR']},
+    {id:'BIZ-011',workspace:'transporter_partner',name:'Rohan Freight',owner:'Rohan Singh',verified:true,services:['transport'],routes:['Jaipur','Delhi NCR']},
+    {id:'BIZ-012',workspace:'transporter_other',name:'FastRoad Transport',owner:'Imran Ali',verified:true,services:['transport'],routes:['Mumbai','Pune']},
+  ],
+  transportOffers:[],
+  postHistory:[],
 };
 
 export const HOME_CONTENT={
   personal:{greeting:'Good morning, Shubham',summary:'Your personal services and activity in one simple place.',metrics:[['Open orders','2','One arriving today'],['Service requests','1','Carpenter tomorrow'],['Invitations','2','Business access'],['Payments','₹1,850','This month']],quick:[['search','⌕','Search products','Find products directly'],['orders','▥','My orders','Track orders'],['messages','◌','Messages','Updates and support'],['invitations','✉','Invitations','Review business access']]},
-  goods:{greeting:'Good morning, Shubham',summary:'Sharma Foods · owner view across every branch.',metrics:[['Active loads','3','One needs action'],['Owned vehicles','2','One idle'],['Staff','8','Across 3 branches'],['Open balance','₹40K','One settlement']],quick:[['work','▦','Loads','Create and track'],['fleet','▦','Fleet','Own use or available'],['people','♟','People','Staff and hiring'],['money','₹','Money','Freight and staff pay']]},
-  transporter:{greeting:'Good morning, Shubham',summary:'Raj Logistics · Transport, Fleet and Movers with one shared team.',metrics:[['Loads waiting','3','Need vehicles'],['Available trucks','5','Two near Jaipur'],['Moving jobs','4','Today'],['Money due','₹1.24L','Six items']],quick:[['work','▦','Work','Loads and moving jobs'],['fleet','▦','Fleet','Owned and partner trucks'],['people','♟','People','Staff and marketplace workers'],['money','₹','Money','Advances and settlements']]},
-  vehicle:{greeting:'Good morning, Rajesh',summary:'Raj Transport · trucks, people and payments.',metrics:[['Trucks','4','Three GPS online'],['On trip','2','Live tracking'],['Available','1','Jaipur'],['To receive','₹86K','Three settlements']],quick:[['fleet','▦','My Trucks','Documents and GPS'],['work','▦','Work','Offers and next loads'],['people','♟','People','Drivers and Khalasis'],['money','₹','Money','Advances and earnings']]},
-  movers:{greeting:'Good morning, Shubham',summary:'SafeMove Packers · requests, crew and vehicles.',metrics:[['New requests','4','Auto-assigned'],['Today jobs','3','One loading'],['Available helpers','6','Across 2 branches'],['Payout due','₹22K','Partners and crew']],quick:[['work','▦','Moving jobs','Queue and allocation'],['fleet','▦','Vehicles','Owned and partners'],['people','♟','Crew','Drivers and helpers'],['money','₹','Money','Customer and payouts']]},
+  goods:{greeting:'Good morning, Vijay',summary:'Vijay Sharma · Goods Owner testing Sharma Foods across every branch.',metrics:[['Active loads','3','One needs action'],['Owned vehicles','2','One idle'],['Staff','8','Across 3 branches'],['Open balance','₹40K','One settlement']],quick:[['work','▦','Loads','Create and track'],['fleet','▦','Fleet','Own use or available'],['people','♟','People','Staff and hiring'],['money','₹','Money','Freight and staff pay']]},
+  transporter:{greeting:'Good morning, Amit',summary:'Amit Raj · Transporter testing Raj Logistics, Fleet and Movers with one shared team.',metrics:[['Loads waiting','3','Need vehicles'],['Available trucks','5','Two near Jaipur'],['Moving jobs','4','Today'],['Money due','₹1.24L','Six items']],quick:[['work','▦','Work','Loads and moving jobs'],['fleet','▦','Fleet','Owned and partner trucks'],['people','♟','People','Staff and marketplace workers'],['money','₹','Money','Advances and settlements']]},
+  vehicle:{greeting:'Good morning, Rajesh',summary:'Rajesh Kumar · Truck Owner testing Raj Transport trucks, people and payments.',metrics:[['Trucks','4','Three GPS online'],['On trip','2','Live tracking'],['Available','1','Jaipur'],['To receive','₹86K','Three settlements']],quick:[['fleet','▦','My Trucks','Documents and GPS'],['work','▦','Work','Offers and next loads'],['people','♟','People','Drivers and Khalasis'],['money','₹','Money','Advances and earnings']]},
+  movers:{greeting:'Good morning, Neha',summary:'Neha Singh · Mover Owner testing SafeMove Packers requests, crew and vehicles.',metrics:[['New requests','4','Auto-assigned'],['Today jobs','3','One loading'],['Available helpers','6','Across 2 branches'],['Payout due','₹22K','Partners and crew']],quick:[['work','▦','Moving jobs','Queue and allocation'],['fleet','▦','Vehicles','Owned and partners'],['people','♟','Crew','Drivers and helpers'],['money','₹','Money','Customer and payouts']]},
   commercialDriver:{greeting:'Good morning, Mohan',summary:'Your commercial work, availability and money.',metrics:[['Today trip','1','Patna to Delhi'],['Next offer','2','Review available'],['This month','₹38K','Earned'],['Documents','Valid','Licence checked']],quick:[['work','▦','My Work','Trip and offers'],['messages','◌','Messages','Trip groups'],['money','₹','My Money','Advance and wages'],['profile','○','Profile','Availability and documents']]},
   personalDriver:{greeting:'Good morning, Anil',summary:'Find personal driving work near you.',metrics:[['New jobs','8','Within 10 km'],['Applications','2','One shortlisted'],['This month','₹21K','Recorded'],['Availability','On','Until 8 PM']],quick:[['work','⌕','Find Work','Nearby requests'],['messages','◌','Messages','Customers and employers'],['money','₹','My Money','Work payments'],['profile','○','Profile','Skills and availability']]},
   helper:{greeting:'Good morning, Ramesh',summary:'Your Khalasi and moving-helper work.',metrics:[['Today task','1','Loading at 10 AM'],['New offers','3','Nearby'],['This month','₹19K','Recorded'],['Skills','3','Verified']],quick:[['work','▦','My Work','Trips and moving jobs'],['messages','◌','Messages','Assigned groups'],['money','₹','My Money','Advance and wages'],['profile','○','Profile','Skills and availability']]},
   staff:{greeting:'Welcome to your staff workspace',summary:'Only your assigned branch, role and work are visible.',metrics:[['Today’s work','0','Starts after approval'],['Joining status','Pending','Owner review'],['Messages','0','Business channels'],['Payment','Not active','Starts after approval']],quick:[['work','▦','My Work','Only assigned work'],['messages','◌','Messages','Permitted conversations'],['money','₹','My Money','Salary, advance and claims'],['profile','○','My Profile','Documents and joining status']]},
-  admin:{greeting:'Platform operations',summary:'Verification, safety and audit queues.',metrics:[['Approvals','7','Three business'],['Documents','12','Four expiring'],['Safety cases','2','One urgent'],['Audit alerts','1','Payment access']],quick:[['approvals','✓','Approvals','Business and capability'],['documents','▣','Documents','People and vehicles'],['users','♟','Users','Support and status'],['audit','◷','Audit','Sensitive actions']]},
+  admin:{greeting:'Good morning, Admin Neha',summary:'Platform Admin mock user · verification, safety and audit queues.',metrics:[['Approvals','7','Three business'],['Documents','12','Four expiring'],['Safety cases','2','One urgent'],['Audit alerts','1','Payment access']],quick:[['approvals','✓','Approvals','Business and capability'],['documents','▣','Documents','People and vehicles'],['users','♟','Users','Support and status'],['audit','◷','Audit','Sensitive actions']]},
 };

@@ -15,10 +15,10 @@ const nav={
 
 export const ROLE_CONFIG={
   personal:{label:'Personal',subtitle:'Customer and personal activities',icon:'P',nav:nav.personal,branches:false,homePhase:'P1'},
-  goods:{label:'Sharma Foods',subtitle:'Goods Business · Owner',icon:'G',nav:nav.goods,branches:true,homePhase:'P4'},
-  transporter:{label:'Raj Logistics',subtitle:'Transporter + Fleet + Movers · Owner',icon:'T',nav:nav.transporter,branches:true,homePhase:'P4'},
-  vehicle:{label:'Raj Transport',subtitle:'Truck Owner · Owner',icon:'V',nav:nav.vehicle,branches:true,homePhase:'P5'},
-  movers:{label:'SafeMove Packers',subtitle:'Moving Business · Owner',icon:'M',nav:nav.movers,branches:true,homePhase:'P6'},
+  goods:{label:'Sharma Foods',subtitle:'Goods Business · Goods Owner',icon:'G',nav:nav.goods,branches:true,homePhase:'P4'},
+  transporter:{label:'Raj Logistics',subtitle:'Transport Business · Transporter',icon:'T',nav:nav.transporter,branches:true,homePhase:'P4'},
+  vehicle:{label:'Raj Transport',subtitle:'Commercial Vehicles · Truck Owner',icon:'V',nav:nav.vehicle,branches:true,homePhase:'P5'},
+  movers:{label:'SafeMove Packers',subtitle:'Moving Business · Mover Owner',icon:'M',nav:nav.movers,branches:true,homePhase:'P6'},
   commercialDriver:{label:'Commercial Driver',subtitle:'Driver · Independent',icon:'D',nav:nav.commercialDriver,branches:false,homePhase:'P3'},
   personalDriver:{label:'Personal Driver',subtitle:'Driver · Independent',icon:'D',nav:nav.personalDriver,branches:false,homePhase:'P3'},
   helper:{label:'Khalasi & Helper',subtitle:'Worker · Independent',icon:'H',nav:nav.helper,branches:false,homePhase:'P3'},
@@ -32,19 +32,21 @@ export const ROUTES={
   approvals:{title:'Approvals',phase:'P2'},documents:{title:'Documents',phase:'P2'},users:{title:'Users',phase:'P2'},audit:{title:'Audit',phase:'P2'},states:{title:'Screen states',phase:'P0'},
   welcome:{title:'Welcome',phase:'P1'},signup:{title:'Mobile signup',phase:'P1'},otp:{title:'Verify mobile',phase:'P1'},recover:{title:'Account recovery',phase:'P1'},invitations:{title:'Pending invitations',phase:'P1'},
   businessStart:{title:'Add business',phase:'P2'},businessDetails:{title:'Business details',phase:'P2'},businessKyc:{title:'Business KYC',phase:'P2'},branches:{title:'Branches',phase:'P2'},bank:{title:'Bank information',phase:'P2'},applicationStatus:{title:'Application status',phase:'P2'},applicationReview:{title:'Review business application',phase:'P2'},serviceExpansion:{title:'Add business service',phase:'P2'},
+  purpose:{title:'Choose purpose',phase:'P1'},consentDetails:{title:'Consent details',phase:'P1'},recoverySupport:{title:'Account recovery support',phase:'P1'},branchEditor:{title:'Branch details',phase:'P2'},
   addStaff:{title:'Add staff',phase:'P3'},staffDetail:{title:'Staff details',phase:'P3'},staffInvite:{title:'Staff invitation',phase:'P3'},staffOtp:{title:'Verify staff mobile',phase:'P3'},staffOnboarding:{title:'Staff onboarding',phase:'P3'},staffSubmission:{title:'Joining status',phase:'P3'},staffReview:{title:'Review staff onboarding',phase:'P3'},roles:{title:'Roles and permissions',phase:'P3'},staffAccess:{title:'Staff access',phase:'P3'},hiring:{title:'Hiring',phase:'P3'},postOpening:{title:'Post opening',phase:'P3'},findWorkers:{title:'Find workers',phase:'P3'},openingDetail:{title:'Opening details',phase:'P3'},applications:{title:'Applicants',phase:'P3'},candidateProfile:{title:'Work profile',phase:'P3'},ownerCover:{title:'Owner Cover',phase:'P3'},offboarding:{title:'Offboarding',phase:'P3'},
   goodsOrder:{title:'Goods order',phase:'P4'},transportRequirement:{title:'Transport requirement',phase:'P4'},arrangement:{title:'Transport arrangement',phase:'P4'},buyWithDelivery:{title:'Buy goods with delivery',phase:'P4'},goodsRequirements:{title:'Goods requirements',phase:'P4'},postAvailableLoad:{title:'Post available load',phase:'P4'},postLoadRequirement:{title:'Post load requirement',phase:'P4'},transporterRequirements:{title:'Transporters looking for loads',phase:'P4'},postAvailableTruck:{title:'Post available truck',phase:'P4'},routeOpportunities:{title:'Route opportunities',phase:'P4'},opportunityDetail:{title:'Opportunity details',phase:'P4'},opportunityChat:{title:'Opportunity conversation',phase:'P4'},
+  ownVehicleAssignment:{title:'Assign owned vehicle',phase:'P4'},sellerSourcing:{title:'Source verified seller',phase:'P4'},transportOffer:{title:'Transport offer',phase:'P4'},truckOffer:{title:'Truck owner offer',phase:'P4'},applyOpening:{title:'Confirm application',phase:'P3'},candidateReview:{title:'Candidate verification',phase:'P3'},employmentChange:{title:'Employment change',phase:'P3'},
 };
 
 export const MOBILE_PRIMARY=['home','work','messages','money'];
-export const PUBLIC_ROUTES=new Set(['welcome','signup','otp','recover']);
+export const PUBLIC_ROUTES=new Set(['welcome','signup','otp','recover','consentDetails','recoverySupport']);
 
 export function allowedRoutes(roleKey){
   const role=ROLE_CONFIG[roleKey]||ROLE_CONFIG.personal;
-  const businessPeople=['addStaff','staffDetail','staffReview','roles','staffAccess','hiring','postOpening','findWorkers','openingDetail','applications','ownerCover','offboarding'];
+  const businessPeople=['addStaff','staffDetail','staffReview','roles','staffAccess','hiring','postOpening','findWorkers','openingDetail','applications','ownerCover','offboarding','candidateReview','employmentChange'];
   const workerPeople=['candidateProfile','openingDetail'];
-  const phase4ByRole={goods:['goodsOrder','transportRequirement','arrangement','buyWithDelivery','transporterRequirements','opportunityDetail','opportunityChat'],transporter:['goodsRequirements','postAvailableLoad','postLoadRequirement','transporterRequirements','postAvailableTruck','routeOpportunities','opportunityDetail','opportunityChat'],vehicle:['postAvailableTruck','routeOpportunities','opportunityDetail','opportunityChat'],movers:[]};
-  const extra=roleKey==='personal'?['businessStart','businessDetails','businessKyc','branches','bank','applicationStatus','candidateProfile']:roleKey==='admin'?['applicationReview']:roleKey==='staff'?['staffInvite','staffOtp','staffOnboarding','staffSubmission']:['commercialDriver','personalDriver','helper'].includes(roleKey)?workerPeople:role.branches?['branches','bank','serviceExpansion',...businessPeople,...(phase4ByRole[roleKey]||[])]:[];
+  const phase4ByRole={goods:['goodsOrder','transportRequirement','arrangement','buyWithDelivery','transporterRequirements','opportunityDetail','opportunityChat','ownVehicleAssignment','postAvailableTruck'],transporter:['goodsRequirements','postAvailableLoad','postLoadRequirement','transporterRequirements','postAvailableTruck','routeOpportunities','opportunityDetail','opportunityChat','sellerSourcing','transportOffer'],vehicle:['postAvailableTruck','routeOpportunities','opportunityDetail','opportunityChat','truckOffer'],movers:[]};
+  const extra=roleKey==='personal'?['purpose','consentDetails','recoverySupport','businessStart','businessDetails','businessKyc','branches','bank','applicationStatus','candidateProfile','applyOpening']:roleKey==='admin'?['applicationReview','candidateReview']:roleKey==='staff'?['staffInvite','staffOtp','staffOnboarding','staffSubmission']:['commercialDriver','personalDriver','helper'].includes(roleKey)?[...workerPeople,'applyOpening']:role.branches?['branches','branchEditor','bank','serviceExpansion',...businessPeople,...(phase4ByRole[roleKey]||[])]:[];
   return new Set([...role.nav.map(([id])=>id),'states',...extra]);
 }
 

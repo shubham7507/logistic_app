@@ -13,7 +13,8 @@ for(const file of ['css/tokens.css','css/components.css','css/responsive.css','j
   assert.ok(fs.existsSync(path.join(root,file)),`missing ${file}`);
   assert.ok(index.includes(`./${file}`),`index does not reference ${file}`);
 }
-for(const id of ['app','sidebar','workspace-button','desktop-nav','mobile-nav','main-content','workspace-dialog','more-sheet','toast']){
+const requiredDomIds=['app','sidebar','workspace-button','desktop-nav','mobile-nav','main-content','workspace-dialog','more-sheet','toast','profile-avatar','profile-name','profile-role'];
+for(const id of requiredDomIds){
   assert.ok(index.includes(`id="${id}"`),`missing required DOM id ${id}`);
 }
 
@@ -38,4 +39,4 @@ assert.ok(read('js/app.js').includes('window.MoveAIVNextTest'));
 assert.ok(read('js/store.js').includes('localStorage'));
 assert.ok(read('css/responsive.css').includes('.mobile-nav'));
 
-console.log(JSON.stringify({status:'PASS',roles:Object.keys(ROLE_CONFIG).length,knownRoutes:Object.keys(ROUTES).length,navigationRoutesChecked:navRoutes,requiredDomIds:9,netlifySpaFallback:true},null,2));
+console.log(JSON.stringify({status:'PASS',roles:Object.keys(ROLE_CONFIG).length,knownRoutes:Object.keys(ROUTES).length,navigationRoutesChecked:navRoutes,requiredDomIds:requiredDomIds.length,netlifySpaFallback:true},null,2));
