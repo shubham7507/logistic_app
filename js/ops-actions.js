@@ -5,7 +5,7 @@ import {
   validatePayment, applyMoneyAction, parseVoiceCommand, validateAdminDecision, adminResultStatus, EXCEPTION_TYPES, validateException,
   affectedParties, recalcDues, gpsAllowed, buildMilestones, validateLeave, assignMoverBranch, DOC_TYPES, currentMilestone,
 } from './ops-rules.js';
-import {canTakeWork, applyWorkerDecision} from './worker-onboarding.js';
+import {canStartPaidWork, applyWorkerDecision} from './worker-onboarding.js';
 import {opsCtx, can, allVehicles, bookingQuote, approvalLimit, summarize, partyName, visibleTrips, inr, orderCloseBlock, adminStepUpValid, inventoryList, todayKey} from './ops.js';
 
 const now = () => new Date().toLocaleString('en-IN', {day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit'});
@@ -262,7 +262,7 @@ export function bindOps(root, api) {
     'offer-accept': id => {
       const s = S(); const o = s.workOffers.find(x => x.id === id && x.to === s.currentWorkspace); if (!o || o.status !== 'pending') return;
       const worker = s.platformWorkers.find(w => w.persona === o.to);
-      { const why = canTakeWork(s.candidates.find(c => c.id === s.selectedCandidateId)); if (why) return api.toast(why); }
+      { const why = canStartPaidWork(s.candidates.find(c => c.id === s.selectedCandidateId), o); if (why) return api.toast(why); }
       if (o.kind === 'trip' && o.ref) {
         const t = s.trips.find(x => x.id === o.ref);
         if (t) {
@@ -492,6 +492,15 @@ export function bindOps(root, api) {
       if (!/^[A-Z]{2}\s?\d{1,2}\s?[A-Z]{0,3}\s?\d{4}$/.test(reg)) return err('vehicle-error', 'Enter a valid registration like BR01 GX 7744.');
       if (allVehicles(s).some(v => v.registration.replace(/\s/g, '') === reg.replace(/\s/g, ''))) return err('vehicle-error', 'This vehicle is already registered on MoveAI. Ask the current owner to transfer it.');
       const id = uid('VEH'); (s.ownedVehicles[ownerWs] ||= []).push({id, registration: reg, truckType: f.get('truckType'), capacity: Number(f.get('capacity')), status: 'idle', documents: 'missing', documentExpiry: '', branchId: f.get('branchId'), crew: 'Not assigned'});
+      let rc = null; try { rc = f.get('rcSource') ? JSON.parse(f.get('rcSource')) : null; } catch { rc = null; }
+      if (rc) {
+        const exp = {RC: '2035-12-31', Insurance: rc.insurance, Permit: rc.permit, Fitness: rc.fitness, Pollution: rc.pollution}; const today = new Date().toISOString().slice(0, 10);
+        s.vehicleDocs[id] = DOC_TYPES.map(type => ({type, status: exp[type] < today ? 'expired' : 'approved', file: 'Vahan record', expiry: exp[type], source: 'Vahan'}));
+        const v = s.ownedVehicles[ownerWs].find(x => x.id === id); const bad = s.vehicleDocs[id].filter(d => d.status === 'expired');
+        v.documents = bad.length ? 'expired' : 'approved'; v.documentExpiry = Object.values(exp).sort()[0]; if (bad.length) v.status = 'on_hold';
+        s.selectedVehicleId = id; audit(s, `Vehicle ${reg} added with Vahan lookup`);
+        return done(bad.length ? `Vehicle saved. ${bad.map(d => d.type).join(', ')} expired on Vahan — upload the renewed document.` : 'Vehicle saved and verified from Vahan. Ready to assign.', 'vehicleDetail');
+      }
       s.vehicleDocs[id] = DOC_TYPES.map(type => ({type, status: 'missing', file: ''})); s.selectedVehicleId = id; audit(s, `Vehicle ${reg} added`); done('Vehicle saved. Upload the five documents next.', 'vehicleDetail');
     },
     'helper-skills': f => { const s = S(); const w = s.platformWorkers.find(x => x.persona === 'helper'); w.skills = f.getAll('skills'); if (!w.skills.length) return api.toast('Select at least one capability.'); audit(s, 'Helper capabilities updated'); done('Capabilities saved on your one profile'); },

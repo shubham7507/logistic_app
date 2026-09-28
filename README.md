@@ -22,7 +22,7 @@ P5–P8 implement every page of `MoveAI_One_All_Users_Complete_Application_Flow.
 7. **Platform Admin → Verification**: enter security code `246810` first; reject without a reason is refused; suspend and restore after appeal.
 8. **Sharma Foods → Trips → TRP-502**: confirm receipt → Pay seller → approve and pay → Close order (GO-403).
 9. **Raj Logistics → People → open an active staff member → open their workspace → My Work**: assigned tasks, check in; the owner sees attendance under Leave, attendance & rehire.
-10. **Personal → Choose purpose → Find work → Commercial Driver**: an LMV licence is refused; enter HMV, upload the six required documents, submit; Find Work stays locked until **Platform Admin → Verification** approves.
+10. **Personal → Work profile**: pick Commercial Driver + city → browse jobs (Level 1) → verify licence `BR01 20190054321` and a selfie (Level 2) → Aadhaar (OTP 123456), bank, emergency contact (Level 3). Raj Transport's invite appears for joining. Test data is shown on each form.
 
 ### Tests
 

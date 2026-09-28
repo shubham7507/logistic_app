@@ -1,6 +1,6 @@
 import {OPS_SEED} from './ops-data.js';
 export const SEED={
-  currentWorkspace:'personal', currentRoute:'home', demoRevision:6,
+  currentWorkspace:'personal', currentRoute:'home', demoRevision:7,
   auth:{status:'authenticated',mobile:'9876543210',mobileVerified:true,consentVersion:'2026-09-27',consentedAt:'2026-09-27T08:30:00.000Z',otpAttempts:0,otpSentAt:null,pendingMobile:null,isExistingIdentity:true},
   person:{id:'PER-1001',name:'Shubham Kumar'},
   purposeSelection:null,
@@ -143,6 +143,8 @@ export const HOME_CONTENT={
   SEED.goodsOrders=[...SEED.goodsOrders,...goodsOrderExtras];
   SEED.goodsOrders.find(o=>o.id==='GO-401')&&(SEED.goodsOrders.find(o=>o.id==='GO-401').status='in_delivery');
 }
+
+SEED.workerInvites=[{id:'WINV-301',mobile:'9876543210',fromWs:'vehicle',business:'Raj Transport',workerType:'commercialDriver',role:'Driver · 14-wheel trucks, Patna yard',pay:24000,payType:'monthly',status:'pending'}];
 
 // P5–P8 quick actions from the draw.io flows (each route is allowed for that workspace).
 Object.assign(HOME_CONTENT.personal,{quick:[['book','＋','Book a service','Moving, driver or home service'],['services','☰','My bookings','Track, message, pay and rate'],['search','⌕','Search products','Find products directly'],['invitations','✉','Invitations','Review business access']]});

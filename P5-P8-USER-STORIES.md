@@ -47,16 +47,25 @@ Every node on pages 00–20 was checked against the running app. These were miss
 | 09 Commercial Driver | Offers did not show the vehicle to review. | Offer rows show route, vehicle, pay, advance and who pays the platform fee. |
 | 01 Choose purpose | Personal services text mentioned products only. | Mentions moving, personal Driver, products and home services. |
 
-## Worker onboarding — documents first (draw.io 09, 10, 11)
+## Onboarding by levels (chosen design: step-by-step levels + instant checks + invites + voice help)
 
-A Driver, Khalasi/Helper or office worker cannot be matched, apply, or accept any offer until onboarding is complete.
+Instant checks are simulated in `js/verify-sim.js`; production would call DigiLocker, Sarathi, Vahan, the GST portal and a bank penny-drop provider. Every form shows its prototype test data.
 
-1. **Details** (`#/candidateProfile`): work type (Commercial Driver, Personal Driver, Khalasi/Helper, Office staff), name, location, availability, pay, emergency contact. Drivers also give licence number (15-character format), validity (must be valid for at least 30 more days), vehicle classes and experience. A Commercial Driver needs a transport class (HMV, HGMV, HPMV, MGV, LGV or TRANS); a personal LMV licence is refused.
-2. **Documents** (`#/workerDocuments`): photo or PDF, up to 5 MB each.
-   - Commercial and Personal Driver: licence front, licence back, Aadhaar/government ID, live photo, address proof, bank passbook or cancelled cheque. Optional: police verification (both), medical fitness and hazardous goods certificate (Commercial).
-   - Khalasi/Helper and office staff: ID, live photo, bank proof. No licence unless the person also drives.
-   Submit stays disabled until every required document is uploaded.
-3. **Verification** (`#/workerStatus`): the submission enters the Admin verification queue. Admin can approve, request a correction (the person re-uploads and resubmits as a new version), reject, or suspend.
-4. **Ready for work**: only after approval do Find Work, applications, business worker search and offer acceptance unlock. Changing licence details later, or an expired licence, blocks work again until new documents are verified.
+**Workers** (`#/candidateProfile` → `#/workerStatus` → `#/workerVerify`)
 
-Seeded demo workers (Amit, Iqbal, Anil) start as already verified. Tests: `tests/worker-onboarding.unit.mjs` and journey 9 in `tests/p5-p8-ops.smoke.py`.
+| Level | Needs | Unlocks |
+|---|---|---|
+| 1 Browse | Work type, name, city (helpers: at least one skill) | See jobs and pay |
+| 2 Verified | Drivers: licence (Sarathi via DigiLocker; transport class required for Commercial) + live selfie matched to the licence photo. Helpers / office: Aadhaar e-KYC + selfie | Apply, receive offers, appear in business searches, join an inviting employer |
+| 3 Trip-ready | Drivers: Aadhaar + bank penny-drop + emergency contact. Others: bank + emergency contact | Accept paid work and receive payouts |
+| Badges | Police verification, medical fitness, hazardous goods (upload → admin) | Better offers; police verification required for Personal Driver monthly/live-in jobs |
+
+When an instant check fails (record not found, name mismatch, DigiLocker down) the person uploads documents for manual review; the admin can approve, request correction (resubmits as a new version), reject or suspend. An expired licence drops the driver back to Level 1.
+
+**Invite path:** a business invite to the person's mobile pre-fills the work type and pay; after Level 2 they can accept and join. Demo: Raj Transport invites Shubham (`9876543210`).
+
+**Businesses:** GST lookup fills PAN (embedded in the GSTIN), entity type and address; bank details are confirmed by ₹1 penny-drop; the application status screen shows what is possible now vs after approval. **Vehicles:** RC lookup on Vahan fills capacity and the insurance, fitness, permit and PUC dates, so the vehicle is ready without five uploads; expired insurance puts it on hold.
+
+**Customers** book with OTP and name only. **Staff** join by invite only. **Admin** has no signup; strong authentication is required.
+
+Tests: `tests/worker-onboarding.unit.mjs`, journeys 9 and 10 in `tests/p5-p8-ops.smoke.py`.
