@@ -80,3 +80,29 @@ Tests: `tests/worker-onboarding.unit.mjs`, journeys 9 and 10 in `tests/p5-p8-ops
 | MoveAI Admin | `/admin` (`admin.html`) | Platform Admin | — |
 
 The customer app never shows work, invitations or business items. Payments happen inside bookings; receipts, orders and product search sit in Account, which also links to the Partner and Business apps. A link to another product's screen (for example `index.html#/workerStatus`) opens that product, like a deep link. All four pages share one codebase and the same saved data; `tests/p0-static.integration.mjs` keeps them in sync, and journey 11 in the smoke test checks each product's menus.
+
+## Staff invitation link (draw.io 13 / 14)
+
+Owner: **Business app → People → + Add staff** → *Invitation ready* screen with the link (`business.html#/join/<token>`), Copy, WhatsApp, SMS and "Open link in a new tab". People lists every invitation with its status (Sent, Opened, Mobile verified, Accepted, Details submitted, Correction requested, Declined, Cancelled, Expired) and Resend / Cancel.
+
+Invitee (separate session in that tab): landing with business, role, branch, pay and expiry → confirm the invited mobile → OTP → create account (name + consent) or continue with the existing account → accept (permissions shown) or decline with a reason → own joining details (ID, address, emergency contact, bank; a verified MoveAI Partner reuses Aadhaar and bank) → waiting for review → correction loop → approved with Staff ID → open staff workspace.
+
+| # | Scenario | Result |
+|---|---|---|
+| 1 | No account | Account created after OTP and consent |
+| 2 | Existing account | "Welcome back"; role added to the same account; verified partner checks reused |
+| 3 | Someone else opens it | Warning; only the invited mobile can pass OTP |
+| 4 | Expired | Expired page; owner resends → new link; old link shows "replaced" |
+| 5 | Cancelled | Cancelled page |
+| 6 | Already accepted | Verify mobile → current status |
+| 7 | Declined | Owner notified; can invite again |
+| 8 | 5 wrong OTPs | Locked 10 minutes (prototype button to skip) |
+| 9 | Duplicate invite | Blocked with "Resend the link instead" |
+| 10 | Owner's own mobile | Blocked |
+| 11 | Staff elsewhere | Allowed, shown as a separate business |
+| 12 | Correction | Reason shown, details pre-filled, resubmit |
+| 13 | Rejected | Access ends; personal account stays |
+
+Tests: `tests/staff-join.unit.mjs`, `tests/staff-invite.smoke.py`.
+
+Note: the older P3 Playwright test `tests/p3-people.e2e.cjs` expected the previous in-app "Test invite" flow; the People "invite" rows now open the link flow instead.
