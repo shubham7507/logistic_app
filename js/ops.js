@@ -29,7 +29,7 @@ export function opsCtx(state) {
   const ownerWs = ws === 'staff' ? (state.staffSession?.ownerWorkspace || 'transporter') : ws;
   const member = ws === 'staff' ? (state.peopleByWorkspace[ownerWs] || []).find(x => x.id === state.selectedStaffId) : null;
   const persona = member ? {name: member.name, role: ROLE_TEMPLATES[member.role]?.label || 'Staff'} : (state.mockUsers?.[ws] || {name: 'User', role: ws});
-  const perms = member ? (ROLE_TEMPLATES[member.role]?.permissions || []) : [];
+  const perms = member ? (member.access?.permissions?.length ? member.access.permissions : (ROLE_TEMPLATES[member.role]?.permissions || [])) : [];
   return {ws, ownerWs, member, persona, perms};
 }
 
@@ -44,7 +44,7 @@ export function can(state, action, obj) {
     case 'fleet.review': return business;
     case 'moving.manage': return ['movers', 'transporter'].includes(ws) && obj?.owner === ws || (ws === 'staff' && perms.includes('work.update'));
     case 'money.create': return business || ws === 'personal' || (ws === 'staff' && perms.includes('money.prepare'));
-    case 'money.approve': return business && obj?.owner === ws || (ws === 'staff' && member?.role === 'manager' && Number(obj?.amount) <= 25000);
+    case 'money.approve': return business && obj?.owner === ws || (ws === 'staff' && obj?.owner === opsCtx(state).ownerWs && perms.some(p => ['money.prepare', 'work.manage'].includes(p)) && Number(obj?.amount) <= approvalLimit(state));
     case 'money.pay': return obj?.payer === ws || (ws === 'staff' && perms.includes('money.prepare') && obj?.payer === opsCtx(state).ownerWs);
     case 'money.confirm': return obj?.payee === ws || (ws === 'staff' && obj?.payee === `staff:${member?.id}`);
     case 'money.reverse': return business && obj?.owner === ws;
@@ -56,7 +56,7 @@ export function can(state, action, obj) {
 }
 export function approvalLimit(state) {
   const {ws, member} = opsCtx(state);
-  if (ws === 'staff') return member?.role === 'accounts' ? 25000 : 0;
+  if (ws === 'staff') return member?.access?.approvalLimit != null && member.access.approvalLimit !== '' ? Number(member.access.approvalLimit) : (['accounts', 'manager'].includes(member?.role) ? 25000 : 0);
   if (ws === 'personal') return 50000;
   return 100000;
 }
@@ -92,7 +92,8 @@ export function bookScreen(state) {
       <fieldset class="wide"><legend>Package</legend><div class="check-grid">${Object.entries(MOVING_PACKAGES).map(([id, p]) => `<label><input type="radio" name="pkg" value="${id}" ${(d.pkg || 'standard') === id ? 'checked' : ''}> ${p.label} · <small>${p.includes}</small></label>`).join('')}</div></fieldset>
       <label><span>Floor at pickup</span><input type="number" name="floors" min="0" value="${esc(d.floors ?? 3)}"></label>
       <label><span>Lift available?</span><select name="lift"><option value="yes">Yes</option><option value="no" ${d.lift === 'no' ? 'selected' : ''}>No</option></select></label>
-      <label><span>Approx. distance (km)</span><input type="number" name="distanceKm" value="${esc(d.distanceKm || 32)}"></label>`
+      <label><span>Approx. distance (km)</span><input type="number" name="distanceKm" value="${esc(d.distanceKm || 32)}"></label>
+      <label class="wide"><span>Inventory (one item per line or comma separated)</span><textarea name="inventory" rows="3">${esc(d.inventory || 'Beds and mattresses, Wardrobe, Kitchen cartons, TV and electronics')}</textarea></label>`
     : svc === 'driver' ? `
       <label><span>Hire for</span><select name="hireType">${Object.entries(DRIVER_RATES).map(([id, r]) => `<option value="${id}" ${(d.hireType || 'daily') === id ? 'selected' : ''}>${r.label}</option>`).join('')}</select></label>
       <label><span>Duration</span><input type="number" name="duration" min="1" value="${esc(d.duration || 1)}"></label>
@@ -123,7 +124,7 @@ export function bookingReviewScreen(state) {
   const title = d.service === 'moving' ? `${d.size} move · ${d.from} → ${d.to}` : d.service === 'driver' ? `Personal Driver · ${DRIVER_RATES[d.hireType]?.label} · ${d.carType}` : `${label(d.category)} visit`;
   return `${head('Review price', 'Check every price component before you book.')}
   <div class="grid two"><section class="panel"><h2>${esc(title)}</h2>
-    ${d.service === 'moving' ? `<p class="muted">Vehicle: <b>${esc(q.vehicle)}</b> · Package: <b>${esc(MOVING_PACKAGES[d.pkg]?.label)}</b></p>` : ''}
+    ${d.service === 'moving' ? `<p class="muted">Date: <b>${esc(d.date)}</b> · Vehicle: <b>${esc(q.vehicle)}</b> · Package: <b>${esc(MOVING_PACKAGES[d.pkg]?.label)}</b></p><div class="chip-row">${inventoryList(d.inventory).map(i => `<span class="chip">${esc(i)}</span>`).join('')}</div>` : ''}
     <table class="price-table"><tbody>${q.components.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${inr(v)}</td></tr>`).join('')}<tr class="total"><td>Total</td><td>${inr(q.total)}</td></tr></tbody></table>
     <div class="form-actions"><button class="button secondary" data-route="book">Edit request</button><button class="button primary" data-op="booking-publish">${d.service === 'moving' ? 'Book move' : d.service === 'driver' ? 'Send to nearby Drivers' : 'Book service'}</button></div></section>
   <aside class="panel"><h2>What happens next</h2><ol class="plain-steps">${d.service === 'moving' ? '<li>The platform assigns the best eligible Mover branch near your pickup. You do not need to pick a company.</li><li>The branch confirms your slot, vehicle and crew.</li><li>You track the move and chat in one job conversation.</li><li>Share your completion OTP only after unloading.</li>' : d.service === 'driver' ? '<li>Verified personal Drivers nearby see your request.</li><li>The first Driver to accept is confirmed; you can chat before the start.</li><li>Confirm completion, then pay.</li>' : '<li>A verified partner accepts the visit.</li><li>Confirm completion, pay and rate.</li>'}</ol></aside></div>`;
@@ -166,14 +167,14 @@ export function tripsScreen(state) {
   const {ws} = opsCtx(state);
   const trips = visibleTrips(state);
   const offers = ws === 'vehicle' ? state.vehicleOffers.filter(o => o.to === 'vehicle' && o.status === 'sent') : [];
-  const moving = ['transporter', 'staff'].includes(ws) ? visibleMovingJobs(state) : [];
+  const moving = ['transporter', 'staff', 'vehicle'].includes(ws) ? visibleMovingJobs(state) : [];
   const orders = ws === 'goods' ? state.goodsOrders.filter(o => o.workspace === 'goods') : [];
   const row = t => { const cm = currentMilestone(t); return `<article class="market-row trip-row"><span class="market-icon">🚚</span><span><b>${esc(t.title)}</b><small>${esc(t.id)} · ${esc(t.registration || 'Vehicle not assigned')} · ${t.quantity} ${esc(t.unit)} · Next: ${esc(cm?.label || 'Closed')}</small><span class="progress" aria-label="${tripProgress(t)}% complete"><i style="width:${tripProgress(t)}%"></i></span></span>${pill(t.hold ? 'on_hold' : t.status)}<button class="button secondary" data-op="open-trip" data-id="${t.id}">Open</button></article>` };
   return `${head(ws === 'commercialDriver' || ws === 'helper' ? 'My trips' : 'Trips', ws === 'staff' ? 'Only trips in your assigned branches.' : 'One canonical trip per load, seen differently by each party.', ['goods', 'transporter', 'vehicle', 'movers', 'staff', 'commercialDriver', 'helper'].includes(ws) ? '<button class="button secondary" data-route="exceptions">Exceptions</button>' : '')}
   ${offers.length ? `<section class="panel attention"><h2>Load offers from Transporters</h2>${offers.map(o => `<article class="market-row"><span class="market-icon">📨</span><span><b>${esc(o.title)}</b><small>${esc(o.fromName)} · ${esc(o.date)} · Payout ${inr(o.payout)} · Advance ${inr(o.advance)}${o.vehicleId ? ` · for ${esc(o.registration)}` : ''}</small></span>${pill(o.status)}<button class="button primary" data-op="open-vehicle-offer" data-id="${o.id}">Review</button></article>`).join('')}</section>` : ''}
-  ${orders.length ? `<section class="panel"><h2>Orders and delivery progress</h2><p class="muted">One order can create several loads. Quantities add up here.</p>${orders.map(o => { const ts = state.trips.filter(t => t.goodsOrderId === o.id); const delivered = ts.filter(t => ['delivered', 'received', 'settled', 'closed'].includes(t.status) || t.milestones.find(m => m.key === 'delivered')?.status === 'done').reduce((a, t) => a + t.quantity, 0); const pct = Math.min(100, Math.round(delivered / o.quantity * 100)); return `<article class="market-row"><span class="market-icon">📦</span><span><b>${esc(o.goods)} · ${o.type === 'sell' ? 'to' : 'from'} ${esc(o.counterparty)}</b><small>${esc(o.id)} · ${ts.length} load(s) · ${delivered} of ${o.quantity} ${esc(o.unit)} delivered · Goods ${inr(o.goodsPrice)}</small><span class="progress"><i style="width:${pct}%"></i></span></span>${pill(o.status)}<span></span></article>` }).join('')}</section>` : ''}
+  ${orders.length ? `<section class="panel"><h2>Orders and delivery progress</h2><p class="muted">One order can create several loads. Quantities add up here.</p>${orders.map(o => { const ts = state.trips.filter(t => t.goodsOrderId === o.id); const delivered = ts.filter(t => ['delivered', 'received', 'settled', 'closed'].includes(t.status) || t.milestones.find(m => m.key === 'delivered')?.status === 'done').reduce((a, t) => a + t.quantity, 0); const pct = Math.min(100, Math.round(delivered / o.quantity * 100)); const convs = state.conversations.filter(c => ts.some(t => t.id === c.ref)).length; const money = state.ledger.filter(x => x.status !== 'reversed' && (ts.some(t => t.id === x.sourceId) || x.sourceId === o.id)).reduce((a, x) => a + Number(x.amount), 0); const closable = orderCloseBlock(state, o) === ''; return `<article class="market-row"><span class="market-icon">📦</span><span><b>${esc(o.goods)} · ${o.type === 'sell' ? 'to' : 'from'} ${esc(o.counterparty)}</b><small>${esc(o.id)} · ${ts.length} load(s) · ${delivered} of ${o.quantity} ${esc(o.unit)} delivered · ${convs} conversation(s) · Money ${inr(money)} · Goods ${inr(o.goodsPrice)}</small><span class="progress"><i style="width:${pct}%"></i></span></span>${pill(o.status)}${o.status !== 'closed' && closable ? `<button class="button secondary" data-op="close-order" data-id="${o.id}">Close order</button>` : '<span></span>'}</article>` }).join('')}</section>` : ''}
   <section class="panel"><h2>${ws === 'vehicle' ? 'Trips on my trucks' : 'Transport trips'}</h2><div class="market-list">${trips.map(row).join('') || empty('No trips here', ws === 'staff' ? 'Trips from other branches stay hidden.' : 'Confirmed loads appear here once terms are agreed.')}</div></section>
-  ${moving.length ? `<section class="panel"><h2>Moving jobs (same team, same fleet)</h2>${moving.map(j => `<article class="market-row"><span class="market-icon">📦</span><span><b>${esc(j.size)} · ${esc(j.from)} → ${esc(j.to)}</b><small>${esc(j.id)} · ${esc(j.date)} · ${esc(j.vehicle?.registration || j.vehicleNeed)}</small></span>${pill(j.status)}<button class="button secondary" data-op="open-moving" data-id="${j.id}">Open</button></article>`).join('')}</section>` : ''}`;
+  ${moving.length ? `<section class="panel"><h2>${ws === 'vehicle' ? 'Moving jobs on my trucks (vehicle partner)' : 'Moving jobs (same team, same fleet)'}</h2>${moving.map(j => `<article class="market-row"><span class="market-icon">📦</span><span><b>${esc(j.size)} · ${esc(j.from)} → ${esc(j.to)}</b><small>${esc(j.id)} · ${esc(j.date)} · ${esc(j.vehicle?.registration || j.vehicleNeed)}</small></span>${pill(j.status)}<button class="button secondary" data-op="open-moving" data-id="${j.id}">Open</button></article>`).join('')}</section>` : ''}`;
 }
 
 function tripTermsFor(state, t) {
@@ -225,6 +226,7 @@ export function tripDetailScreen(state) {
       </section>
       <section class="panel"><h2>${ws === 'commercialDriver' || ws === 'helper' ? 'Your pay' : 'Money'}</h2>${facts(tripTermsFor(state, t))}<button class="button secondary full" data-route="money">Open Money</button></section>
       ${next.length ? `<section class="panel"><h2>Next load near ${esc(t.to.split(',')[0])}</h2>${next.map(l => `<article class="market-row"><span class="market-icon">🧭</span><span><b>${esc(l.route || `${l.pickup} → ${l.drop}`)}</b><small>${esc(l.goods || '')} · ${esc(l.capacity)} t · ${esc(l.date)}</small></span><span></span><button class="button secondary" data-op="offer-next-load" data-id="${t.id}" data-load="${l.id}">${ws === 'vehicle' ? 'Request' : 'Offer to truck'}</button></article>`).join('')}</section>` : ''}
+      ${ws === 'goods' && t.milestones.find(m => m.key === 'received')?.status === 'done' ? closeOutPanel(state, t) : ''}
       <button class="button secondary full" data-op="report-exception" data-ref="${t.id}">Report a problem on this trip</button>
     </div>
   </div>`;
@@ -372,7 +374,7 @@ export function myJobsScreen(state) {
   return `${head(ws === 'personalDriver' ? 'Bookings' : 'My jobs', ws === 'personalDriver' ? 'Customer requests near you and your confirmed bookings.' : 'Offers, invites and the work you are assigned to. You only see assigned work.')}
   ${ws === 'helper' ? `<section class="panel"><div class="panel-header"><div><h2>My capabilities</h2><p>One profile, several skills. A driving licence is not needed unless you also drive.</p></div></div><form class="check-grid" data-op-form="helper-skills">${['Truck Khalasi', 'Loading / unloading', 'Moving helper / packer', 'Warehouse / assembly'].map(s => `<label><input type="checkbox" name="skills" value="${s}" ${worker?.skills?.includes(s) ? 'checked' : ''}> ${s}</label>`).join('')}<button class="button secondary compact">Save skills</button></form></section>` : ''}
   ${ws === 'personalDriver' ? `<section class="panel"><div class="panel-header"><div><h2>Customer requests</h2><p>Personal Driver work is separate from commercial trucks.</p></div><button class="button secondary" data-route="upgradeDriver">${upgrade ? `Upgrade: ${esc(label(upgrade.status))}` : 'Upgrade to Commercial Driver'}</button></div>${bookings.map(r => `<article class="market-row"><span class="market-icon">🧑‍✈️</span><span><b>${esc(r.title)}</b><small>${esc(r.id)} · ${esc(r.customerName || 'Shubham Kumar')} · ${esc(r.location)} · ${esc(r.date)} · You earn ${inr(r.quote.driverEarning)}</small></span>${pill(r.status)}<button class="button ${r.status === 'searching' ? 'primary' : 'secondary'}" data-op="${r.status === 'searching' ? 'driver-accept-request' : 'open-driver-job'}" data-id="${r.id}">${r.status === 'searching' ? 'Accept' : 'Open'}</button></article>`).join('') || empty('No requests nearby', 'Keep availability on to receive requests.')}</section>` : ''}
-  <section class="panel"><h2>Offers and invites</h2>${offers.map(o => `<article class="market-row offer-row"><span class="market-icon">${o.kind === 'invite' ? '✉' : '📨'}</span><span><b>${esc(o.title)}</b><small>${esc(kindLabel[o.kind] || o.kind)} · ${esc(o.fromName)} · ${esc(o.date)} · ${inr(o.pay)}${o.payType ? ' ' + esc(o.payType) : ''}${o.advance ? ` · advance ${inr(o.advance)}` : ''}${o.platformFee ? ` · platform fee ${inr(o.platformFee)} paid by ${esc(o.feePaidBy)}, not deducted from you` : ''}</small></span>${pill(o.status)}${o.status === 'pending' ? `<span class="row-actions"><button class="button secondary" data-op="offer-decline" data-id="${o.id}">Decline</button><button class="button primary" data-op="offer-accept" data-id="${o.id}">Accept</button></span>` : '<span></span>'}</article>`).join('') || empty('No offers right now', 'Post your availability in Profile to get offers.')}</section>
+  <section class="panel"><h2>Offers and invites</h2>${offers.map(o => `<article class="market-row offer-row"><span class="market-icon">${o.kind === 'invite' ? '✉' : '📨'}</span><span><b>${esc(o.title)}</b><small>${esc(kindLabel[o.kind] || o.kind)} · ${esc(o.fromName)} · ${esc(o.date)}${o.vehicle ? ` · ${esc(o.vehicle)}` : ''} · ${inr(o.pay)}${o.payType ? ' ' + esc(o.payType) : ''}${o.advance ? ` · advance ${inr(o.advance)}` : ''}${o.platformFee ? ` · platform fee ${inr(o.platformFee)} paid by ${esc(o.feePaidBy)}, not deducted from you` : ''}</small></span>${pill(o.status)}${o.status === 'pending' ? `<span class="row-actions"><button class="button secondary" data-op="offer-decline" data-id="${o.id}">Decline</button><button class="button primary" data-op="offer-accept" data-id="${o.id}">Accept</button></span>` : '<span></span>'}</article>`).join('') || empty('No offers right now', 'Post your availability in Profile to get offers.')}</section>
   ${trips.length || moves.length ? `<section class="panel"><h2>Assigned work</h2>${trips.map(t => `<article class="market-row"><span class="market-icon">🚚</span><span><b>${esc(t.title)}</b><small>${esc(t.id)} · Next: ${esc(currentMilestone(t)?.label || 'Closed')}</small></span>${pill(t.status)}<button class="button secondary" data-op="open-trip" data-id="${t.id}">Open</button></article>`).join('')}${moves.map(j => `<article class="market-row"><span class="market-icon">📦</span><span><b>${esc(j.size)} move · ${esc(j.from)} → ${esc(j.to)}</b><small>${esc(j.id)} · ${esc(j.date)}</small></span>${pill(j.status)}<button class="button secondary" data-op="open-conversation" data-id="${j.conversationId || ''}" ${j.conversationId ? '' : 'disabled'}>Job chat</button></article>`).join('')}</section>` : ''}
   <div class="info-banner"><b>Status: ${esc(label(worker?.status || 'available'))}</b><span>Available → employed → closed. Accepting a permanent invite starts staff onboarding with that business.</span></div>`;
 }
@@ -514,6 +516,7 @@ export function exceptionDetailScreen(state) {
 
 // ---------- Admin (19) ----------
 export function verificationScreen(state) {
+  if (!adminStepUpValid(state)) return adminStepUpScreen();
   const q = state.verificationQueue;
   const kinds = [['person', 'People and capabilities'], ['vehicle', 'Vehicles'], ['business', 'Businesses']];
   return `${head('Verification queue', 'Admin verifies and supports; Admin never operates a business as its owner.')}
@@ -523,6 +526,7 @@ export function verificationScreen(state) {
 }
 
 export function verificationItemScreen(state) {
+  if (!adminStepUpValid(state)) return adminStepUpScreen();
   const x = state.verificationQueue.find(i => i.id === state.selectedVerificationId) || state.verificationQueue[0];
   return `${head(`${x.subject} · ${x.capability}`, `${x.id} · version ${x.version}`, '<button class="button secondary" data-route="verification">Back to queue</button>')}
   <div class="grid two"><section class="panel"><h2>Submitted data</h2><div class="document-list">${x.documents.map(d => `<div class="document-row"><span class="document-icon">▣</span><span class="document-copy"><b>${esc(d)}</b><small>Current version · secure preview</small></span><button class="button secondary compact" data-toast="Secure preview opened (watermarked)">View</button></div>`).join('')}</div>${x.appeal ? `<div class="info-banner"><b>Appeal</b><span>${esc(x.appeal)}</span></div>` : ''}
@@ -542,6 +546,7 @@ export function staffEventsScreen(state) {
   return `${head('Employment events', 'Leave, unavailability and rehiring keep history attached to the same person.', '<button class="button secondary" data-route="people">Back to People</button>')}
   <div class="grid two"><form class="panel form-panel" data-op-form="staff-leave"><h2>Leave / unavailable</h2><div class="form-grid two"><label class="wide"><span>Staff member</span><select name="memberId"><option value="">Select</option>${people.map(p => `<option value="${p.id}">${esc(p.name)} · ${esc(p.designation || p.role)} · ${(p.activeAssignments || []).length} active</option>`).join('')}</select></label><label><span>From</span><input type="date" name="from" value="2026-09-29"></label><label><span>Until</span><input type="date" name="to" value="2026-10-03"></label><label><span>Reason</span><select name="reason"><option>Leave</option><option>Sick</option><option>Unavailable</option></select></label><label><span>Reassign active work to</span><select name="reassignTo"><option value="">Keep unassigned (hold)</option>${people.filter(p => p.status === 'active').map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label></div><p id="leave-error" class="field-error" hidden></p><button class="button primary full">Save and reassign</button></form>
   <section class="panel"><h2>Former staff</h2>${former.map(f => `<article class="market-row"><span class="market-icon">↺</span><span><b>${esc(f.name)}</b><small>${esc(f.designation || '')} · left ${esc(f.offboardedAt)} · ${esc(f.finalSettlement || '')}</small></span><span></span><button class="button secondary" data-op="rehire" data-id="${f.id}">Rehire</button></article>`).join('') || empty('No former staff', '')}<p class="mock-hint">Rehire starts a new employment period with a new invitation; the old period stays in history.</p>
+  <h2>Today’s attendance</h2>${attendanceTable(state, ownerWs)}
   <h2>Recent events</h2><div class="timeline">${(state.staffEvents || []).filter(e => e.workspace === ownerWs).map(e => `<div><i></i><span><b>${esc(e.text)}</b><small>${esc(e.at)}</small></span></div>`).join('') || '<p class="muted">No events yet.</p>'}</div></section></div>`;
 }
 
@@ -559,4 +564,53 @@ export function summarize(state, ref) {
   const j = state.movingJobs.find(x => x.id === ref);
   if (j) return `${j.id}: ${j.size} ${j.from} → ${j.to} on ${j.date}. Step: ${MOVING_STEPS[movingStepIndex(j)][1]}.`;
   return 'No matching work found in this workspace.';
+}
+
+// ---------- gap fixes against draw.io (04, 13, 14, 16, 19, 07) ----------
+export const inventoryList = v => String(v || '').split(/[\n,]+/).map(x => x.trim()).filter(Boolean);
+export const todayKey = () => new Date().toISOString().slice(0, 10);
+export function orderCloseBlock(state, o) {
+  const ts = state.trips.filter(t => t.goodsOrderId === o.id);
+  if (!ts.length) return 'No loads have been delivered for this order yet.';
+  if (ts.some(t => t.milestones.find(m => m.key === 'received')?.status !== 'done' && t.status !== 'closed')) return 'Every load must be received first.';
+  if (state.exceptions.some(e => ts.some(t => t.id === e.ref) && e.status !== 'resolved' && e.status !== 'closed')) return 'Resolve open disputes before closing.';
+  if (o.type === 'buy' && !state.ledger.some(x => (x.sourceId === o.id || ts.some(t => t.id === x.sourceId)) && x.type === 'customer_payment' && ['paid', 'confirmed', 'closed'].includes(x.status))) return 'Pay the seller (or record the outside payment) before closing.';
+  if (o.type === 'sell' && ts.some(t => t.status !== 'closed')) return 'Settle every load before closing.';
+  return '';
+}
+function closeOutPanel(state, t) {
+  const o = state.goodsOrders.find(x => x.id === t.goodsOrderId);
+  const disputes = state.exceptions.filter(e => e.ref === t.id && !['resolved', 'closed'].includes(e.status));
+  const block = o ? orderCloseBlock(state, o) : 'No goods order linked.';
+  const buyer = t.goodsRole === 'buyer';
+  return `<section class="panel"><h2>${buyer ? 'Pay, dispute or close' : 'Receipt and order close-out'}</h2>${facts([['Received', `${esc(t.receipt?.quantity ?? t.quantity)} ${esc(t.unit)} · ${esc(t.receipt?.condition || 'Good')}`], t.receipt?.deduction ? ['Proposed shortage deduction', inr(t.receipt.deduction)] : null, ['Open disputes', String(disputes.length)], o ? ['Order', `${esc(o.id)} · ${pill(o.status)}`] : null])}
+    <div class="row-actions">${buyer ? `<button class="button primary" data-op="pay-seller" data-id="${t.id}">Pay seller</button>` : ''}<button class="button secondary" data-op="report-exception" data-ref="${t.id}">${disputes.length ? 'Add to dispute' : 'Raise dispute'}</button>${o && o.status !== 'closed' ? `<button class="button secondary" data-op="close-order" data-id="${o.id}" ${block ? 'disabled' : ''}>Close order</button>` : ''}</div>${block && o?.status !== 'closed' ? `<p class="mock-hint">${esc(block)}</p>` : ''}</section>`;
+}
+export function adminStepUpValid(state) { return Boolean(state.adminStepUp?.at && Date.now() - state.adminStepUp.at < 30 * 60 * 1000); }
+function adminStepUpScreen() {
+  return `${head('Confirm it is you', 'Verification decisions need strong authentication. Admins verify and support; they never operate a business.')}
+  <form class="panel form-panel narrow" data-op-form="admin-stepup"><div class="info-banner"><b>Strong authentication</b><span>Enter the code from your registered security app. Sessions expire after 30 minutes. Prototype code: 246810.</span></div><label><span>Security code</span><input name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label><p id="stepup-error" class="field-error" hidden></p><div class="form-actions"><button class="button primary" type="submit">Verify and open queue</button></div></form>`;
+}
+function attendanceTable(state, ownerWs) {
+  const rows = (state.attendance || []).filter(a => a.workspace === ownerWs && a.date === todayKey());
+  return rows.length ? `<div class="timeline">${rows.map(a => `<div><i></i><span><b>${esc(a.name)}</b><small>In ${esc(a.in)}${a.out ? ` · Out ${esc(a.out)}` : ' · working'}</small></span></div>`).join('')}</div>` : '<p class="muted">No one has checked in yet today.</p>';
+}
+export function staffWorkScreen(state) {
+  const {member, ownerWs, perms} = opsCtx(state);
+  if (!member) return `${head('My Work', 'Staff profile not found.')}`;
+  if (member.status !== 'active') return `${head('My Work', `${member.name} · work starts after owner approval`)}${empty('Waiting for approval', 'Assigned jobs, attendance and pay appear once your owner approves your joining details.')}`;
+  const trips = visibleTrips(state), jobs = visibleMovingJobs(state);
+  const mine = (member.activeAssignments || []);
+  const att = (state.attendance || []).find(a => a.memberId === member.id && a.date === todayKey());
+  const pay = state.ledger.filter(x => x.payee === `staff:${member.id}` && x.status !== 'reversed');
+  const fleetOk = perms.some(p => ['documents.prepare', 'fleet.view', 'work.manage'].includes(p));
+  const row = (icon, title, sub, status, op, id) => `<article class="market-row"><span class="market-icon">${icon}</span><span><b>${esc(title)}</b><small>${esc(sub)}</small></span>${pill(status)}<button class="button secondary" data-op="${op}" data-id="${id}">Open</button></article>`;
+  return `${head('My Work', `${member.name} · ${ROLE_TEMPLATES[member.role]?.label || 'Staff'} · only assigned branch and tasks`, fleetOk ? '<button class="button secondary" data-route="fleet">Fleet documents</button>' : '')}
+  <div class="grid two"><section class="panel"><h2>My assigned tasks</h2><p class="muted">Transport loads and moving jobs from the same team, filtered to your branches and assignments.</p>
+    ${trips.map(t => row('🚚', t.title, `${t.id} · ${mine.includes(t.id) ? 'assigned to you' : 'your branch'} · Next: ${currentMilestone(t)?.label || 'Closed'}`, t.hold ? 'on_hold' : t.status, 'open-trip', t.id)).join('')}
+    ${jobs.map(j => row('📦', `${j.size} move · ${j.from} → ${j.to}`, `${j.id} · ${j.date}`, j.status, 'open-moving', j.id)).join('')}
+    ${!trips.length && !jobs.length ? empty('No assigned work', 'Unassigned business work stays hidden.') : ''}</section>
+  <div class="stack"><section class="panel"><h2>Attendance</h2>${att ? `<p>Checked in at <b>${esc(att.in)}</b>${att.out ? ` · checked out at <b>${esc(att.out)}</b>` : ''}</p>` : '<p class="muted">Not checked in today.</p>'}
+    ${!att ? '<button class="button primary full" data-op="attendance-in">Check in</button>' : !att.out ? '<button class="button secondary full" data-op="attendance-out">Check out</button>' : ''}</section>
+    <section class="panel"><h2>My pay</h2>${facts([['Salary / wages', inr(pay.filter(x => ['salary', 'freight'].includes(x.type)).reduce((a, x) => a + Number(x.amount), 0))], ['Advances', inr(pay.filter(x => x.type === 'advance').reduce((a, x) => a + Number(x.amount), 0))], ['Reimbursements (not earnings)', inr(pay.filter(x => x.type === 'reimbursement').reduce((a, x) => a + Number(x.amount), 0))]])}<div class="row-actions"><button class="button secondary" data-route="money">Open My Money</button><button class="button secondary" data-route="messages">Messages</button></div></section></div></div>`;
 }

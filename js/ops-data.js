@@ -25,7 +25,7 @@ export const OPS_SEED = {
       conversationId: 'CNV-501', exceptions: [], settlementCreated: false, receipt: null,
     },
     {
-      id: 'TRP-502', title: 'Wheat inbound · Ara → Bihta Plant', goodsOrderId: 'GO-402', goods: 'Wheat', quantity: 18, unit: 'tonnes',
+      id: 'TRP-502', title: 'Wheat inbound · Ara → Bihta Plant', goodsOrderId: 'GO-403', goods: 'Wheat', quantity: 18, unit: 'tonnes',
       from: 'Bihar Agro Mills, Ara', to: 'Bihta Plant, Patna', branchId: 'BR-011', service: 'transport', goodsRole: 'buyer', receiver: 'Sharma Foods · Bihta Plant',
       arrangement: 'own_vehicle', parties: ['goods'], owner: 'goods', vehicleSource: 'own_fleet', vehicleId: 'VEH-G01', vehicleOwner: 'goods', registration: 'BR01 GH 9088',
       crew: [{id: 'CAND-001', name: 'Amit Singh', role: 'driver', persona: null, classification: 'marketplace', accepted: true}],
@@ -55,7 +55,7 @@ export const OPS_SEED = {
       gps: {consent: true, status: 'stopped', points: [{place: 'Okhla, Delhi', at: '26 Sep, 11:10 AM'}]}, conversationId: 'CNV-501', exceptions: [], settlementCreated: true, receipt: {quantity: 8, condition: 'Good', note: 'All bags sealed'},
     },
   ],
-  goodsOrderExtras: [{id: 'GO-402', workspace: 'goods', type: 'buy', counterparty: 'Bihar Agro Mills', goods: 'Wheat', quantity: 18, unit: 'tonnes', goodsPrice: 432000, transportResponsibility: 'buyer', status: 'in_delivery', createdAt: '25 Sep 2026, 11:00 AM'}],
+  goodsOrderExtras: [{id: 'GO-403', workspace: 'goods', type: 'buy', counterparty: 'Bihar Agro Mills', goods: 'Wheat', quantity: 18, unit: 'tonnes', goodsPrice: 432000, transportResponsibility: 'buyer', status: 'in_delivery', createdAt: '25 Sep 2026, 11:00 AM'}],
   extraVehicles: {
     transporter: [{id: 'VEH-T02', registration: 'UP16 RT 3302', truckType: '19-ft closed', capacity: 9, status: 'idle', documents: 'approved', documentExpiry: '2027-05-30', branchId: 'BR-001', crew: 'Driver needed'}],
     movers: [{id: 'VEH-M01', registration: 'DL01 MV 1101', truckType: '14-ft closed', capacity: 4, status: 'idle', documents: 'approved', documentExpiry: '2027-06-30', branchId: 'BR-030', crew: 'Packers ready'}],
@@ -105,7 +105,7 @@ export const OPS_SEED = {
       price: [['Basic package · 1 BHK', 5200], ['GST 18%', 936]], total: 6136, customerOtp: '1937', status: 'auto_assigned', vehicle: null, vehicleSource: null, crew: [],
       inventory: [{item: 'Single bed', packed: false}, {item: 'Study table', packed: false}, {item: 'Cartons × 6', packed: false}], loadingProof: null, gps: {consent: false, status: 'not_started', points: []}, parties: ['movers'], conversationId: null, window: {from: '2026-09-30T09:00', to: '2026-09-30T15:00'}, payoutsCreated: false, history: [{status: 'auto_assigned', at: '27 Sep 2026, 9:02 AM', by: 'Platform'}]},
     {id: 'MOV-603', owner: 'transporter', branchId: 'BR-001', customer: 'external:office', customerName: 'Kite Studio (office)', serviceRequestId: null, from: 'Sector 63, Noida', to: 'Sector 132, Noida', date: '2026-10-02', size: 'Office', pkg: 'premium', vehicleNeed: '19-ft closed truck',
-      price: [['Premium package · Office', 25500], ['GST 18%', 4590]], total: 30090, customerOtp: '5541', status: 'resources_allocated', vehicle: {id: 'VEH-T01', registration: 'UP16 RT 2201', source: 'owned'}, vehicleSource: 'owned',
+      price: [['Premium package · Office', 25500], ['GST 18%', 4590]], total: 30090, customerOtp: '5541', status: 'resources_allocated', vehicle: {id: 'VEH-T01', registration: 'UP16 RT 2201', source: 'owned', owner: 'transporter'}, vehicleSource: 'owned',
       crew: [{id: 'WORKER-002', name: 'Ramesh Yadav', role: 'helper', persona: 'helper', classification: 'staff'}], inventory: [{item: 'Workstations × 12', packed: false}, {item: 'Server rack', packed: false}], loadingProof: null, gps: {consent: false, status: 'not_started', points: []}, parties: ['transporter'], conversationId: null, window: {from: '2026-10-02T08:00', to: '2026-10-02T19:00'}, payoutsCreated: false, history: []},
   ],
   ledger: [

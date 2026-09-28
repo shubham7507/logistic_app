@@ -60,7 +60,7 @@ export function allowedRoutes(roleKey){
     roleKey==='personal'?['book','bookingReview','services','serviceDetail','movingJob','tripDetail','payment']:
     ['commercialDriver','helper'].includes(roleKey)?['myJobs','tripDetail','movingJob','vehicleOffer']:
     roleKey==='personalDriver'?['myJobs','driverJob','upgradeDriver']:
-    roleKey==='staff'?[...tripRoutes,'assignTrip','movingJob','vehicleDetail','payment']:
+    roleKey==='staff'?[...tripRoutes,'assignTrip','movingJob','vehicleDetail','addVehicle','fleet','payment']:
     roleKey==='admin'?['verification','verificationItem','cases','tripDetail']:[];
   const blocked=roleKey==='goods'?['movingJob','staffEvents']:[];
   const set=new Set([...role.nav.map(([id])=>id),'states',...extra,...common,...opsExtra]);blocked.forEach(r=>set.delete(r));

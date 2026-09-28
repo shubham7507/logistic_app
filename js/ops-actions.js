@@ -5,7 +5,7 @@ import {
   validatePayment, applyMoneyAction, parseVoiceCommand, validateAdminDecision, adminResultStatus, EXCEPTION_TYPES, validateException,
   affectedParties, recalcDues, gpsAllowed, buildMilestones, validateLeave, assignMoverBranch, DOC_TYPES, currentMilestone,
 } from './ops-rules.js';
-import {opsCtx, can, allVehicles, bookingQuote, approvalLimit, summarize, partyName, visibleTrips, inr} from './ops.js';
+import {opsCtx, can, allVehicles, bookingQuote, approvalLimit, summarize, partyName, visibleTrips, inr, orderCloseBlock, adminStepUpValid, inventoryList, todayKey} from './ops.js';
 
 const now = () => new Date().toLocaleString('en-IN', {day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit'});
 const uid = p => `${p}-${Date.now().toString().slice(-5)}${Math.floor(Math.random() * 9)}`;
@@ -116,7 +116,7 @@ export function bindOps(root, api) {
         const branch = assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'));
         if (!branch) return api.toast('No approved Mover covers this pickup yet. Your request is saved; we will notify you.');
         const jobId = `MOV-${600 + s.movingJobs.length + 1}`; const conv = `CNV-${jobId}`;
-        s.movingJobs.unshift({id: jobId, owner: branch.workspace, branchId: branch.id, customer: 'personal', customerName: s.person?.name || 'Shubham Kumar', serviceRequestId: id, from: d.from, to: d.to, date: d.date, size: d.size, pkg: d.pkg, vehicleNeed: q.vehicle, price: q.components, total: q.total, customerOtp: String(1000 + Math.floor(Math.random() * 8999)), status: 'auto_assigned', vehicle: null, vehicleSource: null, crew: [], inventory: [{item: 'Beds and mattresses', packed: false}, {item: 'Wardrobe', packed: false}, {item: 'Kitchen cartons', packed: false}, {item: 'TV and electronics', packed: false}], loadingProof: null, gps: {consent: false, status: 'not_started', points: []}, parties: ['personal', branch.workspace], conversationId: conv, window: {from: `${d.date}T08:00`, to: `${d.date}T18:00`}, payoutsCreated: false, history: [{status: 'auto_assigned', at: now(), by: 'Platform'}]});
+        s.movingJobs.unshift({id: jobId, owner: branch.workspace, branchId: branch.id, customer: 'personal', customerName: s.person?.name || 'Shubham Kumar', serviceRequestId: id, from: d.from, to: d.to, date: d.date, size: d.size, pkg: d.pkg, vehicleNeed: q.vehicle, price: q.components, total: q.total, customerOtp: String(1000 + Math.floor(Math.random() * 8999)), status: 'auto_assigned', vehicle: null, vehicleSource: null, crew: [], inventory: (inventoryList(d.inventory).length ? inventoryList(d.inventory) : ['Beds and mattresses', 'Wardrobe', 'Kitchen cartons', 'TV and electronics']).map(item => ({item, packed: false, source: 'customer'})), loadingProof: null, gps: {consent: false, status: 'not_started', points: []}, parties: ['personal', branch.workspace], conversationId: conv, window: {from: `${d.date}T08:00`, to: `${d.date}T18:00`}, payoutsCreated: false, history: [{status: 'auto_assigned', at: now(), by: 'Platform'}]});
         branch.openJobs = (branch.openJobs || 0) + 1;
         s.conversations.unshift({id: conv, kind: 'job', ref: jobId, title: `${jobId} · ${d.size} ${d.from} → ${d.to}`, participants: ['personal', branch.workspace], status: 'open', messages: [{id: 'M1', from: 'MoveAI', type: 'text', body: `Assigned to ${branch.name}. The branch confirms your slot next.`, at: now()}]});
         s.serviceRequests.unshift({...base, type: 'moving', title: `${d.size} move · ${d.from} → ${d.to}`, movingJobId: jobId, status: 'confirmed', conversationId: conv});
@@ -302,6 +302,35 @@ export function bindOps(root, api) {
 
     // ---- money ----
     'money-filter': (id, el) => { S().moneyFilter = el.dataset.filter; done(); },
+    'close-order': id => {
+      const s = S(); const o = s.goodsOrders.find(x => x.id === id);
+      if (!o || s.currentWorkspace !== o.workspace) return api.toast('Only the order owner can close it.');
+      const block = orderCloseBlock(s, o); if (block) return api.toast(block);
+      o.status = 'closed'; o.closedAt = now();
+      const parties = [...new Set(s.trips.filter(t => t.goodsOrderId === o.id).flatMap(t => affectedParties(t)))].filter(p => p !== s.currentWorkspace);
+      notify(s, parties, `${o.id} closed by ${partyName(s, s.currentWorkspace)}. History stays read-only.`, o.id);
+      audit(s, `Goods order ${o.id} closed after receipt and settlement`); done(`${o.id} closed`);
+    },
+    'pay-seller': id => {
+      const s = S(); const t = s.trips.find(x => x.id === id); const o = s.goodsOrders.find(x => x.id === t?.goodsOrderId);
+      if (!t || s.currentWorkspace !== 'goods' || t.goodsRole !== 'buyer') return api.toast('Only the buyer pays the seller from here.');
+      if (s.exceptions.some(e => e.ref === t.id && !['resolved', 'closed'].includes(e.status))) return api.toast('A dispute is open. Pay the undisputed part or resolve the dispute first.');
+      const paid = s.ledger.filter(x => x.sourceId === o?.id && x.status !== 'reversed' && x.type === 'customer_payment').reduce((a, x) => a + Number(x.amount), 0);
+      s.paymentDraft = {sourceId: t.id, type: 'customer_payment', payer: 'goods', payee: 'external:bihar-agro', amount: Math.max(0, (o?.goodsPrice || 0) - (t.receipt?.deduction || 0) - paid), method: 'bank', note: `Goods payment for ${o?.id || t.id} after receipt${t.receipt?.deduction ? ` less shortage ${inr(t.receipt.deduction)}` : ''}`};
+      done(null, 'payment');
+    },
+    'attendance-in': () => {
+      const s = S(); const {member, ownerWs} = opsCtx(s); if (!member || member.status !== 'active') return api.toast('Attendance starts after approval.');
+      s.attendance = s.attendance || [];
+      if (s.attendance.some(a => a.memberId === member.id && a.date === todayKey())) return api.toast('Already checked in today.');
+      s.attendance.unshift({id: uid('ATT'), memberId: member.id, name: member.name, workspace: ownerWs, branchId: member.branchIds?.[0], date: todayKey(), in: new Date().toLocaleTimeString('en-IN', {hour: 'numeric', minute: '2-digit'}), out: null});
+      audit(s, `${member.name} checked in`); done('Checked in');
+    },
+    'attendance-out': () => {
+      const s = S(); const {member} = opsCtx(s); const a = (s.attendance || []).find(x => x.memberId === member?.id && x.date === todayKey() && !x.out);
+      if (!a) return api.toast('Check in first.');
+      a.out = new Date().toLocaleTimeString('en-IN', {hour: 'numeric', minute: '2-digit'}); audit(s, `${member.name} checked out`); done('Checked out');
+    },
     'new-payment': () => { S().paymentDraft = null; done(null, 'payment'); },
     'money-action': (id, el) => {
       const s = S(); const x = s.ledger.find(e => e.id === id); const action = el.dataset.actionName; const reason = root.querySelector('#money-reason')?.value;
@@ -495,8 +524,14 @@ export function bindOps(root, api) {
       s.exceptionDraft = null; s.selectedExceptionId = exc.id; audit(s, `Exception ${exc.id}: ${def.label} on ${x.ref}`);
       done(`Reported. ${parties.length - 1} affected part${parties.length === 2 ? 'y' : 'ies'} notified.`, 'exceptionDetail');
     },
+    'admin-stepup': f => {
+      const s = S(); if (!can(s, 'admin')) return;
+      if (String(f.get('code') || '').trim() !== '246810') { audit(s, 'Admin strong authentication failed'); return err('stepup-error', 'Code is incorrect. Prototype code: 246810.'); }
+      s.adminStepUp = {at: Date.now()}; audit(s, 'Admin strong authentication passed'); done('Verified for 30 minutes', 'verification');
+    },
     'admin-decision': (f, form) => {
       const s = S(); if (!can(s, 'admin')) return;
+      if (!adminStepUpValid(s)) return done('Strong authentication expired. Verify again.', 'verification');
       const x = s.verificationQueue.find(i => i.id === form.dataset.id); const decision = f.get('decision'); const reason = String(f.get('reason') || '').trim();
       const e = validateAdminDecision(x, decision, reason); if (e) return err('decision-error', e);
       x.status = adminResultStatus(decision); x.history.unshift({decision, reason: reason || 'Checks passed', at: now(), by: 'Admin Neha'});

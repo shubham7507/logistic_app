@@ -161,7 +161,7 @@ export const MONEY_TYPES = {
   deduction: {label: 'Deduction', earning: true},
   reimbursement: {label: 'Expense / reimbursement', earning: false},
   platform_fee: {label: 'Platform hiring / sourcing fee', earning: false},
-  customer_payment: {label: 'Customer payment', earning: false},
+  customer_payment: {label: 'Customer / goods payment', earning: false},
 };
 export const MONEY_STATUSES = ['pending_approval', 'approved', 'paid', 'confirmed', 'closed', 'reversed', 'on_hold'];
 

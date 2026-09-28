@@ -28,3 +28,21 @@ Every page of `MoveAI_One_All_Users_Complete_Application_Flow.drawio` is mapped 
 ## Prototype limits
 
 This is a front-end prototype with local mock data. Server-side enforcement, real payments, real GPS, real SMS/OTP and real speech transcription (the browser Web Speech API is used where available, with typed fallback) are simulated and must be built on the backend before production.
+
+## Gap audit against draw.io (second pass)
+
+Every node on pages 00–20 was checked against the running app. These were missing or wrong and are now fixed:
+
+| Page | Gap found | Fix |
+|---|---|---|
+| 04 Goods Buyer | After "Receive goods" there was no "Pay / dispute" or "Close order" step. | Trip close-out panel with Pay seller (pre-filled, shortage deducted), Raise dispute and Close order. An order closes only after every load is received, disputes are resolved and the seller payment is paid or recorded. |
+| 03 Goods Seller | Order aggregate showed quantity only, not conversations and money. | Aggregate row shows loads, delivered quantity, conversation count and money total, and closes once every load is settled. |
+| 03 / 04 | Two different orders shared the ID `GO-402` in seed data. | Inbound wheat order renamed `GO-403`; demo revision bumped so old browser data resets. |
+| 13 Staff Lifecycle | No attendance; staff "My Work" showed bare IDs; Leave/rehire screen had no link. | Staff My Work lists assigned trips and moving jobs, attendance check-in/out and own pay. Owner sees today's attendance. People has a "Leave, attendance & rehire" tab. |
+| 07 Multi-service | Staff did not see "My assigned tasks" across transport and moving. | Same unified task list on staff My Work. |
+| 14 Roles and permissions | No per-person payment approval limit; restricted permissions were ignored by operations; template names differed. | Approval limit field in Staff access, enforced on approval; saved permissions now drive every operations check; roles named Business / Branch Manager, Operations / Dispatcher, Accountant, Viewer / Auditor. |
+| 06 Truck Owner | Document staff could not open Fleet to upload RC, insurance, permit, fitness and pollution. | Staff with document or fleet permissions can open Fleet and Add vehicle; others are denied. |
+| 16 Shared Moving Job | Customer could not enter inventory; vehicle partner could not see moving jobs on its trucks. | Inventory field in the moving booking (shown on the price review and used as the packing checklist); vehicle partner sees moving jobs on its trucks in Trips. |
+| 19 Platform Admin | No strong authentication before the verification queue. | Security-code step-up (prototype code `246810`), valid 30 minutes, required again for decisions; failures are audited. |
+| 09 Commercial Driver | Offers did not show the vehicle to review. | Offer rows show route, vehicle, pay, advance and who pays the platform fee. |
+| 01 Choose purpose | Personal services text mentioned products only. | Mentions moving, personal Driver, products and home services. |

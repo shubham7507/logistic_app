@@ -19,7 +19,9 @@ P5–P8 implement every page of `MoveAI_One_All_Users_Complete_Application_Flow.
 4. **Sharma Foods → Trips → TRP-502**: confirm received quantity and condition.
 5. **Raj Logistics → Money**: approve and pay; switch to **Raj Transport** to confirm receipt.
 6. **Ask MoveAI**: "summarize TRP-501" or "record advance 5000 to Raj Transport for TRP-501" (read back, then saved for approval only).
-7. **Platform Admin → Verification**: reject without a reason is refused; suspend and restore after appeal.
+7. **Platform Admin → Verification**: enter security code `246810` first; reject without a reason is refused; suspend and restore after appeal.
+8. **Sharma Foods → Trips → TRP-502**: confirm receipt → Pay seller → approve and pay → Close order (GO-403).
+9. **Raj Logistics → People → open an active staff member → open their workspace → My Work**: assigned tasks, check in; the owner sees attendance under Leave, attendance & rehire.
 
 ### Tests
 

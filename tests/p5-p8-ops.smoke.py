@@ -85,12 +85,41 @@ with sync_playwright() as p:
         s = st(); check(next(x for x in s['ledger'] if x['id'] == pend['id'])['status'] == 'paid', 'payment paid')
 
     # 6. Admin: rejection needs reason
-    ws('admin'); go('verification'); shot('11-verification')
+    ws('admin'); go('verification')
+    check(page.locator('form[data-op-form="admin-stepup"]').count() == 1, 'strong auth gate')
+    page.fill('input[name="code"]', '000000'); page.locator('form[data-op-form="admin-stepup"] button').click(); page.wait_for_timeout(60)
+    check(page.locator('#stepup-error').is_visible(), 'wrong code refused')
+    page.fill('input[name="code"]', '246810'); page.locator('form[data-op-form="admin-stepup"] button').click(); page.wait_for_timeout(80)
+    shot('11-verification')
     page.locator('[data-op="open-verification"]').first.click(); page.wait_for_timeout(60)
     page.select_option('form[data-op-form="admin-decision"] select[name="decision"]', 'reject')
     page.locator('form[data-op-form="admin-decision"] button').click(); page.wait_for_timeout(60)
     check('reason' in (page.locator('#main-content').inner_text() + toast()).lower(), 'reason required')
 
+    # 6b. Buyer receives inbound goods, pays seller, closes order (draw.io 04)
+    ws('goods'); go('trips'); page.locator('[data-op="open-trip"][data-id="TRP-502"]').first.click(); page.wait_for_timeout(80)
+    page.locator('form[data-op-form="trip-receipt"] button[type=submit]').click(); page.wait_for_timeout(80); shot('14-buyer-closeout')
+    check(page.locator('[data-op="pay-seller"]').count() == 1, 'pay seller offered')
+    check(page.locator('[data-op="close-order"]').first.is_disabled(), 'cannot close before paying seller')
+    page.locator('[data-op="pay-seller"]').click(); page.wait_for_timeout(80)
+    page.fill('form[data-op-form="create-payment"] [name="reference"]', 'UTR-BIHAR-7781')
+    page.locator('form[data-op-form="create-payment"] button.primary').click(); page.wait_for_timeout(80)
+    for a in ('approve', 'pay'):
+        if page.locator(f'[data-op="money-action"][data-action-name="{a}"]').count():
+            page.locator(f'[data-op="money-action"][data-action-name="{a}"]').click(); page.wait_for_timeout(60)
+    go('trips'); page.locator('[data-op="open-trip"][data-id="TRP-502"]').first.click(); page.wait_for_timeout(80)
+    page.locator('[data-op="close-order"]').first.click(); page.wait_for_timeout(80)
+    s = st(); check(next(o for o in s['goodsOrders'] if o['id'] == 'GO-403')['status'] == 'closed', 'buyer order closed')
+
+    # 6c. Staff: assigned tasks + attendance; owner sees attendance (draw.io 13)
+    ws('transporter'); go('people'); check(page.locator('[data-route="staffEvents"]').count() >= 1, 'leave/rehire reachable')
+    staff_id = page.evaluate("window.MoveAIVNextTest.state().peopleByWorkspace.transporter.find(p=>p.status==='active').id")
+    page.locator(f'[data-action="open-staff"][data-staff="{staff_id}"]').first.click(); page.wait_for_timeout(80)
+    page.locator('[data-action="open-staff-workspace"]').first.click(); page.wait_for_timeout(100)
+    go('work'); check('My assigned tasks' in page.locator('#main-content').inner_text(), 'staff assigned tasks')
+    page.locator('[data-op="attendance-in"]').click(); page.wait_for_timeout(60); shot('15-staff-work')
+    check(any(a['memberId'] == staff_id for a in st().get('attendance', [])), 'attendance recorded')
+    ws('transporter'); go('staffEvents'); check('Today’s attendance' in page.locator('#main-content').inner_text(), 'owner sees attendance')
     # 7. AI assistant: summarise + critical read-back
     ws('transporter'); go('home')
     page.click('#ai-button'); page.fill('#ai-input', 'summarize TRP-501'); page.press('#ai-input', 'Enter'); page.wait_for_timeout(60)

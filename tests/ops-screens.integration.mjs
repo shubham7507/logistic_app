@@ -35,4 +35,15 @@ const cd=stateFor('commercialDriver');assert.ok(OPS.visibleTrips(cd).every(t=>t.
 const buyer=stateFor('goods');assert.ok(OPS.visibleTrips(buyer).length>0);
 const internalHidden=stateFor('goods');assert.ok(!OPS.messagesScreen(internalHidden).includes('Raj Logistics · Operations team'),'goods never sees transporter internal chat');
 const tr=stateFor('transporter');assert.ok(OPS.messagesScreen(tr).includes('Raj Logistics · Operations team'));
+
+// draw.io gap fixes
+const adm=stateFor('admin');assert.ok(OPS.verificationScreen(adm).includes('Security code'),'19: strong auth before queue');
+adm.adminStepUp={at:Date.now()};assert.ok(!OPS.verificationScreen(adm).includes('Security code'),'19: queue after strong auth');
+assert.ok(OPS.bookScreen(stateFor('personal')).includes('name="inventory"'),'16: customer inventory');
+const stf=stateFor('staff');const mem=stf.peopleByWorkspace.transporter.find(p=>p.id===stf.selectedStaffId);
+assert.ok(OPS.staffWorkScreen(stf).includes('Attendance')&&OPS.staffWorkScreen(stf).includes('My assigned tasks'),'13/07: staff tasks + attendance');
+mem.access={...(mem.access||{}),approvalLimit:5000};assert.equal(OPS.approvalLimit(stf),5000,'14: per-staff approval limit');
+const g=stateFor('goods');const t502=g.trips.find(t=>t.id==='TRP-502');assert.ok(OPS.orderCloseBlock(g,g.goodsOrders.find(o=>o.id==='GO-403')).length>0,'04: cannot close before receipt');
+t502.milestones.forEach(m=>{if(m.key==='received')m.status='done'});assert.match(OPS.orderCloseBlock(g,g.goodsOrders.find(o=>o.id==='GO-403')),/Pay the seller/,'04: pay before close');g.ledger.push({id:'PAY-T',type:'customer_payment',sourceId:'TRP-502',status:'paid',amount:1});assert.equal(OPS.orderCloseBlock(g,g.goodsOrders.find(o=>o.id==='GO-403')),'','04: close after receipt');
+g.selectedTripId='TRP-502';assert.ok(OPS.tripDetailScreen(g).includes('Pay seller'),'04: buyer pay/dispute/close');
 console.log(JSON.stringify({status:'PASS',renderedScreens:rendered},null,2));
