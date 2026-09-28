@@ -33,7 +33,9 @@ for(const [role,config] of Object.entries(ROLE_CONFIG)){
 }
 
 assert.ok(MOBILE_PRIMARY.length<=4,'mobile primary routes must leave room for More');
-assert.equal(read('_redirects').trim(),'/* /index.html 200');
+{const lines=read('_redirects').trim().split('\n');assert.equal(lines.at(-1),'/* /index.html 200','catch-all SPA rewrite stays last');for(const p of ['partner','business','admin'])assert.ok(lines.includes(`/${p} /${p}.html 200`),`${p} product route`);}
+// option C: four product entry pages share the same assets and differ only in product, title and brand
+for(const [file,product] of [['index.html','customer'],['partner.html','partner'],['business.html','business'],['admin.html','admin']]){const html=read(file);assert.ok(html.includes(`data-product="${product}"`),file);const strip=h=>h.replace(/data-product="[a-z]+"/,'').replace(/<title>.*?<\/title>/,'').replace(/<div class="brand">.*?<\/div>/,'');assert.equal(strip(html),strip(index),`${file} must stay in sync with index.html`)}
 assert.ok(read('netlify.toml').includes('to = "/index.html"'));
 assert.ok(read('js/app.js').includes('window.MoveAIVNextTest'));
 assert.ok(read('js/store.js').includes('localStorage'));

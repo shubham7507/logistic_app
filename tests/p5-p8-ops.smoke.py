@@ -136,7 +136,8 @@ with sync_playwright() as p:
     tmp = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False); tmp.write(b'\xff\xd8fakejpeg'); tmp.close()
     page.set_viewport_size({'width': 1366, 'height': 900})
     main = lambda: page.locator('#main-content').inner_text()
-    ws('personal'); go('purpose'); page.locator('[data-purpose="work"]').click(); page.wait_for_timeout(80)
+    page.evaluate("window.MoveAIVNextTest.switchWorkspace('personal','partner')"); go('home'); page.wait_for_timeout(80)
+    check(page.evaluate('window.MoveAIVNextTest.product()') == 'partner', 'partner app')
     check('Raj Transport invited you' in main(), 'invite pre-fill shown')
     check(page.locator('input[name="workerType"][value="commercialDriver"]').is_checked(), 'invite pre-selects driver type')
     page.fill('[name="name"]', 'Suresh Yadav'); page.fill('[name="location"]', 'Patna')
@@ -163,7 +164,7 @@ with sync_playwright() as p:
     check(any(i['status'] == 'accepted' for i in st()['workerInvites']), 'invite accepted')
     go('work'); check('Browsing only' not in main(), 'verified worker can apply')
     # re-choosing Find work reopens the same profile
-    go('purpose'); page.locator('[data-purpose="work"]').click(); page.wait_for_timeout(80)
+    go('home'); check('Work profile' in page.locator('h1').inner_text(), 'partner home is the work profile')
     check(len([c for c in st()['candidates'] if c['name'] == 'Suresh Yadav']) == 1, 'no duplicate work profile')
 
     # manual fallback: police badge → admin approves
@@ -181,7 +182,7 @@ with sync_playwright() as p:
     check(cand['checks']['police']['status'] == 'verified', 'manual badge approved')
 
     # 10. Business instant checks: GST fetch, penny-drop; fleet RC lookup
-    ws('personal'); go('businessDetails')
+    page.evaluate("window.MoveAIVNextTest.switchWorkspace('personal','business')"); go('businessDetails')
     check(page.locator('[data-gst-fetch]').count() == 1, 'GST fetch present')
     if True:
         page.fill('#business-details-form [name="gstin"]', '09AAACR5055K1Z9'); page.click('[data-gst-fetch]'); page.wait_for_timeout(40)
@@ -198,6 +199,26 @@ with sync_playwright() as p:
     page.locator('form[data-op-form="add-vehicle"] button.primary').click(); page.wait_for_timeout(80)
     check('Ready to assign' in page.locator('#toast').inner_text(), 'vehicle verified from Vahan')
     os.unlink(tmp.name)
+
+    # 11. Option C: each product shows only its own menus
+    for product, file in [('customer', 'index.html'), ('partner', 'partner.html'), ('business', 'business.html'), ('admin', 'admin.html')]:
+        page.goto(f'{BASE}/{file}#/home'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(100)
+        check(page.evaluate('window.MoveAIVNextTest.product()') == product, f'{file} opens {product}')
+        nav = page.locator('#desktop-nav').inner_text()
+        if product == 'customer':
+            for word in ['Work', 'Invitations', 'Payments', 'Find work']: check(word not in nav, f'customer menu hides {word}')
+            check('Book' in nav and 'Account' in nav, 'customer menu')
+            check('Earn with MoveAI Partner' not in page.locator('#main-content').inner_text(), 'no partner pitch on customer home')
+            page.click('#workspace-button'); lst = page.locator('#workspace-list').inner_text(); page.keyboard.press('Escape')
+            check('Raj Logistics' not in lst.split('Other MoveAI apps')[0], 'customer switcher lists no business roles')
+        if product == 'partner': check('Find work' in nav, 'partner menu')
+        if product == 'business': check(page.evaluate('window.MoveAIVNextTest.state().currentWorkspace') in ['transporter', 'goods', 'vehicle', 'movers', 'personal', 'staff'], 'business roles only')
+        if product == 'admin': check(page.evaluate('window.MoveAIVNextTest.state().currentWorkspace') == 'admin', 'admin only')
+        shot(f'20-{product}-home')
+    page.goto(f'{BASE}/index.html#/workerStatus'); page.wait_for_timeout(120)
+    check(page.evaluate('window.MoveAIVNextTest.product()') == 'partner', 'partner deep link from customer app opens Partner')
+    page.goto(f'{BASE}/index.html#/home'); page.wait_for_timeout(100)
+    check(not errors, f'runtime errors: {errors[:3]}')
 
     # 8. mobile layout renders
     page.set_viewport_size({'width': 390, 'height': 844}); ws('commercialDriver'); go('tripDetail'); shot('13-mobile-trip')

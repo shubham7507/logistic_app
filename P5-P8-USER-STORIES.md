@@ -69,3 +69,14 @@ When an instant check fails (record not found, name mismatch, DigiLocker down) t
 **Customers** book with OTP and name only. **Staff** join by invite only. **Admin** has no signup; strong authentication is required.
 
 Tests: `tests/worker-onboarding.unit.mjs`, journeys 9 and 10 in `tests/p5-p8-ops.smoke.py`.
+
+## Option C — four products, one login
+
+| Product | Entry | Roles shown | Personal workspace means |
+|---|---|---|---|
+| MoveAI (customer) | `/` (`index.html`) | Personal only | Customer: Home · Book · My bookings · Messages · Account |
+| MoveAI Partner | `/partner` (`partner.html`) | Commercial Driver, Personal Driver, Khalasi/Helper | Your own partner onboarding: Home (work profile) · Find work · Verification · Messages · Profile |
+| MoveAI Business | `/business` (`business.html`) | Goods, Transporter, Truck Owner, Packers & Movers, Staff | Register a business: setup · application · invitations |
+| MoveAI Admin | `/admin` (`admin.html`) | Platform Admin | — |
+
+The customer app never shows work, invitations or business items. Payments happen inside bookings; receipts, orders and product search sit in Account, which also links to the Partner and Business apps. A link to another product's screen (for example `index.html#/workerStatus`) opens that product, like a deep link. All four pages share one codebase and the same saved data; `tests/p0-static.integration.mjs` keeps them in sync, and journey 11 in the smoke test checks each product's menus.

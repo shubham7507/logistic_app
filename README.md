@@ -2,6 +2,10 @@
 
 Phase P4 adds the goods and opportunity marketplace on the completed P0–P3 application. It also repairs the Commercial Driver availability, matching, application, withdrawal/reapplication and owner hiring pipeline. The v44 reference remains unchanged.
 
+## Four apps (option C)
+
+Open `/` for the customer app, `/partner` for drivers and helpers, `/business` for businesses and staff, and `/admin` for the admin console (locally: `index.html`, `partner.html`, `business.html`, `admin.html`). They share one login and one set of demo data. The workspace switcher lists only the current app's roles, with links to the other apps underneath.
+
 ## P5–P8: complete draw.io application flow
 
 P5–P8 implement every page of `MoveAI_One_All_Users_Complete_Application_Flow.drawio` that was not yet in P0–P4. See `P5-P8-USER-STORIES.md` for the page-by-page traceability map.
