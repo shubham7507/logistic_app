@@ -130,6 +130,41 @@ with sync_playwright() as p:
     s = st(); check(any(x['amount'] == 5000 and x['status'] == 'pending_approval' and str(x.get('reference','')).startswith('VOICE') for x in s['ledger']), 'voice payment saved pending approval')
     page.keyboard.press('Escape'); page.evaluate("document.getElementById('ai-dialog').hidden=true")
 
+
+    # 9. New Commercial Driver: documents first, then verification, then work (draw.io 09)
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False); tmp.write(b'\xff\xd8fakejpeg'); tmp.close()
+    page.set_viewport_size({'width': 1366, 'height': 900})
+    ws('personal'); go('purpose'); page.locator('[data-purpose="work"]').click(); page.wait_for_timeout(80)
+    page.check('input[name="workerType"][value="commercialDriver"]'); page.wait_for_timeout(60)
+    page.fill('[name="name"]', 'Suresh Yadav'); page.fill('[name="location"]', 'Patna')
+    page.fill('[name="licenceNumber"]', 'BR01 20190054321'); page.fill('[name="licenceExpiry"]', '2030-01-31')
+    page.fill('[name="licenceClasses"]', 'LMV'); page.fill('[name="experienceYears"]', '5')
+    page.fill('[name="emergencyName"]', 'Geeta Yadav'); page.fill('[name="emergencyPhone"]', '9876500011')
+    page.locator('#candidate-profile-form button[type=submit]').click(); page.wait_for_timeout(60)
+    check('transport class' in page.locator('#candidate-profile-error').inner_text(), 'LMV refused for commercial driver')
+    page.fill('[name="licenceClasses"]', 'HMV, TRANS'); page.locator('#candidate-profile-form button[type=submit]').click(); page.wait_for_timeout(80)
+    check(page.locator('[data-worker-submit]').is_disabled(), 'submit disabled until documents uploaded')
+    go('work'); check('Complete onboarding first' in page.locator('#main-content').inner_text(), 'work blocked before documents')
+    go('workerDocuments'); shot('16-driver-docs')
+    for key in ['dl_front', 'dl_back', 'id_proof', 'photo', 'address_proof', 'bank']:
+        page.set_input_files(f'[data-worker-doc="{key}"]', tmp.name); page.wait_for_timeout(50)
+    page.locator('[data-worker-submit]').click(); page.wait_for_timeout(80); shot('17-driver-status')
+    check('under verification' in page.locator('#main-content').inner_text().lower(), 'submitted')
+    go('work'); check('Complete onboarding first' in page.locator('#main-content').inner_text(), 'work blocked while verifying')
+    s = st(); cand = next(c for c in s['candidates'] if c['name'] == 'Suresh Yadav'); item = next(v for v in s['verificationQueue'] if v.get('candidateId') == cand['id'])
+    ws('admin'); go('verification')
+    if page.locator('form[data-op-form="admin-stepup"]').count():
+        page.fill('input[name="code"]', '246810'); page.locator('form[data-op-form="admin-stepup"] button').click(); page.wait_for_timeout(80)
+    page.locator(f'[data-op="open-verification"][data-id="{item["id"]}"]').first.click(); page.wait_for_timeout(60)
+    page.select_option('form[data-op-form="admin-decision"] select[name="decision"]', 'approve')
+    page.locator('form[data-op-form="admin-decision"] button').click(); page.wait_for_timeout(80)
+    s = st(); cand = next(c for c in s['candidates'] if c['name'] == 'Suresh Yadav')
+    check(cand['onboarding'] == 'verified' and cand['status'] == 'available', 'admin approval verifies driver')
+    ws('personal'); page.evaluate(f"(()=>{{}})()"); go('work')
+    check('Find Work' in page.locator('h1').inner_text() and 'Complete onboarding' not in page.locator('#main-content').inner_text(), 'verified driver can find work')
+    os.unlink(tmp.name)
+
     # 8. mobile layout renders
     page.set_viewport_size({'width': 390, 'height': 844}); ws('commercialDriver'); go('tripDetail'); shot('13-mobile-trip')
     check(not errors, f'runtime errors: {errors[:3]}')

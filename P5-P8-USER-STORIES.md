@@ -46,3 +46,17 @@ Every node on pages 00–20 was checked against the running app. These were miss
 | 19 Platform Admin | No strong authentication before the verification queue. | Security-code step-up (prototype code `246810`), valid 30 minutes, required again for decisions; failures are audited. |
 | 09 Commercial Driver | Offers did not show the vehicle to review. | Offer rows show route, vehicle, pay, advance and who pays the platform fee. |
 | 01 Choose purpose | Personal services text mentioned products only. | Mentions moving, personal Driver, products and home services. |
+
+## Worker onboarding — documents first (draw.io 09, 10, 11)
+
+A Driver, Khalasi/Helper or office worker cannot be matched, apply, or accept any offer until onboarding is complete.
+
+1. **Details** (`#/candidateProfile`): work type (Commercial Driver, Personal Driver, Khalasi/Helper, Office staff), name, location, availability, pay, emergency contact. Drivers also give licence number (15-character format), validity (must be valid for at least 30 more days), vehicle classes and experience. A Commercial Driver needs a transport class (HMV, HGMV, HPMV, MGV, LGV or TRANS); a personal LMV licence is refused.
+2. **Documents** (`#/workerDocuments`): photo or PDF, up to 5 MB each.
+   - Commercial and Personal Driver: licence front, licence back, Aadhaar/government ID, live photo, address proof, bank passbook or cancelled cheque. Optional: police verification (both), medical fitness and hazardous goods certificate (Commercial).
+   - Khalasi/Helper and office staff: ID, live photo, bank proof. No licence unless the person also drives.
+   Submit stays disabled until every required document is uploaded.
+3. **Verification** (`#/workerStatus`): the submission enters the Admin verification queue. Admin can approve, request a correction (the person re-uploads and resubmits as a new version), reject, or suspend.
+4. **Ready for work**: only after approval do Find Work, applications, business worker search and offer acceptance unlock. Changing licence details later, or an expired licence, blocks work again until new documents are verified.
+
+Seeded demo workers (Amit, Iqbal, Anil) start as already verified. Tests: `tests/worker-onboarding.unit.mjs` and journey 9 in `tests/p5-p8-ops.smoke.py`.

@@ -90,3 +90,11 @@
 #ai-confirm{padding-bottom:18px}
 @media(max-width:860px){.trip-grid{grid-template-columns:1fr}.three-col{grid-template-columns:1fr!important}}
 @media(max-width:620px){.ops-compose{grid-template-columns:1fr 1fr 1fr}.ops-compose input,.ops-compose textarea{grid-column:1/-1}.ledger-row{grid-template-columns:1fr auto}.ledger-row .status-pill{grid-column:1/-1;justify-self:start}.voice-row{align-items:stretch}}
+/* worker onboarding */
+.onboard-steps{list-style:none;display:flex;gap:6px;padding:0;margin:0 0 16px;overflow-x:auto}
+.onboard-steps li{flex:1;min-width:110px;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;background:white;border:1px solid var(--line);color:var(--muted);font-size:14px;font-weight:700}
+.onboard-steps i{font-style:normal;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--line);color:var(--ink);font-size:12px;flex:none}
+.onboard-steps li.current{border-color:var(--brand);color:var(--ink)}.onboard-steps li.current i{background:var(--brand);color:white}
+.onboard-steps li.done{background:var(--brand-soft);color:var(--brand-strong)}.onboard-steps li.done i{background:var(--brand);color:white}
+.wide-progress{max-width:none;margin:0 0 12px}
+.document-row .upload-label{position:relative}

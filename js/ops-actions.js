@@ -5,6 +5,7 @@ import {
   validatePayment, applyMoneyAction, parseVoiceCommand, validateAdminDecision, adminResultStatus, EXCEPTION_TYPES, validateException,
   affectedParties, recalcDues, gpsAllowed, buildMilestones, validateLeave, assignMoverBranch, DOC_TYPES, currentMilestone,
 } from './ops-rules.js';
+import {canTakeWork, applyWorkerDecision} from './worker-onboarding.js';
 import {opsCtx, can, allVehicles, bookingQuote, approvalLimit, summarize, partyName, visibleTrips, inr, orderCloseBlock, adminStepUpValid, inventoryList, todayKey} from './ops.js';
 
 const now = () => new Date().toLocaleString('en-IN', {day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit'});
@@ -261,6 +262,7 @@ export function bindOps(root, api) {
     'offer-accept': id => {
       const s = S(); const o = s.workOffers.find(x => x.id === id && x.to === s.currentWorkspace); if (!o || o.status !== 'pending') return;
       const worker = s.platformWorkers.find(w => w.persona === o.to);
+      { const why = canTakeWork(s.candidates.find(c => c.id === s.selectedCandidateId)); if (why) return api.toast(why); }
       if (o.kind === 'trip' && o.ref) {
         const t = s.trips.find(x => x.id === o.ref);
         if (t) {
@@ -536,6 +538,7 @@ export function bindOps(root, api) {
       const e = validateAdminDecision(x, decision, reason); if (e) return err('decision-error', e);
       x.status = adminResultStatus(decision); x.history.unshift({decision, reason: reason || 'Checks passed', at: now(), by: 'Admin Neha'});
       if (x.kind === 'vehicle' && x.vehicleId) { const v = allVehicles(s).find(v => v.id === x.vehicleId); const ref = s.ownedVehicles[v.owner].find(y => y.id === v.id); const docs = s.vehicleDocs[v.id] || []; if (x.status === 'approved') { ref.documents = 'approved'; ref.documentExpiry = '2027-09-30'; if (ref.status === 'on_hold') ref.status = 'idle'; docs.forEach(d => { d.status = 'approved'; d.expiry = '2027-09-30'; }); } else if (x.status === 'correction_required') { ref.documents = 'correction_required'; docs.forEach(d => { if (d.status !== 'approved') d.status = 'correction_required'; }); } else if (['suspended', 'rejected'].includes(x.status)) ref.documents = x.status; }
+      if (x.candidateId) applyWorkerDecision(s, x, x.status, reason);
       if (x.kind === 'person' && x.ownerWorkspace === 'commercialDriver') { const w = s.platformWorkers.find(p => p.persona === 'commercialDriver'); if (w) w.verified = x.status === 'approved'; }
       if (x.kind === 'person' && x.ownerWorkspace === 'personalDriver' && /Commercial/.test(x.capability) && x.status === 'approved') { const w = s.platformWorkers.find(p => p.persona === 'personalDriver'); w.licences = [...new Set([...w.licences, 'Heavy vehicle (HMV) · commercial'])]; }
       if (decision === 'escalate') s.cases.unshift({id: uid('CASE'), kind: /pay/i.test(reason) ? 'payment' : /safe/i.test(reason) ? 'safety' : 'fraud', subject: `${x.subject} · ${x.capability}`, raisedBy: 'Admin Neha', status: 'open', severity: 'high', at: now(), notes: reason});
