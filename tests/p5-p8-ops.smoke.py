@@ -163,6 +163,10 @@ with sync_playwright() as p:
     check(cand['onboarding'] == 'verified' and cand['status'] == 'available', 'admin approval verifies driver')
     ws('personal'); page.evaluate(f"(()=>{{}})()"); go('work')
     check('Find Work' in page.locator('h1').inner_text() and 'Complete onboarding' not in page.locator('#main-content').inner_text(), 'verified driver can find work')
+    # re-choosing Find work must reopen the same profile, not create a duplicate
+    go('purpose'); page.locator('[data-purpose="work"]').click(); page.wait_for_timeout(80)
+    check(len([c for c in st()['candidates'] if c['name'] == 'Suresh Yadav']) == 1, 'no duplicate work profile')
+    check('Verification status' in page.locator('h1').inner_text(), 'returns to status screen')
     os.unlink(tmp.name)
 
     # 8. mobile layout renders
