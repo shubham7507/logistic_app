@@ -1,5 +1,6 @@
 // MoveAI One — operations actions. Every handler re-checks permissions (never rely on hidden buttons)
 // and writes an audit event. `api` is supplied by app.js so state stays single-sourced.
+import * as Pay from './pay.js';
 import {
   advanceMilestone, canAdvanceMilestone, validateAssignment, crewEligible, docsValid, findConflict, canMoveJob, MOVING_STEPS,
   validatePayment, applyMoneyAction, parseVoiceCommand, validateAdminDecision, adminResultStatus, EXCEPTION_TYPES, validateException,
@@ -112,6 +113,9 @@ export function bindOps(root, api) {
       const s = S(); const d = s.bookingDraft; if (!d) return;
       if (s.currentWorkspace !== 'personal') return api.toast('Only the customer can book.');
       const q = bookingQuote(d); const id = `SR-${700 + s.serviceRequests.length + 1}`;
+      const payType = d.service === 'moving' ? 'moving' : d.service === 'driver' ? 'driver' : 'general'; const bookNow = Pay.bookingAmount(payType, q.total);
+      const pm = {method: root.querySelector('input[name="pay-method"]:checked')?.value || 'upi', vpa: root.querySelector('#pay-vpa')?.value, card: root.querySelector('#pay-card')?.value};
+      let g = null; if (bookNow) { if (d.service === 'moving' && !assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'))) return api.toast('No approved Mover covers this pickup yet. Nothing was charged.'); g = Pay.gateway.collect({...pm, amount: bookNow}); if (!g.ok) { const e = root.querySelector('#pay-error'); if (e) { e.textContent = g.reason; e.hidden = false; } return; } }
       const base = {id, customer: 'personal', date: d.date, quote: q, paid: false, rating: null, createdAt: now()};
       if (d.service === 'moving') {
         const branch = assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'));
@@ -130,9 +134,10 @@ export function bindOps(root, api) {
       } else {
         s.serviceRequests.unshift({...base, type: 'general', title: `${d.category} visit`, category: d.category, provider: 'partner', providerName: 'Verified service partner', status: 'accepted', conversationId: null});
       }
-      audit(s, `Customer booked ${id} (${d.service})`);
+      if (g) { const r0 = s.serviceRequests.find(x => x.id === id); Pay.holdBooking(s, r0, pm, g.ref, bookNow); r0.payMigrated = true; }
+      audit(s, `Customer booked ${id} (${d.service})${g ? ` · ${inr(bookNow)} held by MoveAI Pay` : ''}`);
       s.bookingDraft = null; s.selectedServiceId = id;
-      done(d.service === 'moving' ? 'Booked. The nearest eligible Mover branch was assigned.' : 'Request sent', 'serviceDetail');
+      done(d.service === 'moving' ? `Paid ${inr(bookNow)} · booked. The nearest eligible Mover branch was assigned.` : 'Request sent', 'serviceDetail');
     },
     'service-confirm': id => { const r = S().serviceRequests.find(x => x.id === id && x.customer === S().currentWorkspace); if (!r || r.status !== 'provider_done') return api.toast('Nothing to confirm yet.'); r.status = 'completed'; audit(S(), `Customer confirmed completion of ${id}`); done('Completion confirmed. Pay when ready.'); },
     'service-pay': id => {
@@ -241,13 +246,14 @@ export function bindOps(root, api) {
       }
       if (next === 'packed' && j.inventory.some(x => !x.packed)) return err('moving-error', 'Tick every inventory item as packed.');
       const proof = root.querySelector('#moving-proof')?.value?.trim() || fileName(root.querySelector('#moving-proof-file'));
+      if (next === 'slot_confirmed') { const b = Pay.partnerBlocked(s, j.owner); if (b) return err('moving-error', b); }
       const e = canMoveJob(j, next, {otp: root.querySelector('#moving-otp')?.value, proof});
       if (e) return err('moving-error', e);
       if (next === 'loaded') j.loadingProof = proof;
       if (next === 'in_transit') { j.gps = {consent: true, status: 'active', points: [{place: j.from, at: now()}, {place: 'NH-48 toll plaza', at: now()}]}; }
       if (next === 'unloaded') { j.gps.status = 'stopped'; j.gps.points.push({place: j.to, at: now()}); }
-      if (next === 'paid') { const r = s.serviceRequests.find(x => x.id === j.serviceRequestId); if (!r?.paid) addLedger(s, {owner: j.owner, sourceType: 'moving', sourceId: j.id, type: 'customer_payment', direction: 'receivable', payer: j.customer, payee: j.owner, responsible: j.customer, amount: j.total - (j.customer === 'personal' ? 2000 : 0), method: root.querySelector('#moving-pay-method')?.value || 'upi', reference: `MOVE-${j.id}`, status: 'confirmed', note: 'Customer balance'}); if (r) r.paid = true; }
-      if (next === 'closed') {
+      if (next === 'paid') { const r = s.serviceRequests.find(x => x.id === j.serviceRequestId); if (r && !r.paid) { if ((root.querySelector('#moving-pay-method')?.value || 'upi') !== 'cash') return err('moving-error', 'Waiting for the customer to pay the balance in the app. If they paid you cash, choose Cash.'); Pay.ensurePay(s); Pay.payBalance(s, r, {method: 'cash'}); } }
+      if (next === 'closed') { const rr = s.serviceRequests.find(x => x.id === j.serviceRequestId); if (rr) { Pay.ensurePay(s); Pay.release(s, rr, opsCtx(s).persona.name); }
         if (!j.payoutsCreated) { if (j.vehicle?.source === 'partner') addLedger(s, {owner: j.owner, sourceType: 'moving', sourceId: j.id, type: 'freight', direction: 'payable', payer: j.owner, payee: j.vehicle.owner, responsible: j.owner, amount: Math.round(j.total * 0.35), method: 'bank', reference: `PRT-${j.id}`, status: 'approved', note: 'Vehicle partner payout'}); j.crew.forEach(c => addLedger(s, {owner: j.owner, sourceType: 'moving', sourceId: j.id, type: 'salary', direction: 'payable', payer: j.owner, payee: c.persona || (c.classification === 'staff' ? `staff:${c.id}` : `worker:${c.id}`), responsible: j.owner, amount: c.classification === 'staff' ? 400 : 1500, method: 'upi', reference: `CREW-${j.id}-${c.id}`, status: 'approved', note: `${c.name} ${c.classification === 'staff' ? 'job allowance (salary separate)' : 'per-job wage'}`})); j.payoutsCreated = true; }
         s.bookings.forEach(b => { if (b.ref === j.id) b.status = 'released'; });
         const r = s.serviceRequests.find(x => x.id === j.serviceRequestId); if (r && r.status !== 'closed') r.status = 'completed';
@@ -290,7 +296,7 @@ export function bindOps(root, api) {
       done(o.kind === 'invite' ? 'Invite accepted. Staff onboarding opens with the business.' : 'Accepted. It is now in your assigned work.');
     },
     'offer-decline': id => { const s = S(); const o = s.workOffers.find(x => x.id === id && x.to === s.currentWorkspace); if (!o) return; o.status = 'declined'; notify(s, [o.from], `${partyName(s, o.to)} declined: ${o.title}.`, o.ref); audit(s, `Worker declined offer ${o.id}`); done('Offer declined'); },
-    'driver-accept-request': id => { const s = S(); if (s.currentWorkspace !== 'personalDriver') return; const r = s.serviceRequests.find(x => x.id === id); if (!r || r.status !== 'searching') return api.toast('Another Driver already accepted.'); r.provider = 'personalDriver'; r.providerName = 'Anil Kumar'; r.status = 'accepted'; if (!r.conversationId) { r.conversationId = `CNV-${id}`; s.conversations.unshift({id: r.conversationId, kind: 'job', ref: id, title: `${id} · Personal Driver`, participants: [r.customer, 'personalDriver'].filter(p => !p.startsWith('external')), status: 'open', messages: []}); } notify(s, [r.customer], `Anil Kumar accepted ${id}.`, id); audit(s, `Personal Driver accepted ${id}`); s.selectedServiceId = id; done('Booking accepted', 'driverJob'); },
+    'driver-accept-request': id => { const s = S(); { const b = Pay.partnerBlocked(s, 'personalDriver'); if (b) return api.toast(b); } if (s.currentWorkspace !== 'personalDriver') return; const r = s.serviceRequests.find(x => x.id === id); if (!r || r.status !== 'searching') return api.toast('Another Driver already accepted.'); r.provider = 'personalDriver'; r.providerName = 'Anil Kumar'; r.status = 'accepted'; if (!r.conversationId) { r.conversationId = `CNV-${id}`; s.conversations.unshift({id: r.conversationId, kind: 'job', ref: id, title: `${id} · Personal Driver`, participants: [r.customer, 'personalDriver'].filter(p => !p.startsWith('external')), status: 'open', messages: []}); } notify(s, [r.customer], `Anil Kumar accepted ${id}.`, id); audit(s, `Personal Driver accepted ${id}`); s.selectedServiceId = id; done('Booking accepted', 'driverJob'); },
     'driver-job-step': (id, el) => { const s = S(); const r = s.serviceRequests.find(x => x.id === id && x.provider === s.currentWorkspace); if (!r) return api.toast('Not your booking.'); r.status = el.dataset.next; notify(s, [r.customer], `${id}: ${r.status === 'provider_done' ? 'Driver marked work complete. Please confirm and pay.' : 'Driver started work.'}`, id); audit(s, `Personal Driver ${id} → ${r.status}`); done(r.status === 'provider_done' ? 'Marked complete. Customer confirms next.' : 'Work started'); },
 
     // ---- messages ----

@@ -25,7 +25,7 @@ export function customerHomeScreen(state) {
 
 export function accountScreen(state) {
   const p = state.person || {}; const mobile = state.auth?.mobile || '';
-  const receipts = state.ledger.filter(x => x.payer === 'personal' && x.status !== 'reversed');
+  const receipts = state.ledger.filter(x => (x.payer === 'personal' || (x.payee === 'personal' && x.type === 'refund')) && x.status !== 'reversed');
   return `${head('Account', `${p.name || 'You'} · +91 ${mobile.replace(/(\d{5})(\d{5})/, '$1 $2')}`)}
   <div class="grid two"><section class="panel"><h2>Payments and receipts</h2>${receipts.slice(0, 4).map(x => `<article class="market-row"><span class="market-icon">🧾</span><span><b>${inr(x.amount)}</b><small>${esc(x.id)} · ${esc(x.note || x.type)}</small></span>${pill(x.status)}<button class="button secondary" data-op="open-payment" data-id="${x.id}">View</button></article>`).join('') || '<div class="empty-inline"><b>No payments yet</b></div>'}<button class="button secondary full" data-route="money">All payments</button></section>
   <section class="panel"><h2>Your account</h2><div class="document-list">

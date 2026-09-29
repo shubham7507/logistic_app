@@ -162,6 +162,13 @@ export const MONEY_TYPES = {
   reimbursement: {label: 'Expense / reimbursement', earning: false},
   platform_fee: {label: 'Platform hiring / sourcing fee', earning: false},
   customer_payment: {label: 'Customer / goods payment', earning: false},
+  wallet_credit: {label: 'Released to wallet', earning: true},
+  commission: {label: 'MoveAI commission', earning: false},
+  cash_commission: {label: 'Commission on cash job', earning: false},
+  payout: {label: 'Payout to bank / UPI', earning: false},
+  refund: {label: 'Refund', earning: false},
+  cancellation_fee: {label: 'Cancellation fee', earning: false},
+  penalty: {label: 'No-show penalty', earning: false},
 };
 export const MONEY_STATUSES = ['pending_approval', 'approved', 'paid', 'confirmed', 'closed', 'reversed', 'on_hold'];
 

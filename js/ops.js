@@ -1,5 +1,7 @@
 // MoveAI One — operations screens (draw.io pages 02, 03–11, 13, 15–20).
 import {ROLE_TEMPLATES} from './people-rules.js';
+import * as Pay from './pay.js';
+import * as Freight from './freight.js';
 import {PARTY_NAMES} from './ops-data.js';
 import {
   TRIP_STEPS, currentMilestone, stepMeta, tripProgress, docsValid, MOVING_PACKAGES, HOME_SIZES, DRIVER_RATES, GENERAL_SERVICES,
@@ -126,7 +128,7 @@ export function bookingReviewScreen(state) {
   <div class="grid two"><section class="panel"><h2>${esc(title)}</h2>
     ${d.service === 'moving' ? `<p class="muted">Date: <b>${esc(d.date)}</b> · Vehicle: <b>${esc(q.vehicle)}</b> · Package: <b>${esc(MOVING_PACKAGES[d.pkg]?.label)}</b></p><div class="chip-row">${inventoryList(d.inventory).map(i => `<span class="chip">${esc(i)}</span>`).join('')}</div>` : ''}
     <table class="price-table"><tbody>${q.components.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${inr(v)}</td></tr>`).join('')}<tr class="total"><td>Total</td><td>${inr(q.total)}</td></tr></tbody></table>
-    <div class="form-actions"><button class="button secondary" data-route="book">Edit request</button><button class="button primary" data-op="booking-publish">${d.service === 'moving' ? 'Book move' : d.service === 'driver' ? 'Send to nearby Drivers' : 'Book service'}</button></div></section>
+    ${Pay.checkoutHtml(d.service === 'moving' ? 'moving' : d.service === 'driver' ? 'driver' : 'general', q.total)}<div class="form-actions"><button class="button secondary" data-route="book">Edit request</button><button class="button primary" data-op="booking-publish">${d.service === 'moving' ? `Pay ${inr(Pay.bookingAmount('moving', q.total))} and book` : d.service === 'driver' ? 'Send to nearby Drivers' : 'Book service'}</button></div></section>
   <aside class="panel"><h2>What happens next</h2><ol class="plain-steps">${d.service === 'moving' ? '<li>The platform assigns the best eligible Mover branch near your pickup. You do not need to pick a company.</li><li>The branch confirms your slot, vehicle and crew.</li><li>You track the move and chat in one job conversation.</li><li>Share your completion OTP only after unloading.</li>' : d.service === 'driver' ? '<li>Verified personal Drivers nearby see your request.</li><li>The first Driver to accept is confirmed; you can chat before the start.</li><li>Confirm completion, then pay.</li>' : '<li>A verified partner accepts the visit.</li><li>Confirm completion, pay and rate.</li>'}</ol></aside></div>`;
 }
 
@@ -138,6 +140,10 @@ export function servicesScreen(state) {
 }
 
 export function serviceDetailScreen(state) {
+  const __r = state.serviceRequests.find(x => x.id === state.selectedServiceId && x.customer === 'personal') || state.serviceRequests.find(x => x.customer === 'personal');
+  return serviceDetailBase(state) + (__r ? Pay.servicePayPanel(state, __r) : '');
+}
+function serviceDetailBase(state) {
   const r = state.serviceRequests.find(x => x.id === state.selectedServiceId && x.customer === 'personal') || state.serviceRequests.find(x => x.customer === 'personal');
   if (!r) return servicesScreen(state);
   const job = r.movingJobId ? state.movingJobs.find(j => j.id === r.movingJobId) : null;
@@ -154,7 +160,7 @@ export function serviceDetailScreen(state) {
     ${job ? facts([['Assigned branch', esc(state.movingBranches.find(b => b.id === job.branchId)?.name || 'Assigning…')], ['Vehicle', esc(job.vehicle?.registration || job.vehicleNeed)], ['Crew', esc(job.crew.map(c => c.name).join(', ') || 'Allocating')], ['Live location', job.gps.status === 'active' ? `${esc(job.gps.points.at(-1)?.place || 'Moving')} · live` : label(job.gps.status)]]) : facts([['Provider', esc(r.providerName || 'Finding a match')], ['Date', esc(r.date)], ['Status', pill(r.status)]])}
     ${showOtp ? `<div class="otp-share"><small>Share this completion OTP only after everything is unloaded</small><b>${esc(job.customerOtp)}</b></div>` : ''}
     ${canConfirm ? `<button class="button primary full" data-op="service-confirm" data-id="${r.id}">Confirm work is complete</button>` : ''}
-    ${canPay ? `<div class="form-grid two pay-inline"><label><span>Pay with</span><select id="service-pay-method"><option value="platform">UPI via MoveAI</option><option value="cash">Cash (record only)</option></select></label><label><span>Reference</span><input id="service-pay-ref" value="UPI-${esc(r.id)}"></label></div><button class="button primary full" data-op="service-pay" data-id="${r.id}">Pay ${inr(job ? job.total - 2000 : r.quote?.total)}</button>` : ''}
+    ${canPay ? Pay.balanceFormHtml(state, r) : ''}
     ${canRate ? `<div class="rating" role="radiogroup" aria-label="Rating">${[1, 2, 3, 4, 5].map(n => `<label><input type="radio" name="service-rating" value="${n}" ${n === 5 ? 'checked' : ''}><span>★</span></label>`).join('')}</div><input id="service-comment" class="text-field" placeholder="Anything to share? (optional)"><button class="button primary full" data-op="service-rate" data-id="${r.id}">Rate and close</button>` : ''}
     ${r.rating ? `<div class="info-banner"><b>Closed · rated ${'★'.repeat(r.rating)}</b><span>${esc(r.comment || 'Thank you for your feedback.')}</span></div>` : ''}
     ${!canConfirm && !canPay && !canRate && !r.rating && !showOtp ? `<p class="muted">${job ? 'The Mover branch is working on the next step. You will be notified.' : r.status === 'searching' ? 'Waiting for a verified Driver to accept.' : 'Waiting for the provider to finish.'}</p>` : ''}
@@ -224,7 +230,7 @@ export function tripDetailScreen(state) {
         <p class="muted">Status: ${pill(t.gps.status)} ${t.gps.consent ? '· Driver consented for this trip only' : '· Driver consent pending'}</p>
         ${isDriver ? (!t.gps.consent ? `<label class="consent-row"><input type="checkbox" id="gps-consent"> I allow location sharing for ${esc(t.id)} only, until the trip closes.</label><button class="button secondary full" data-op="gps-consent" data-id="${t.id}">Save consent</button>` : gpsBlock ? `<p class="mock-hint">${esc(gpsBlock)}</p>` : `<button class="button secondary full" data-op="gps-ping" data-id="${t.id}">Send location update</button>`) : ''}
       </section>
-      <section class="panel"><h2>${ws === 'commercialDriver' || ws === 'helper' ? 'Your pay' : 'Money'}</h2>${facts(tripTermsFor(state, t))}${can(state, 'trip.settle', t) || (ws === 'staff' && opsCtx(state).perms.includes('money.prepare') && opsCtx(state).ownerWs === t.owner) ? '<button class="button primary full" data-route="tripSettlement">Crew settlement: bata, advances, receipts</button>' : ''}<button class="button secondary full" data-route="money">Open Money</button></section>
+      <section class="panel"><h2>${ws === 'commercialDriver' || ws === 'helper' ? 'Your pay' : 'Money'}</h2>${facts(tripTermsFor(state, t))}${can(state, 'trip.settle', t) || (ws === 'staff' && opsCtx(state).perms.includes('money.prepare') && opsCtx(state).ownerWs === t.owner) ? '<button class="button primary full" data-route="tripSettlement">Crew settlement: bata, advances, receipts</button>' : ''}${['goods', 'transporter', 'vehicle', 'staff'].includes(ws) ? Freight.tripInvoiceBanner(state, t) : ''}<button class="button secondary full" data-route="money">Open Money</button></section>
       ${next.length ? `<section class="panel"><h2>Next load near ${esc(t.to.split(',')[0])}</h2>${next.map(l => `<article class="market-row"><span class="market-icon">🧭</span><span><b>${esc(l.route || `${l.pickup} → ${l.drop}`)}</b><small>${esc(l.goods || '')} · ${esc(l.capacity)} t · ${esc(l.date)}</small></span><span></span><button class="button secondary" data-op="offer-next-load" data-id="${t.id}" data-load="${l.id}">${ws === 'vehicle' ? 'Request' : 'Offer to truck'}</button></article>`).join('')}</section>` : ''}
       ${ws === 'goods' && t.milestones.find(m => m.key === 'received')?.status === 'done' ? closeOutPanel(state, t) : ''}
       <button class="button secondary full" data-op="report-exception" data-ref="${t.id}">Report a problem on this trip</button>
@@ -351,7 +357,7 @@ export function movingJobScreen(state) {
         : k === 'packed' ? `<div class="checklist">${j.inventory.map((x, n) => `<label><input type="checkbox" data-op-change="inventory-tick" data-id="${j.id}" data-index="${n}" ${x.packed ? 'checked' : ''}> ${esc(x.item)}</label>`).join('')}</div><div class="inline-add"><input id="inventory-new" class="text-field" placeholder="Add an item"><button type="button" class="button secondary" data-op="inventory-add" data-id="${j.id}">Add</button></div>`
           : k === 'loaded' ? `<label><span>Loading proof</span><input type="file" id="moving-proof-file" accept="image/*"><input id="moving-proof" class="text-field" placeholder="or type photo name"></label>`
             : k === 'otp_verified' ? `<label><span>Customer completion OTP</span><input id="moving-otp" class="otp-input" inputmode="numeric" maxlength="4" placeholder="4 digits"></label><p class="mock-hint">Demo OTP for this job: ${esc(j.customerOtp)} (shown to the customer in My services).</p>`
-              : k === 'paid' ? `<label><span>Customer balance received by</span><select id="moving-pay-method"><option value="upi">UPI</option><option value="cash">Cash</option><option value="platform">Paid in app</option></select></label>` : '';
+              : k === 'paid' ? `<label><span>Customer balance received by</span><select id="moving-pay-method"><option value="platform">Customer paid in the app</option><option value="cash">Customer paid cash to crew</option></select></label>` : '';
     action = `<div class="milestone-action">${action}<p id="moving-error" class="field-error" hidden></p><button class="button primary full" data-op="moving-step" data-id="${j.id}" data-next="${k}">${esc(k === 'closed' ? 'Release partner and crew payouts, close job' : next[1])}</button></div>`;
   }
   return `${head(`${j.size} · ${j.customerName}`, `${j.id} · ${j.from} → ${j.to} · ${j.date}`, j.conversationId ? `<button class="button secondary" data-op="open-conversation" data-id="${j.conversationId}">Job chat</button>` : '')}

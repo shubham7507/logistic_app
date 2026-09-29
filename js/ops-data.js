@@ -3,7 +3,7 @@ import {buildMilestones, DOC_TYPES} from './ops-rules.js';
 const done = (ms, keys, extra = {}) => ms.map(m => keys.includes(m.key) ? {...m, status: 'done', at: extra[m.key]?.at || '27 Sep 2026, 7:10 AM', proof: extra[m.key]?.proof || null, by: extra[m.key]?.by || 'System'} : m);
 const docs = (status, expiry = '2027-03-31') => DOC_TYPES.map(type => ({type, status, file: status === 'missing' ? '' : `${type.toLowerCase()}-scan.pdf`, expiry, uploadedBy: status === 'missing' ? '' : 'Suresh Paswan · Document Staff'}));
 
-export const PARTY_NAMES = {
+export const PARTY_NAMES = {moveai: 'MoveAI Pay', 
   personal: 'Shubham Kumar', goods: 'Sharma Foods', transporter: 'Raj Logistics', vehicle: 'Raj Transport', movers: 'SafeMove Packers',
   commercialDriver: 'Mohan Yadav', personalDriver: 'Anil Kumar', helper: 'Ramesh Yadav', platform: 'MoveAI platform', admin: 'Platform Admin',
   'external:metro': 'Metro Retail', 'external:bihar-agro': 'Bihar Agro Mills', 'external:ritika': 'Ritika Jain', 'staff:STAFF-002': 'Sunita Verma', 'staff:STAFF-001': 'Ravi Kumar',

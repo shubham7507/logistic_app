@@ -120,3 +120,46 @@ Note: the older P3 Playwright test `tests/p3-people.e2e.cjs` expected the previo
 **People › Payroll** — monthly run: attendance (present / leave / absent) → gross → optional PF, ESI, PT (simplified, off by default) → salary advance instalment → carried khata balance → net. Draft → Prepared → Approved → Paid; a line can be held; staff approvers are limited by their approval limit and cannot approve a run they prepared. Paying posts salary to each khata and creates the payments; payslips appear in My Money.
 
 Tests: `tests/workforce.unit.mjs`, `tests/workforce.smoke.py`.
+
+## MoveAI Pay — one payments service (option E, step 1)
+
+`js/pay.js` is the single payments module every screen calls, mirroring a separate payments service. It sits on the existing ledger and talks to a **simulated licensed payment aggregator** (collect, hold, release, refund, payout). In production this is Razorpay / Cashfree / PayU; MoveAI never holds customer money in its own account.
+
+Consumer jobs (collect and pay out):
+- Booking amount at checkout: moving 20% (min ₹500) by UPI or card; drivers and home services pay after the work. Failed payments book nothing.
+- Money is **held** until the job is done. Moving: customer pays the balance after sharing the completion OTP (or pays the crew in cash); everything held is **released** to the Mover's wallet minus 10% commission when the job closes. Drivers 12%, home services 15%, released when the customer pays after confirming completion.
+- Cancellation: free before crew/driver is assigned; after that 10% (min ₹299, max ₹1,500) kept for the partner; not allowed once the job has started (raise a problem instead). Partner no-show: full refund and ₹500 penalty. Refunds go to the original method.
+- Cash jobs: commission becomes wallet debt; above ₹2,000 owed the partner cannot confirm new slots or accept requests until they pay it.
+
+Partner wallet (Money for Packers & Movers and Personal Driver): available balance, money held for jobs in progress, cash commission, weekly payout every Monday, instant payout (₹10 fee), payout account, failed payout with retry.
+
+Business → worker payments (khata settlement, payroll) now go through the aggregator payout call and can fail visibly.
+
+Admin → **MoveAI Pay**: money held for customers, refunds, commission, partner wallets, failed payouts, and "Run weekly payouts".
+
+Test data (shown on every payment form): UPI `fail@upi` or a card ending `0002` fails; a payout account ending `000` or `fail@upi` fails.
+
+Tests: `tests/pay.unit.mjs`, `tests/pay.smoke.py`, plus `tests/syntax.static.mjs`, which now checks that every module parses.
+
+Next steps for option E: freight milestones (protected advance at loading, balance after POD, holds on disputes) and B2B credit terms with invoices, GST and TDS.
+
+## Freight billing — phase 1 (records, invoices, credit, GST, TDS)
+
+Business app → **Billing** (Goods, Transporter, Truck Owner; staff with money access). Money still moves by the businesses' own bank transfers; MoveAI keeps both sides in step.
+
+- **Invoices from trips**: issuer (Transporter → Goods owner, Truck Owner → Transporter) picks a trip; freight is pre-filled from the trip terms. Invoice numbers follow the Indian financial year (`RL/26-27/0001`). Both GSTINs, SAC 996511, printable / save as PDF.
+- **GST mode per invoice**: reverse charge (recipient pays; shown as a note), forward charge (added to the invoice) or none. Rates are settings with placeholder defaults.
+- **TDS (section 194C)**: calculated on the amount excluding GST; 1% for proprietors/individuals, 2% for firms and companies; exempt when the transporter declared ≤10 trucks with PAN (Raj Transport); thresholds are settings. The payer records TDS with the payment; certificate status (pending → issued → received).
+- **Terms tied to milestones**: advance becomes due when the trip is loaded; balance after the delivery proof plus credit days. Or full amount on credit (e.g. 30 days).
+- **Extra charges** (detention, extra drop, loading) proposed by the issuer with evidence and approved by the payer → invoice revision. **Shortage** from the receipt is added as a proposed deduction; the issuer accepts or disputes; a disputed amount is held (not demanded) until settled.
+- **Part payments**: the payer records amount, method and UTR; the receiver confirms it arrived. Outstanding, due now, overdue days.
+- **Reminders** 7 days and 1 day before, on the due date, and 3 / 10 days overdue, plus "Send reminder".
+- **Credit control per customer**: credit days, credit limit, and "pause new trips after N overdue days"; warnings on Billing and the trip.
+- **E-way bill** check when goods value is above ₹50,000 (enter the 12-digit number).
+- **Export for Tally (CSV)**: sales/purchase, receipts/payments and TDS journal rows.
+
+Demo: Raj Logistics has an overdue invoice to Sharma Foods (credit rule shows "new trips paused"), an advance-and-balance invoice for TRP-501, and Raj Transport has a TDS-exempt invoice to Raj Logistics.
+
+Tests: `tests/freight.unit.mjs`, `tests/freight.smoke.py`.
+
+Not in phase 1: holding the shipper's money (phase 2, protected payment), early payment against delivery proof and fuel cards (phase 3), e-invoice IRN and e-way bill API connections.
