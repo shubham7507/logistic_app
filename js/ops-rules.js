@@ -158,7 +158,7 @@ export const MONEY_TYPES = {
   freight: {label: 'Freight / partner payout', earning: true},
   advance: {label: 'Advance (Truck Owner, Driver, Khalasi or staff)', earning: false},
   salary: {label: 'Salary, wage, bonus or final settlement', earning: true},
-  deduction: {label: 'Deduction', earning: true},
+  deduction: {label: 'Deduction', earning: false, reducesEarnings: true},
   reimbursement: {label: 'Expense / reimbursement', earning: false},
   platform_fee: {label: 'Platform hiring / sourcing fee', earning: false},
   customer_payment: {label: 'Customer / goods payment', earning: false},

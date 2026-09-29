@@ -106,3 +106,17 @@ Invitee (separate session in that tab): landing with business, role, branch, pay
 Tests: `tests/staff-join.unit.mjs`, `tests/staff-invite.smoke.py`.
 
 Note: the older P3 Playwright test `tests/p3-people.e2e.cjs` expected the previous in-app "Test invite" flow; the People "invite" rows now open the link flow instead.
+
+## Workforce and worker money (W4 + P4)
+
+**People › Workforce** — one list of everyone who works for the business: office staff and field crew; engagement tag Permanent, Temporary, Per-trip (platform), Partner crew (paid by their Truck Owner) or Contractor-supplied; today's duty; pay basis; khata balance (money columns only for owners and accounts). "Make permanent" turns a per-trip or temporary worker into a staff invitation.
+
+**People › Duty board** — field crew for today and the next two days: Free, On trip / job, On leave, Resting after a long haul (24h+ trip ended within 10 hours). Free crew can be sent straight to a waiting trip.
+
+**Trip › Crew settlement** — per crew member: trip wage (per-trip workers), bata = days × rate, approved receipts (FASTag tolls are the business's cost, not reimbursed), minus advances paid for the trip → due to worker or to be returned. Every receipt must be approved or rejected before posting to the khata. Partner crew shows "paid by their Truck Owner" with no amounts.
+
+**Khata** — each worker's running balance: earned + reimbursements − deductions − payments + cash returned. Deductions need a reason, an explanation and evidence; amounts above the cap (₹5,000) need owner override; vehicle-paper fines cannot be deducted. The worker sees the same khata under My Money and can dispute a deduction; disputed amounts are not counted until the owner upholds or waives them. Owners pay the balance or record unspent advance returned.
+
+**People › Payroll** — monthly run: attendance (present / leave / absent) → gross → optional PF, ESI, PT (simplified, off by default) → salary advance instalment → carried khata balance → net. Draft → Prepared → Approved → Paid; a line can be held; staff approvers are limited by their approval limit and cannot approve a run they prepared. Paying posts salary to each khata and creates the payments; payslips appear in My Money.
+
+Tests: `tests/workforce.unit.mjs`, `tests/workforce.smoke.py`.

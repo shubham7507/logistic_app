@@ -128,3 +128,14 @@ body.join-mode .main,body.join-mode main,body.join-mode .content{margin-left:0!i
 body.join-mode .app-shell{grid-template-columns:1fr}
 body.join-mode .app-main{grid-column:1/-1}
 body.join-mode .staff-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* workforce, duty board, payroll, khata */
+.filter-row{margin:12px 0}.chip{border:1px solid transparent;cursor:pointer;font:inherit}.chip.active{background:var(--brand);color:white}
+.data-table{width:100%;border-collapse:collapse;min-width:720px}.data-table th{text-align:left;font-size:12px;color:var(--muted);padding:8px;border-bottom:1px solid var(--line)}
+.data-table td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}.data-table tfoot td{border-bottom:0;padding-top:12px}
+.data-table small.block,.block{display:block}.data-table tr.held{opacity:.55}
+.duty-table td.duty{border-radius:8px}.duty-table td.duty b{display:block;font-size:13px}.duty-table td.duty small{display:block;color:var(--muted);font-size:12px}
+td.duty.free{background:#eef8f3}td.duty.on_trip,td.duty.on_job{background:var(--info-soft)}td.duty.on_leave{background:var(--warning-soft)}td.duty.resting{background:#f1effa}td.duty.unavailable{background:var(--danger-soft)}
+.legend .free::before{background:#eef8f3}.legend .on_trip::before{background:var(--info-soft)}.legend .on_leave::before{background:var(--warning-soft)}.legend .resting::before{background:#f1effa}
+.payroll-steps{display:flex;gap:6px;margin:12px 0}.payroll-steps span{flex:1;text-align:center;padding:8px;border-radius:10px;background:white;border:1px solid var(--line);font-weight:700;color:var(--muted)}.payroll-steps span.done{background:var(--brand-soft);color:var(--brand-strong);border-color:var(--brand)}
+.ledger-row.static{cursor:default}.inline-form{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.inline-form>*{flex:1;min-width:120px}
+.self-khata{margin-bottom:22px}
