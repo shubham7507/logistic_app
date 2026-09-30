@@ -157,3 +157,11 @@ The browser E2E suite needs a Playwright Chromium binary. Without it, browser st
 8. Raj Transport → Work → **Next load** to see the compatible Jaipur → Delhi recommendation.
 
 Full P0–P3 traceability is in `P0-P3-USER-STORIES.md` and `P0-P3-E2E-TEST-PLAN.md`. Phase 4 is in `P4-USER-STORIES.md` and `P4-E2E-TEST-PLAN.md`.
+
+## Product shopping flow
+
+Customer product search, mixed-store cart and checkout are available in `index.html#/search`. One checkout creates separate store orders and tracking in `#/orders`. See `COMMERCE-E2E-TEST-REPORT.md` for the current coverage and prototype limits.
+
+## Grocery commerce across roles
+
+Use `index.html` for customer orders, `seller.html` for the two mock grocery stores, `delivery.html` for the two mock delivery partners, and `admin.html#/commerceOps` for oversight. They share mock order state on the same browser origin. See `COMMERCE-E2E-TEST-REPORT.md` for the full manual walkthrough, automated results and demo limits. Run `npm run test:commerce`, `npm run test:unit` and `npm run test:static` from this folder.

@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import * as O from '../js/product-orders.js';
+import {SEED} from '../js/mock-data.js';
+const fresh=()=>structuredClone(SEED);
+let s=fresh();
+assert.match(O.searchScreen({...s, productQuery:'nonexistent'}),/No products found/);
+assert.doesNotMatch(O.searchScreen({...s, productQuery:'rice'}),/Fortune Chakki Atta/);
+assert.equal(O.addToCart(s,'PRD-101'),'');
+assert.equal(O.addToCart(s,'PRD-103'),'');
+assert.equal(O.addToCart(s,'PRD-102'),'');
+assert.equal(O.updateCart(s,'PRD-102',0),'');
+assert.equal(O.updateCart(s,'PRD-101',2),'');
+assert.equal(O.updateCart(s,'PRD-103',0),'');
+assert.equal(O.addToCart(s,'PRD-103'),'');
+assert.deepEqual(O.quote(O.cartLines(s).map(i=>({price:i.product.price,quantity:i.quantity}))),{items:1448,delivery:0,total:1448});
+assert.match(O.placeOrder(s,{fromCart:true,address:'',method:'cod'}).error,/address/);
+assert.equal(s.productCart.length,2);
+let r=O.placeOrder(s,{fromCart:true,address:'42 MG Road, Delhi 110001',method:'upi',vpa:'fail@upi'});
+assert.match(r.error,/declined/); assert.equal(s.productCart.length,2);
+r=O.placeOrder(s,{fromCart:true,address:'42 MG Road, Delhi 110001',method:'upi',vpa:'a@okaxis',substitution:'refund'});
+assert.equal(r.order.total,1448); assert.equal(r.order.items.length,2);assert.equal(r.order.substitution,'refund');assert.equal(s.productCart.length,0);
+assert.equal(O.advanceOrder(s,r.order),'');assert.equal(r.order.status,'accepted');
+assert.equal(O.cancelOrder(s,r.order),'');assert.equal(s.ledger.find(x=>x.orderId===r.order.id&&x.type==='refund').amount,1448);
+// One checkout can create two independently fulfilled store orders.
+s=fresh();O.addToCart(s,'PRD-101');O.addToCart(s,'PRD-102');
+r=O.placeOrder(s,{fromCart:true,address:'Delhi',method:'upi',vpa:'a@okaxis'});
+assert.equal(r.orders.length,2);assert.equal(r.total,1195);assert.equal(r.orders.reduce((n,o)=>n+o.total,0),1195);
+assert.equal(new Set(r.orders.map(o=>o.party)).size,2);
+assert.equal(new Set(s.ledger.filter(x=>x.checkoutId===r.checkoutId).map(x=>x.reference)).size,1);
+// A successful order keeps the item price snapshot for billing even when the catalogue changes.
+s=fresh();O.addToCart(s,'PRD-101');r=O.placeOrder(s,{fromCart:true,address:'X',method:'cod'});s.products[0].price=999;
+for(let n=0;n<4;n++)O.advanceOrder(s,r.order);
+assert.equal(r.order.status,'delivered');assert.equal(s.customerInvoices.find(i=>i.ref===r.order.id).total,710);
+console.log(JSON.stringify({status:'PASS',suite:'Shop search, cart, checkout and fulfilment'}));

@@ -37,6 +37,8 @@ export function accountScreen(state) {
   <section class="panel other-apps"><h2>More from MoveAI</h2><p class="muted">Same login. Each opens its own app.</p><div class="grid two">
     <a class="app-card" href="${productLink('partner')}"><span class="brand-mark">P</span><span><b>Earn with MoveAI Partner</b><small>Drive trucks or cars, or work as a helper. Start browsing jobs in a minute.</small></span></a>
     <a class="app-card" href="${productLink('business')}"><span class="brand-mark">B</span><span><b>Register your business on MoveAI Business</b><small>Goods, transport, trucks or packers & movers. Business invitations open there too.</small></span></a>
+    <a class="app-card" href="${productLink('seller')}"><span class="brand-mark">S</span><span><b>Demo: Grocery Seller</b><small>Accept orders, manage stock and see settlements.</small></span></a>
+    <a class="app-card" href="${productLink('delivery')}"><span class="brand-mark">D</span><span><b>Demo: Delivery Partner</b><small>Accept jobs, verify delivery and hand over COD cash.</small></span></a>
   </div></section>`;
 }
 

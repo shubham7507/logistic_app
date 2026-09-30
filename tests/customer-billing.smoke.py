@@ -62,7 +62,14 @@ with sync_playwright() as p:
     # 3. product receipt + invoice after delivery
     go('search'); pg.locator('[data-action="buy-product"]').nth(1).click(); pg.wait_for_timeout(80); pg.locator('form[data-po-form="checkout"] button[type=submit]').click(); pg.wait_for_timeout(100)
     o = st()['customerOrders'][0]
-    for _ in range(3): pg.locator(f'[data-po="advance"][data-id="{o["id"]}"]').click(); pg.wait_for_timeout(60)
+    pg.goto('http://127.0.0.1:4211/seller.html#/shopOrders'); pg.wait_for_timeout(100)
+    pg.locator(f'[data-commerce="accept"][data-id="{o["id"]}"]').click(); pg.locator(f'[data-commerce="pack"][data-id="{o["id"]}"]').click()
+    order = next(x for x in st()['customerOrders'] if x['id'] == o['id'])
+    pg.goto('http://127.0.0.1:4211/delivery.html#/deliveryJobs'); pg.wait_for_timeout(100)
+    pg.locator(f'[data-commerce="accept-job"][data-id="{o["id"]}"]').click()
+    pg.locator(f'[data-code="{o["id"]}"]').fill(order['pickupCode']); pg.locator(f'[data-commerce="pickup"][data-id="{o["id"]}"]').click()
+    pg.locator(f'[data-code="{o["id"]}"]').fill(order['deliveryCode']); pg.locator(f'[data-commerce="deliver"][data-id="{o["id"]}"]').click()
+    pg.goto('http://127.0.0.1:4211/index.html#/orders'); pg.wait_for_timeout(100)
     check('Tax invoice' in main() and 'Receipt' in main(), 'order receipt + invoice')
     # 4. customer Payments screen (no business terms)
     go('money'); t = main(); check('Bookings' in t and 'Product orders' in t and 'Refunds' in t and 'Record payment' not in t and 'Your limit' not in t, 'customer Payments screen'); shot('106-customer-payments')

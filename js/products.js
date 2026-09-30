@@ -7,6 +7,8 @@ export const PRODUCTS = {
   partner: {name: 'MoveAI Partner', tagline: 'Driving and helper work', file: 'partner.html', mark: 'P', roles: ['personal', 'commercialDriver', 'personalDriver', 'helper'], defaultWs: 'personal'},
   business: {name: 'MoveAI Business', tagline: 'Loads, fleet, moving and team', file: 'business.html', mark: 'B', roles: ['personal', 'goods', 'transporter', 'vehicle', 'movers', 'staff'], defaultWs: 'transporter'},
   admin: {name: 'MoveAI Admin', tagline: 'Internal console', file: 'admin.html', mark: 'A', roles: ['admin'], defaultWs: 'admin'},
+  seller: {name: 'MoveAI Seller', tagline: 'Grocery orders and store payouts', file: 'seller.html', mark: 'S', roles: ['grocery','groceryFresh'], defaultWs: 'grocery'},
+  delivery: {name: 'MoveAI Delivery', tagline: 'Deliveries and COD cash', file: 'delivery.html', mark: 'D', roles: ['deliveryPartner','deliveryPartner2'], defaultWs: 'deliveryPartner'},
 };
 
 // Which product owns a workspace (the Personal workspace appears in three products with different purposes).
@@ -14,6 +16,8 @@ export function productForWorkspace(ws) {
   if (['commercialDriver', 'personalDriver', 'helper'].includes(ws)) return 'partner';
   if (['goods', 'transporter', 'vehicle', 'movers', 'staff'].includes(ws)) return 'business';
   if (ws === 'admin') return 'admin';
+  if (['grocery','groceryFresh'].includes(ws)) return 'seller';
+  if (['deliveryPartner','deliveryPartner2'].includes(ws)) return 'delivery';
   return 'customer';
 }
 
@@ -21,7 +25,7 @@ export function productForWorkspace(ws) {
 // the way a deep link would open the right app.
 const PARTNER_ROUTES = ['work', 'workerStatus', 'workerVerify', 'workerDocuments', 'candidateProfile', 'applyOpening', 'openingDetail'];
 const BUSINESS_ROUTES = ['businessStart', 'businessDetails', 'businessKyc', 'branches', 'branchEditor', 'bank', 'applicationStatus', 'invitations', 'purposeBusiness'];
-const CUSTOMER_ROUTES = ['billDoc', 'productCheckout', 'book', 'bookingReview', 'services', 'serviceDetail', 'search', 'orders', 'account', 'movingJob', 'payment', 'purpose', 'consentDetails'];
+const CUSTOMER_ROUTES = ['billDoc', 'productCheckout', 'book', 'bookingReview', 'services', 'serviceDetail', 'search', 'cart', 'orders', 'account', 'movingJob', 'payment', 'purpose', 'consentDetails'];
 export function personalRouteOwner(route) {
   if (PARTNER_ROUTES.includes(route)) return 'partner';
   if (BUSINESS_ROUTES.includes(route)) return 'business';
@@ -40,5 +44,5 @@ export const PERSONAL_LABEL = {
   partner: {label: 'My partner profile', subtitle: 'New partner'},
   business: {label: 'Register a business', subtitle: 'Business setup'},
 };
-export const PRODUCT_TITLES = {customer: 'MoveAI — book moves, drivers and services', partner: 'MoveAI Partner — find driving and helper work', business: 'MoveAI Business', admin: 'MoveAI Admin'};
+export const PRODUCT_TITLES = {customer: 'MoveAI — book moves, drivers and services', partner: 'MoveAI Partner — find driving and helper work', business: 'MoveAI Business', admin: 'MoveAI Admin', seller:'MoveAI Seller — grocery orders', delivery:'MoveAI Delivery — grocery jobs'};
 export const productLink = (product, route = 'home') => `./${PRODUCTS[product].file}#/${route}`;
