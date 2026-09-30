@@ -17,6 +17,9 @@ const BASE=process.env.MOVEAI_BASE||'http://127.0.0.1:4177';
   assert.ok((await page.url()).endsWith('#/otp'));
   await page.locator('#otp').fill('123456');
   await page.locator('#otp-form').dispatchEvent('submit');
+  // New people choose what they want to do first (P1 purpose step), then land on Home.
+  assert.ok((await page.url()).endsWith('#/purpose'));
+  await page.locator('[data-purpose="personal"]').click();
   assert.ok((await page.url()).endsWith('#/home'));
   let state=await page.evaluate(()=>window.MoveAIVNextTest.state());
   assert.deepEqual(state.workspaces,['personal']);
@@ -37,7 +40,7 @@ const BASE=process.env.MOVEAI_BASE||'http://127.0.0.1:4177';
   assert.equal(new Set(state.workspaces).size,state.workspaces.length);
 
   // Invitation acceptance adds authorized workspace once.
-  await page.goto(`${BASE}/#/invitations`);
+  await page.goto(`${BASE}/business.html#/invitations`);
   const id=await page.locator('[data-action="accept-invite"]').first().getAttribute('data-invite');
   await page.locator(`[data-invite="${id}"][data-action="accept-invite"]`).click();
   state=await page.evaluate(()=>window.MoveAIVNextTest.state());
@@ -46,7 +49,7 @@ const BASE=process.env.MOVEAI_BASE||'http://127.0.0.1:4177';
 
   // Business workspace cannot deep-link to Personal invitations.
   await page.evaluate(()=>window.MoveAIVNextTest.switchWorkspace('goods'));
-  await page.goto(`${BASE}/#/invitations`);
+  await page.goto(`${BASE}/business.html#/invitations`);
   assert.equal(await page.locator('.error-page h1').textContent(),'Access denied');
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS',newIdentity:true,duplicateRecovery:true,invitationAcceptance:true,workspaceBoundary:true,mobile:true},null,2));

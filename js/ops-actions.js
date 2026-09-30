@@ -113,7 +113,7 @@ export function bindOps(root, api) {
       const s = S(); const d = s.bookingDraft; if (!d) return;
       if (s.currentWorkspace !== 'personal') return api.toast('Only the customer can book.');
       const q = bookingQuote(d); const id = `SR-${700 + s.serviceRequests.length + 1}`;
-      const payType = d.service === 'moving' ? 'moving' : d.service === 'driver' ? 'driver' : 'general'; const bookNow = Pay.bookingAmount(payType, q.total);
+      const payType = d.service === 'moving' ? 'moving' : d.service === 'driver' ? 'driver' : 'general'; const pricing = Pay.resolvePricing(s, {service: payType, city: d.from || d.location || '', partner: payType === 'moving' ? (assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'))?.workspace || '') : payType === 'driver' ? 'personalDriver' : '', date: d.date}); const bookNow = Pay.bookingAmount(payType, q.total, pricing);
       const pm = {method: root.querySelector('input[name="pay-method"]:checked')?.value || 'upi', vpa: root.querySelector('#pay-vpa')?.value, card: root.querySelector('#pay-card')?.value};
       let g = null; if (bookNow) { if (d.service === 'moving' && !assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'))) return api.toast('No approved Mover covers this pickup yet. Nothing was charged.'); g = Pay.gateway.collect({...pm, amount: bookNow}); if (!g.ok) { const e = root.querySelector('#pay-error'); if (e) { e.textContent = g.reason; e.hidden = false; } return; } }
       const base = {id, customer: 'personal', date: d.date, quote: q, paid: false, rating: null, createdAt: now()};
@@ -134,10 +134,10 @@ export function bindOps(root, api) {
       } else {
         s.serviceRequests.unshift({...base, type: 'general', title: `${d.category} visit`, category: d.category, provider: 'partner', providerName: 'Verified service partner', status: 'accepted', conversationId: null});
       }
-      if (g) { const r0 = s.serviceRequests.find(x => x.id === id); Pay.holdBooking(s, r0, pm, g.ref, bookNow); r0.payMigrated = true; }
+      { const r0 = s.serviceRequests.find(x => x.id === id); if (r0) { r0.pricing = pricing; r0.payMigrated = true; if (g) Pay.holdBooking(s, r0, pm, g.ref, bookNow, g); } }
       audit(s, `Customer booked ${id} (${d.service})${g ? ` · ${inr(bookNow)} held by MoveAI Pay` : ''}`);
       s.bookingDraft = null; s.selectedServiceId = id;
-      done(d.service === 'moving' ? `Paid ${inr(bookNow)} · booked. The nearest eligible Mover branch was assigned.` : 'Request sent', 'serviceDetail');
+      done(d.service === 'moving' ? (g?.pending ? `Payment of ${inr(bookNow)} is processing. We will confirm your booking shortly.` : `Paid ${inr(bookNow)} · booked. The nearest eligible Mover branch was assigned.`) : 'Request sent', 'serviceDetail');
     },
     'service-confirm': id => { const r = S().serviceRequests.find(x => x.id === id && x.customer === S().currentWorkspace); if (!r || r.status !== 'provider_done') return api.toast('Nothing to confirm yet.'); r.status = 'completed'; audit(S(), `Customer confirmed completion of ${id}`); done('Completion confirmed. Pay when ready.'); },
     'service-pay': id => {

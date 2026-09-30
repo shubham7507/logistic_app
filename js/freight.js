@@ -5,6 +5,7 @@
 // Tax defaults are placeholders the business must confirm with its CA; every rate is a setting.
 import {esc, pill, inr, opsCtx} from './ops.js';
 import {record} from './pay.js';
+import * as Gst from './gst-portal.js';
 
 const DAY = 86400000;
 const BIZ = ['goods', 'transporter', 'vehicle', 'movers'];
@@ -21,7 +22,7 @@ export const GST_MODES = {rcm: 'GST paid by the recipient (reverse charge)', for
 // ---------- setup ----------
 export function ensureFreight(state) {
   state.freightSettings ||= {
-    transporter: {legalName: 'Raj Logistics', gstin: '09AAEFR4521K1Z3', pan: 'AAEFR4521K', entity: 'Partnership', prefix: 'RL', nextNo: 3, gstMode: 'rcm', rcmRate: 5, forwardRate: 12, address: 'Sector 63, Noida, Uttar Pradesh'},
+    transporter: {legalName: 'Raj Logistics', gstin: '09AAEFR4521K1Z3', pan: 'AAEFR4521K', entity: 'Partnership', prefix: 'RL', nextNo: 3, gstMode: 'rcm', rcmRate: 5, forwardRate: 12, address: 'Sector 63, Noida, Uttar Pradesh', einvoice: true, gtaExempt: true},
     goods: {legalName: 'Sharma Foods', gstin: '10AAKFS7788M1Z2', pan: 'AAKFS7788M', entity: 'Partnership', prefix: 'SF', nextNo: 1, gstMode: 'rcm', rcmRate: 5, forwardRate: 12, address: 'Bihta Industrial Area, Patna, Bihar', tdsDeductor: true},
     vehicle: {legalName: 'Raj Transport', gstin: '', pan: 'BKQPG4412C', entity: 'Proprietorship', prefix: 'RT', nextNo: 2, gstMode: 'exempt', rcmRate: 5, forwardRate: 12, address: 'Transport Nagar, Patna, Bihar', trucksOwned: 8, tdsDeclaration: true},
     movers: {legalName: 'SafeMove Packers', gstin: '09AAOCS3321P1Z9', pan: 'AAOCS3321P', entity: 'Private Limited', prefix: 'SM', nextNo: 1, gstMode: 'forward', rcmRate: 5, forwardRate: 18, address: 'Sector 18, Noida, Uttar Pradesh'},
@@ -130,6 +131,7 @@ export function proposeCharge(state, inv, v) {
   if (!CHARGE_KINDS[v.kind]) return 'Choose the charge type.';
   if (!(Number(v.amount) > 0)) return 'Enter the amount.';
   if (!String(v.evidence || '').trim()) return 'Attach evidence (gate-in slip, photo or message).';
+  if (inv.locked) return 'This invoice is registered as an e-invoice (IRN) and cannot change. Raise a debit note for extra charges.';
   if (dueState(state, inv).status === 'paid') return 'This invoice is already paid. Raise a new invoice for extra charges.';
   inv.charges.push({id: `CHG-${Date.now().toString().slice(-5)}`, kind: v.kind, amount: round(v.amount), note: String(v.note || '').trim(), evidence: v.evidence, status: 'proposed', at: stamp()});
   inv.history.push({at: stamp(), text: `${CHARGE_KINDS[v.kind]} ${inr(v.amount)} proposed`});
@@ -137,6 +139,7 @@ export function proposeCharge(state, inv, v) {
 }
 export function decideCharge(state, inv, id, decision, actorWs) {
   const c = inv.charges.find(x => x.id === id); if (!c || c.status !== 'proposed') return 'Nothing to decide.';
+  if (inv.locked && decision === 'approve') return 'The invoice has an IRN and is locked. Approve this as a debit note instead (next phase).';
   if (actorWs !== inv.billTo) return 'Only the party being billed can approve a charge.';
   c.status = decision === 'approve' ? 'approved' : 'rejected'; inv.revision += decision === 'approve' ? 1 : 0;
   inv.history.push({at: stamp(), text: `${CHARGE_KINDS[c.kind]} ${inr(c.amount)} ${c.status}${decision === 'approve' ? ` · invoice revised to v${inv.revision}` : ''}`});
@@ -144,6 +147,7 @@ export function decideCharge(state, inv, id, decision, actorWs) {
 }
 export function decideAdjustment(state, inv, id, decision, actorWs) {
   const a = inv.adjustments.find(x => x.id === id); if (!a) return 'Not found.';
+  if (inv.locked && ['accept', 'settle'].includes(decision)) return 'The invoice has an IRN and is locked. Issue a credit note for this deduction instead (next phase).';
   if (decision === 'accept' || decision === 'dispute') { if (actorWs !== inv.issuer) return 'Only the invoice issuer can accept or dispute a deduction.'; a.status = decision === 'accept' ? 'accepted' : 'disputed'; }
   else if (decision === 'withdraw') { if (actorWs !== inv.billTo) return 'Only the party that proposed it can withdraw.'; a.status = 'withdrawn'; }
   else if (decision === 'settle') { a.status = 'accepted'; a.note += ' · settled after review'; }
@@ -211,7 +215,8 @@ export function invoicesScreen(state) {
   ${list.map(i => { const a = amounts(state, i), d = dueState(state, i); return `<tr><td><b>${esc(i.number)}</b><small class="block muted">${fmt(i.issueDate)}${i.revision > 1 ? ` · v${i.revision}` : ''}</small></td><td>${esc(nameOf(state, tab === 'receivable' ? i.billTo : i.issuer))}</td><td>${esc(i.tripId || '')}<small class="block muted">${esc(i.tripTitle)}</small></td><td>${inr(a.total)}</td><td><b>${inr(a.outstanding)}</b>${a.held ? `<small class="block muted">${inr(a.held)} held</small>` : ''}</td><td>${pill(d.status)}${d.overdueDays ? `<small class="block muted">${d.overdueDays} days</small>` : ''}</td><td>${d.dueNow ? `${inr(d.dueNow)} now` : d.next ? `${d.next.due ? fmt(d.next.due) : esc(d.next.trigger)}` : '—'}</td><td><button class="button secondary compact" data-fr-open="${i.id}">Open</button></td></tr>`; }).join('') || '<tr><td colspan="8">No invoices here yet.</td></tr>'}
   </tbody></table></div></section>
   ${tab === 'receivable' && parties.length ? `<section class="panel"><h2>Customer terms</h2>${parties.map(p => { const t = partyTerms(state, ws, p), c = creditStatus(state, ws, p); return `<form class="inline-form" data-fr-terms="${p}"><b>${esc(nameOf(state, p))}</b><label>Credit days <input type="number" name="creditDays" value="${t.creditDays}" min="0"></label><label>Credit limit ₹ <input type="number" name="creditLimit" value="${t.creditLimit}" min="0"></label><label>Pause new trips after overdue days (0 = never) <input type="number" name="blockWhenOverdueDays" value="${t.blockWhenOverdueDays}" min="0"></label><span class="muted">Outstanding ${inr(c.outstanding)}</span><button class="button secondary compact">Save</button></form>`; }).join('')}</section>` : ''}
-  <p class="mock-hint">GST mode, rates and TDS thresholds are settings with placeholder defaults. Confirm them with your CA.</p>`;
+  ${S(state, ws).einvoice ? `<section class="panel"><h2>E-invoicing</h2><p class="muted">${esc(nameOf(state, ws))} is above the e-invoicing turnover limit (setting).</p><label class="consent-row"><input type="checkbox" data-fr-gta ${S(state, ws).gtaExempt ? 'checked' : ''}> Our freight invoices are exempt as a goods transport agency (confirm with your CA). Untick to register IRNs.</label></section>` : ''}
+  <p class="mock-hint">GST mode, rates and TDS thresholds are settings with placeholder defaults. Confirm them with your CA. <a href="#/ewayBills">E-way bills →</a></p>`;
 }
 
 export function invoiceNewScreen(state) {
@@ -236,10 +241,10 @@ export function invoiceDetailScreen(state) {
   const inv = state.freightInvoices.find(i => i.id === state.selectedInvoiceId); if (!inv) return invoicesScreen(state);
   const ws = opsCtx(state).ownerWs, a = amounts(state, inv), d = dueState(state, inv), issuer = S(state, inv.issuer), buyer = S(state, inv.billTo);
   const isIssuer = ws === inv.issuer, isPayer = ws === inv.billTo;
-  const ewbNeeded = inv.goodsValue > 50000 && inv.tripId && !state.ewayBills[inv.tripId];
+  const trip = state.trips.find(t => t.id === inv.tripId); const ewbList = trip ? Gst.ewbsForTrip(state, trip.id) : []; const ewbNeeded = trip && Gst.needsEwb(state, trip) && !ewbList.length;
   const pays = paymentsOf(state, inv);
   return `${head(`Invoice ${inv.number}`, `${nameOf(state, inv.issuer)} → ${nameOf(state, inv.billTo)} · ${inv.tripId || ''}`, `<span class="row-actions"><button class="button secondary" data-route="invoices">Back</button><button class="button secondary" data-fr-print>Print / PDF</button>${isIssuer && a.outstanding ? `<button class="button primary" data-fr-remind="${inv.id}">Send reminder</button>` : ''}</span>`)}
-  ${ewbNeeded ? `<div class="action-warning"><b>E-way bill missing</b><span>Goods value ${inr(inv.goodsValue)} is above ₹50,000, so an e-way bill linked to the vehicle is usually required.</span><form class="inline-form" data-fr-form="ewb"><input name="ewb" placeholder="12-digit e-way bill no." inputmode="numeric"><button class="button secondary compact">Save</button></form></div>` : inv.tripId && state.ewayBills[inv.tripId] ? `<p class="muted">E-way bill ${esc(state.ewayBills[inv.tripId])}</p>` : ''}
+  ${ewbNeeded ? `<div class="action-warning"><b>E-way bill missing</b><span>Goods value is above ₹50,000. Generate it from the trip.</span><button class="button secondary compact" data-op="open-trip" data-id="${inv.tripId}">Open trip</button></div>` : ewbList.length ? `<p class="muted">E-way bill ${ewbList.map(e => `${esc(e.no)} (${esc(Gst.ewbStatus(e).label)})`).join(', ')}</p>` : ''}${Gst.invoiceEinvoicePanel(state, inv, amounts)}
   <div class="grid two"><section class="panel invoice-doc"><div class="invoice-head"><div><b>${esc(issuer.legalName)}</b><small>${esc(issuer.address || '')}</small><small>GSTIN ${esc(issuer.gstin || 'Not registered')} · PAN ${esc(issuer.pan || '—')}</small></div><div class="align-right"><b>Tax invoice ${pill(d.status)}</b><small>${esc(inv.number)} · ${fmt(inv.issueDate)}${inv.revision > 1 ? ` · revision ${inv.revision}` : ''}</small></div></div>
     <div class="invoice-to"><small>Bill to</small><b>${esc(buyer.legalName || nameOf(state, inv.billTo))}</b><small>GSTIN ${esc(buyer.gstin || '—')} · ${esc(buyer.address || '')}</small></div>
     <table class="price-table"><tbody><tr><td>Freight · ${esc(inv.tripTitle)} · SAC ${inv.sac}</td><td>${inr(inv.freight)}</td></tr>${inv.charges.filter(c => c.status === 'approved').map(c => `<tr><td>${esc(CHARGE_KINDS[c.kind])}${c.note ? ` · ${esc(c.note)}` : ''}</td><td>${inr(c.amount)}</td></tr>`).join('')}${inv.adjustments.filter(x => x.status === 'accepted').map(x => `<tr><td>Less: ${esc(x.note)}</td><td>−${inr(x.amount)}</td></tr>`).join('')}
@@ -276,6 +281,7 @@ export function bindFreight(root, api) {
   root.querySelectorAll('[data-fr-tab]').forEach(b => b.onclick = () => { Sx().invoiceTab = b.dataset.frTab; done(); });
   root.querySelectorAll('[data-fr-open]').forEach(b => b.onclick = () => { Sx().selectedInvoiceId = b.dataset.frOpen; api.save(); api.navigate('invoiceDetail'); });
   root.querySelector('[data-fr-print]')?.addEventListener('click', () => window.print());
+  root.querySelector('[data-fr-gta]')?.addEventListener('change', ev => { S(Sx(), ws()).gtaExempt = ev.target.checked; done(ev.target.checked ? 'Freight invoices treated as exempt from e-invoicing' : 'E-invoicing switched on for freight invoices'); });
   root.querySelector('[data-fr-export]')?.addEventListener('click', () => { const csv = toCsv(exportRows(Sx(), ws())); const url = URL.createObjectURL(new Blob([csv], {type: 'text/csv'})); const a = document.createElement('a'); a.href = url; a.download = `moveai-freight-${ws()}-${today()}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000); api.toast('CSV downloaded — import it into Tally or Zoho'); });
   root.querySelectorAll('[data-fr-remind]').forEach(b => b.onclick = () => done(`${sendReminder(Sx(), inv())} sent to ${nameOf(Sx(), inv().billTo)}`));
   root.querySelectorAll('[data-fr-confirm]').forEach(b => b.onclick = () => { const e = confirmPayment(Sx(), inv(), b.dataset.frConfirm, ws()); done(e || 'Receipt confirmed'); });

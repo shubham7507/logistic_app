@@ -185,7 +185,7 @@ function checkRow(c, k) {
 
 export function workerDetailsScreen(state) {
   const invite = pendingInvite(state);
-  const c = currentCandidate(state) || {workerType: state.workerTypeDraft || invite?.workerType || '', name: state.person?.name || '', locations: [''], availability: 'Available now', workPreference: invite ? 'Monthly' : 'Per trip', expectedPay: invite?.pay || '', skills: []};
+  const c = currentCandidate(state) || {workerType: state.workerTypeDraft || invite?.workerType || '', name: state.person?.name || '', locations: [state.workerLocationDraft || ''], availability: 'Available now', workPreference: invite ? 'Monthly' : 'Per trip', expectedPay: invite?.pay || '', skills: []};
   const type = c.workerType;
   return `${head(c.id ? 'Edit work profile' : 'Start working', c.id ? 'Update what businesses see.' : 'Takes about a minute. You can browse jobs right after this; verification comes when you are ready to apply.')}${levelBar(c.id ? c : null)}
   ${invite && !c.id ? `<div class="info-banner"><b>${esc(invite.business)} invited you</b><span>${esc(invite.role)} · ₹${Number(invite.pay).toLocaleString('en-IN')} ${esc(invite.payType)}. We filled in what they told us. You only need to verify your licence and selfie to join them.</span></div>` : ''}

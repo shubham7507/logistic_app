@@ -2,6 +2,7 @@
 import {ROLE_TEMPLATES} from './people-rules.js';
 import * as Pay from './pay.js';
 import * as Freight from './freight.js';
+import * as Gst from './gst-portal.js';
 import {PARTY_NAMES} from './ops-data.js';
 import {
   TRIP_STEPS, currentMilestone, stepMeta, tripProgress, docsValid, MOVING_PACKAGES, HOME_SIZES, DRIVER_RATES, GENERAL_SERVICES,
@@ -128,7 +129,7 @@ export function bookingReviewScreen(state) {
   <div class="grid two"><section class="panel"><h2>${esc(title)}</h2>
     ${d.service === 'moving' ? `<p class="muted">Date: <b>${esc(d.date)}</b> · Vehicle: <b>${esc(q.vehicle)}</b> · Package: <b>${esc(MOVING_PACKAGES[d.pkg]?.label)}</b></p><div class="chip-row">${inventoryList(d.inventory).map(i => `<span class="chip">${esc(i)}</span>`).join('')}</div>` : ''}
     <table class="price-table"><tbody>${q.components.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${inr(v)}</td></tr>`).join('')}<tr class="total"><td>Total</td><td>${inr(q.total)}</td></tr></tbody></table>
-    ${Pay.checkoutHtml(d.service === 'moving' ? 'moving' : d.service === 'driver' ? 'driver' : 'general', q.total)}<div class="form-actions"><button class="button secondary" data-route="book">Edit request</button><button class="button primary" data-op="booking-publish">${d.service === 'moving' ? `Pay ${inr(Pay.bookingAmount('moving', q.total))} and book` : d.service === 'driver' ? 'Send to nearby Drivers' : 'Book service'}</button></div></section>
+    ${Pay.checkoutHtml(d.service === 'moving' ? 'moving' : d.service === 'driver' ? 'driver' : 'general', q.total, Pay.resolvePricing(state, {service: d.service === 'moving' ? 'moving' : d.service === 'driver' ? 'driver' : 'general', city: d.from || d.location || '', partner: d.service === 'moving' ? 'movers' : d.service === 'driver' ? 'personalDriver' : '', date: d.date}))}<div class="form-actions"><button class="button secondary" data-route="book">Edit request</button><button class="button primary" data-op="booking-publish">${d.service === 'moving' ? `Pay ${inr(Pay.bookingAmount('moving', q.total, Pay.resolvePricing(state, {service: 'moving', city: d.from || '', partner: 'movers', date: d.date})))} and book` : d.service === 'driver' ? 'Send to nearby Drivers' : 'Book service'}</button></div></section>
   <aside class="panel"><h2>What happens next</h2><ol class="plain-steps">${d.service === 'moving' ? '<li>The platform assigns the best eligible Mover branch near your pickup. You do not need to pick a company.</li><li>The branch confirms your slot, vehicle and crew.</li><li>You track the move and chat in one job conversation.</li><li>Share your completion OTP only after unloading.</li>' : d.service === 'driver' ? '<li>Verified personal Drivers nearby see your request.</li><li>The first Driver to accept is confirmed; you can chat before the start.</li><li>Confirm completion, then pay.</li>' : '<li>A verified partner accepts the visit.</li><li>Confirm completion, pay and rate.</li>'}</ol></aside></div>`;
 }
 
@@ -186,8 +187,8 @@ export function tripsScreen(state) {
 function tripTermsFor(state, t) {
   const {ws, perms} = opsCtx(state);
   const x = t.terms || {};
-  if (ws === 'transporter' || (t.owner === ws)) return [['Freight', inr(x.freight)], x.truckOwnerPayout ? ['Truck Owner payout', inr(x.truckOwnerPayout)] : null, x.advance ? ['Advance', inr(x.advance)] : null, x.driverWage ? ['Driver wage', inr(x.driverWage)] : null, x.khalasiWage ? ['Khalasi wage', inr(x.khalasiWage)] : null, ['Terms', esc(x.paymentTerms)]];
-  if (ws === 'goods') return [['Freight', inr(x.freight)], ['Terms', esc(x.paymentTerms)]];
+  if (ws === 'transporter' || (t.owner === ws)) return [x.freight ? ['Freight', inr(x.freight)] : ['Freight', 'Own vehicle — no freight bill'], x.truckOwnerPayout ? ['Truck Owner payout', inr(x.truckOwnerPayout)] : null, x.advance ? ['Advance', inr(x.advance)] : null, x.driverWage ? ['Driver wage', inr(x.driverWage)] : null, x.khalasiWage ? ['Khalasi wage', inr(x.khalasiWage)] : null, ['Terms', esc(x.paymentTerms)]];
+  if (ws === 'goods') return [x.freight ? ['Freight', inr(x.freight)] : ['Freight', 'Own vehicle — no freight bill'], ['Terms', esc(x.paymentTerms)]];
   if (ws === 'vehicle') return [['Your payout', inr(x.truckOwnerPayout)], ['Advance', inr(x.advance ? Math.min(x.advance, 10000) : 0)]];
   if (ws === 'commercialDriver') return [['Your wage', inr(x.driverWage)], ['Reimbursements', 'Toll, food and Dharamkata receipts paid separately']];
   if (ws === 'helper') return [['Your wage', inr(x.khalasiWage)]];
@@ -230,7 +231,7 @@ export function tripDetailScreen(state) {
         <p class="muted">Status: ${pill(t.gps.status)} ${t.gps.consent ? '· Driver consented for this trip only' : '· Driver consent pending'}</p>
         ${isDriver ? (!t.gps.consent ? `<label class="consent-row"><input type="checkbox" id="gps-consent"> I allow location sharing for ${esc(t.id)} only, until the trip closes.</label><button class="button secondary full" data-op="gps-consent" data-id="${t.id}">Save consent</button>` : gpsBlock ? `<p class="mock-hint">${esc(gpsBlock)}</p>` : `<button class="button secondary full" data-op="gps-ping" data-id="${t.id}">Send location update</button>`) : ''}
       </section>
-      <section class="panel"><h2>${ws === 'commercialDriver' || ws === 'helper' ? 'Your pay' : 'Money'}</h2>${facts(tripTermsFor(state, t))}${can(state, 'trip.settle', t) || (ws === 'staff' && opsCtx(state).perms.includes('money.prepare') && opsCtx(state).ownerWs === t.owner) ? '<button class="button primary full" data-route="tripSettlement">Crew settlement: bata, advances, receipts</button>' : ''}${['goods', 'transporter', 'vehicle', 'staff'].includes(ws) ? Freight.tripInvoiceBanner(state, t) : ''}<button class="button secondary full" data-route="money">Open Money</button></section>
+      <section class="panel"><h2>${ws === 'commercialDriver' || ws === 'helper' ? 'Your pay' : 'Money'}</h2>${facts(tripTermsFor(state, t))}${can(state, 'trip.settle', t) || (ws === 'staff' && opsCtx(state).perms.includes('money.prepare') && opsCtx(state).ownerWs === t.owner) ? '<button class="button primary full" data-route="tripSettlement">Crew settlement: bata, advances, receipts</button>' : ''}${['goods', 'transporter', 'vehicle', 'staff'].includes(ws) ? Freight.tripInvoiceBanner(state, t) : ''}<button class="button secondary full" data-route="money">Open Money</button></section>${Gst.tripEwbPanel(state, t)}
       ${next.length ? `<section class="panel"><h2>Next load near ${esc(t.to.split(',')[0])}</h2>${next.map(l => `<article class="market-row"><span class="market-icon">🧭</span><span><b>${esc(l.route || `${l.pickup} → ${l.drop}`)}</b><small>${esc(l.goods || '')} · ${esc(l.capacity)} t · ${esc(l.date)}</small></span><span></span><button class="button secondary" data-op="offer-next-load" data-id="${t.id}" data-load="${l.id}">${ws === 'vehicle' ? 'Request' : 'Offer to truck'}</button></article>`).join('')}</section>` : ''}
       ${ws === 'goods' && t.milestones.find(m => m.key === 'received')?.status === 'done' ? closeOutPanel(state, t) : ''}
       <button class="button secondary full" data-op="report-exception" data-ref="${t.id}">Report a problem on this trip</button>

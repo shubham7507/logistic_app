@@ -91,6 +91,9 @@ with sync_playwright() as p:
     if SHOTS: pk.screenshot(path=f'{SHOTS}/32-join-approved.png', full_page=True)
     pk.click('[data-join-open-staff]'); pk.wait_for_timeout(150)
     check(pk.evaluate('window.MoveAIVNextTest.state().currentWorkspace') == 'staff' and not pk.evaluate("document.body.classList.contains('join-mode')"), 'opens staff workspace')
+    owner.reload(); owner.wait_for_timeout(200)
+    check(owner.evaluate('window.MoveAIVNextTest.state().currentWorkspace') != 'staff', 'owner tab keeps its own sign-in')
+    check('in this tab only' in pk.locator('#main-content').inner_text(), 'tab-only banner')
     # 6 already accepted: link reopened in a fresh page asks to verify then shows status
     again = open_link(inv['token']); check('already accepted' in txt(again), 'already accepted'); again.close()
     pk.close()

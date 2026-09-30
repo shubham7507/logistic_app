@@ -38,7 +38,7 @@ with sync_playwright() as p:
     f.locator('button').click(); pg.wait_for_timeout(80); check('Two cartons damaged' in main(), 'deduction added'); shot('43-khata-owner')
     # driver persona sees own khata and disputes
     ws('commercialDriver'); go('money'); check('My khata' in main(), 'driver sees own khata')
-    pg.locator('[data-wf-dispute]').first.click(); pg.wait_for_timeout(80)
+    pg.locator('.dispute-box summary').first.click(); pg.locator('form[data-wf-form="dispute"] [name=reason]').first.fill('Carton was already damaged at loading'); pg.locator('form[data-wf-form="dispute"] button').first.click(); pg.wait_for_timeout(80)
     check(any(a['status'] == 'disputed' for a in st()['accruals']), 'dispute recorded'); shot('44-khata-driver')
     # owner resolves, runs payroll
     ws('transporter'); go('workforce'); pg.locator('[data-wf-khata="staff:WORKER-001"]').click(); pg.wait_for_timeout(80)
@@ -48,6 +48,10 @@ with sync_playwright() as p:
     pg.click('[data-wf-payroll="prepare"]'); pg.wait_for_timeout(60); pg.click('[data-wf-payroll="approve"]'); pg.wait_for_timeout(60)
     pg.click('[data-wf-payroll="pay"]'); pg.wait_for_timeout(80); check('payslips' in main(), 'payroll paid'); shot('45-payroll')
     run = st()['payrollRuns'][0]; check(run['status'] == 'paid', 'run paid')
+    # contractor: record helper payments
+    go('workforce'); pg.locator('[data-wf-khata="con:CON-2"]').click(); pg.wait_for_timeout(80)
+    pg.fill('form[data-wf-form="contractor"] textarea', 'Raju Kumar, 750\nSonu Paswan, 750'); pg.locator('form[data-wf-form="contractor"] button').click(); pg.wait_for_timeout(60)
+    check(len(st()['contractorDistributions']) == 1, 'contractor distribution recorded')
     # accountant (staff, money.prepare) can prepare but role limits apply; dispatcher cannot open payroll
     check(not errors, f'runtime errors: {errors[:3]}')
     b.close()

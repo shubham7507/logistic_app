@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {activateDrafts} from '../js/business-verify.js';
+import {parseVoiceCommand} from '../js/ops-rules.js';
+import {rcLookup} from '../js/verify-sim.js';
+import {SEED} from '../js/mock-data.js';
+const s=JSON.parse(JSON.stringify(SEED));
+const app={id:'APP-T',legalName:'Sinha Cargo',branches:[{id:'BR-900',name:'Patna'}],draftVehicles:[rcLookup('BR01 GX 7744').data],draftInvites:[{name:'Ravi',mobile:'9876500333',role:'operations'}]};
+const before=(s.ownedVehicles.transporter||[]).length;const d=activateDrafts(s,app,'transporter');
+assert.deepEqual(d,{vehicles:1,invites:1});assert.equal(s.ownedVehicles.transporter.length,before+1);
+const inv=s.staffInvitations.at(-1);assert.equal(inv.mobile,'9876500333');assert.ok(inv.token,'invite link ready');assert.equal(app.draftVehicles.length,0);
+assert.equal(parseVoiceCommand('I drive trucks in Patna').fields.workerType,'commercialDriver');
+assert.equal(parseVoiceCommand('I am a khalasi in Noida').fields.city,'Noida');
+assert.notEqual(parseVoiceCommand('Book a driver for tomorrow').intent,'work_profile');
+console.log(JSON.stringify({status:'PASS',suite:'Draft mode + voice work profile'},null,2));

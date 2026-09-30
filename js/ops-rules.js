@@ -248,6 +248,12 @@ export function parseVoiceCommand(text) {
   const lower = t.toLowerCase();
   const ref = (t.match(/\b(TRP|MOV|SR|PAY)-?\d+\b/i) || [])[0]?.toUpperCase().replace(/^(TRP|MOV|SR|PAY)(\d)/, '$1-$2');
   if (!t) return {intent: 'empty', critical: false};
+  if (/\b(i (am|'m) an? |i drive|i can drive|i work as|looking for|want) ?.*\b(trucks?|tempos?|lorry|lorries|trailers?|cars?|drivers?|khalasi|helpers?|loaders?|packers?|loading)\b/.test(lower) && !/\b(book|hire|need a)\b/.test(lower)) {
+    const workerType = /\b(khalasi|helpers?|loaders?|packers?|loading)\b/.test(lower) ? 'helper' : /\b(trucks?|tempos?|lorry|lorries|trailers?|heavy)\b/.test(lower) ? 'commercialDriver' : 'personalDriver';
+    const city = (t.match(/\b(?:in|at|near|from)\s+([A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)?)/) || [])[1] || '';
+    const label = {commercialDriver: 'Commercial Driver (trucks)', personalDriver: 'Personal Driver (cars)', helper: 'Khalasi / Helper'}[workerType];
+    return {intent: 'work_profile', critical: false, fields: {workerType, city}, readBack: `Start a work profile as ${label}${city ? ` in ${city}` : ''}. You can check it before saving.`};
+  }
   const noRef = lower.replace(/\b(trp|mov|sr|pay)-?\d+\b/g, ' ');
   if (/\b(pay|paid|send|transfer|record|advance)\b/.test(lower) && NUM.test(noRef)) {
     const amount = Number(noRef.match(NUM)[1].replace(/,/g, ''));

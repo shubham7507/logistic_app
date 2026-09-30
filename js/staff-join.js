@@ -248,6 +248,7 @@ export function bindJoin(root, api) {
   root.querySelector('[data-join-open-staff]')?.addEventListener('click', ev => api.openStaff(ev.currentTarget.dataset.joinOpenStaff, ctx()));
 }
 export function bindOwnerInvites(root, api) {
+  if (root.querySelector('[data-invite-copy], [data-invite-open]')) api.save(); // persist lazily created link tokens so links work in other tabs
   const find = id => api.getState().staffInvitations.find(x => x.id === id);
   root.querySelectorAll('[data-invite-copy]').forEach(b => b.onclick = async () => { const inv = find(b.dataset.inviteCopy); try { await navigator.clipboard.writeText(joinLink(inv)); api.toast('Link copied'); } catch { api.toast(joinLink(inv)); } });
   root.querySelectorAll('[data-invite-resend]').forEach(b => b.onclick = () => { const inv = find(b.dataset.inviteResend); resendInvite(api.getState(), inv); api.save(); api.getState().selectedInviteId = inv.id; api.save(); api.navigate('inviteSent'); api.toast('New link created. The old link no longer works.'); });

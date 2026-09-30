@@ -42,7 +42,7 @@ const BASE=process.env.MOVEAI_BASE||'http://127.0.0.1:4177';
 
   // Active work blocks branch disable, while a clear branch may be disabled.
   await page.evaluate(()=>window.MoveAIVNextTest.switchWorkspace('transporter'));
-  await page.goto(`${BASE}/#/branches`);
+  await page.goto(`${BASE}/business.html#/branches`);
   const before=await page.evaluate(()=>window.MoveAIVNextTest.state().businessProfiles.transporter.branches[0].status);
   await page.locator('[data-action="disable-branch"]').first().click();
   const after=await page.evaluate(()=>window.MoveAIVNextTest.state().businessProfiles.transporter.branches[0].status);

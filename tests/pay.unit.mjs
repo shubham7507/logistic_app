@@ -39,4 +39,27 @@ const bal=P.wallet(s,'movers').balance;s.payoutAccounts.movers={method:'bank',ac
 const f=P.payout(s,'movers');assert.ok(f.error);assert.equal(P.wallet(s,'movers').balance,bal,'failed payout does not reduce wallet');
 s.payoutAccounts.movers={method:'upi',vpa:'safemove@okhdfc'};const ok=P.retryPayout(s,f.entry.id);assert.equal(ok.amount,bal);assert.equal(P.wallet(s,'movers').balance,0);
 const r5=s.serviceRequests.find(x=>x.movingJobId&&x!==r4&&x.status!=='cancelled');if(r5){P.release(s,r5);const b2=P.wallet(s,'movers').balance;const inst=P.payout(s,'movers',{instant:true});assert.equal(inst.amount,b2-10);}
+
+// pricing rules: most specific wins; bookings keep their snapshot
+s=S();s.pricingRules=[];
+assert.match(P.addRule(s,{service:'moving',commission:0.8,note:'x'},'A').error,/between 0% and 50%/);
+assert.match(P.addRule(s,{service:'moving',commission:0.05},'A').error,/note/);
+P.addRule(s,{service:'moving',commission:0.08,bookingPct:'',bookingMin:'',cancelPct:'',cancelMin:'',cancelMax:'',note:'All moving 8%'},'A');
+P.addRule(s,{service:'moving',city:'Patna',commission:0.05,bookingPct:0.3,bookingMin:'',cancelPct:'',cancelMin:'',cancelMax:'',note:'Patna launch'},'A');
+assert.equal(P.resolvePricing(s,{service:'moving',city:'Noida Sector 62'}).commission,0.08);
+const pat=P.resolvePricing(s,{service:'moving',city:'Boring Road, Patna'});assert.equal(pat.commission,0.05);assert.equal(pat.bookingPct,0.3);assert.equal(P.bookingAmount('moving',10000,pat),3000);
+const rr=s.serviceRequests.find(x=>x.movingJobId&&x.status!=='cancelled');rr.pricing=pat;s.pricingRules.forEach(x=>x.active=false);
+P.payBalance(s,rr,{method:'upi',vpa:'a@okaxis'});assert.equal(P.release(s,rr).commission,Math.round(rr.quote.total*0.05),'booking keeps its snapshot after rules change');
+
+// pending payments, delayed refunds, returned payouts, reconciliation
+s=S();const rp=s.serviceRequests.find(x=>x.movingJobId&&x.status!=='cancelled');
+let res=P.payBalance(s,rp,{method:'upi',vpa:'pending@upi'});assert.equal(res.pending,true);assert.equal(rp.paid,undefined===rp.paid?undefined:rp.paid);
+assert.ok(P.paySummary(s,rp).pending>0);assert.equal(P.paySummary(s,rp).due,0,'pending amount is not asked again');
+P.resolvePending(s,rp.id);assert.equal(rp.paid,true);
+const rf=s.serviceRequests.find(x=>x.movingJobId&&x!==rp&&x.status!=='cancelled');
+if(rf){const j=s.movingJobs.find(x=>x.id===rf.movingJobId);j.status='slot_confirmed';P.cancel(s,rf,'customer');const refund=s.ledger.find(x=>x.type==='refund'&&x.serviceId===rf.id);assert.equal(refund.status,'refund_initiated');
+ globalThis.__moveaiClockOffset=6;const rep=P.runReconciliation(s);assert.equal(refund.status,'refunded');assert.ok(rep.refundsCompleted.length>=1);globalThis.__moveaiClockOffset=0;}
+P.release(s,rp);s.payoutAccounts.movers={method:'bank',accountNumber:'119990'};const po=P.payout(s,'movers');assert.equal(po.entry.status,'paid');const w1=P.wallet(s,'movers').balance;
+globalThis.__moveaiClockOffset=2;P.runReconciliation(s);assert.equal(po.entry.status,'returned');assert.equal(P.wallet(s,'movers').balance,w1+po.amount,'returned payout goes back to the wallet');globalThis.__moveaiClockOffset=0;
+const rep2=P.runReconciliation(s);assert.ok(rep2.matched>0);
 console.log(JSON.stringify({status:'PASS',suite:'MoveAI Pay'},null,2));

@@ -163,3 +163,28 @@ Demo: Raj Logistics has an overdue invoice to Sharma Foods (credit rule shows "n
 Tests: `tests/freight.unit.mjs`, `tests/freight.smoke.py`.
 
 Not in phase 1: holding the shipper's money (phase 2, protected payment), early payment against delivery proof and fuel cards (phase 3), e-invoice IRN and e-way bill API connections.
+
+## E-way bills and e-invoices (simulated GST connection)
+
+`js/gst-portal.js` simulates the government systems reached through a GST Suvidha Provider.
+- **Trip → E-way bill**: the sender generates Part A and leaves the truck to the transporter, or the transporter generates the whole e-way bill from the sender's invoice (pre-filled from the goods order). Validity is 1 day per 200 km from when the truck is added. When a trip's truck is replaced, Part B updates automatically (retry if the portal fails). Extension is allowed from 8 hours before to 8 hours after expiry; cancellation within 24 hours of generation. "Pass to Truck Owner" transfers it.
+- **Business → E-way bills**: all e-way bills with status and validity, consolidation of part loads on the same truck, and Transporter ID (TRANSIN) enrolment for unregistered truck owners.
+- **Warnings** on Trips (missing, expiring, waiting for truck, vehicle-update failure) and on the driver's My Jobs; drivers see a large "show at checkpoint" card.
+- **E-invoice**: when a business is above the turnover limit and not exempt, the invoice can be registered for an IRN and signed QR (simulated). It then locks; changes need credit/debit notes; the IRN can be cancelled within 24 hours. Freight invoices are treated as exempt by default (goods transport agency) with a switch in Billing.
+- **Errors**: invalid or cancelled GSTIN (test: 09AAACR5055K1Z9), bad PIN, and a "simulate portal down" switch.
+
+## Pricing rules and realistic payments
+
+- **Admin → MoveAI Pay → Pricing rules**: commission, booking % / minimum and cancellation % / min / max by service, city (in the pickup address), partner and dates; the most specific rule wins; each rule needs a reason; a checker shows which rates apply. Bookings store the rates they were made under.
+- **Pending payments**: UPI `pending@upi` stays "processing" then succeeds; `pendingfail@upi` fails and the booking is cancelled with nothing charged. "Check status" on the booking.
+- **Refunds** show "expected by" (about 5 working days) and complete in reconciliation.
+- **Returned payouts**: a payout account containing `999` is paid, then returned by the bank the next day and credited back to the wallet.
+- **Daily reconciliation** compares MoveAI's records with the payment company's report; admins can move the simulated clock forward a day.
+
+## Smaller gaps closed
+
+Draft mode while a business application is in review (vehicles by RC lookup, staff invitations — both switch on at approval); "Ask MoveAI" starts a work profile ("I drive trucks in Patna"); final settlement on exit from the khata; an inline dispute form; contractor-to-helper payment reports; payroll attendance from real check-ins (labelled "sample data" otherwise); the invited staff member's workspace opens in their own tab only; own-vehicle trips no longer show "Freight ₹0"; route line fits phones; drivers get My Jobs as a main phone tab; the sidebar label changes per app. Approving a new business for an existing workspace now keeps that workspace's existing branches.
+
+## Older browser tests (P0–P4)
+
+These needed Playwright for Node, which was not installed earlier; once installed, all six were failing — also on the original upload. They are updated to the current requirements (four apps, purpose step after signup, consent before applying, choosing an arrangement explicitly, invitation links) and all pass. Run with `npm install playwright` and a local server on port 4177, then `npm run test:e2e`.
