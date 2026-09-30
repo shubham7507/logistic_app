@@ -188,3 +188,22 @@ Draft mode while a business application is in review (vehicles by RC lookup, sta
 ## Older browser tests (P0–P4)
 
 These needed Playwright for Node, which was not installed earlier; once installed, all six were failing — also on the original upload. They are updated to the current requirements (four apps, purpose step after signup, consent before applying, choosing an arrangement explicitly, invitation links) and all pass. Run with `npm install playwright` and a local server on port 4177, then `npm run test:e2e`.
+
+## Buying products with MoveAI Pay
+
+Previously "Buy now" confirmed an order without any payment. Now: **Search products → Buy now → Checkout** (quantity, delivery address, items + ₹40 delivery under ₹499) → pay by UPI or card (held until delivered) or **cash on delivery** (up to ₹5,000). **My orders**: cancel before dispatch for a full refund; after delivery the money is released to the store partner minus 8%; **Return** within 7 days → refund after pickup (to UPI for cash orders), taken back from the store's wallet; cash orders add the commission as the store's wallet debt. Prototype buttons move an order through packed → out for delivery → delivered and mark a return picked up. Tests: `tests/product-orders.unit.mjs`, `tests/customer-services.smoke.py`.
+
+## Customer pricing, extras and billing (option C)
+
+**Price breakdowns**
+- **Driver (B + C, model 1):** driver's charges (package, car premium, outstation food/stay allowance, one-way return travel) shown as "the driver gets all of this", plus MoveAI booking fee ₹49 + GST (₹499 + GST for monthly). Rate card before booking: extra hour ₹150, night ₹200, tolls/parking reimbursed with a slip, fuel is the customer's. Hire types: per hour (4 h minimum), full day, outstation, one-way drop, monthly (E: extra hour, extra day, unpaid leave, notice, police verification). MoveAI takes **no commission** from drivers.
+- **Movers (B + C, D for big moves):** price built from the inventory — truck by volume, workers, packing, special items (fridge, washing machine, piano, two-wheeler, TV), dismantle/reassembly, AC reinstall, distance or intercity fare with tolls, pickup and drop floors without lift, long carry, weekend/month-end peak — plus GST from the mover's setting and optional transit insurance (1% of declared value). 3 BHK, office, 300 km+ or very large inventories offer a **video survey**: nothing is charged until the customer accepts the mover's fixed quote, then 20% is held. Commission 10% from the mover, shown on the mover's job screen.
+- **Home services:** visit + first hour from the partner; rate card for extra labour, parts at shop price with a bill photo, and a visit charge if no work is possible.
+
+**Extras** are proposed by the driver or mover (from their job screen, or a prototype button for home services) with the rate card and a photo where needed; the customer approves or rejects each one on the bill; payment is blocked until all are decided. Tolls, parking and parts are reimbursed at cost and not commissioned.
+
+**Documents:** receipt details at checkout (name, optional GSTIN — validated — and email); a numbered **payment receipt** (MR/…) for every payment including cash; one **bill** per booking with the breakdown, extras, payments, refunds and balance; the seller's **tax invoice** (or **bill of supply** if the seller is not GST-registered) when the job is completed or the order delivered, plus a separate **MoveAI fee invoice** when a booking fee was charged; a **credit note** (CN/…) for every refund. Print / save as PDF, WhatsApp and email. **Account → All payments and bills** is now a customer Payments screen (bookings, orders, refunds) instead of the business Money screen.
+
+Tests: `tests/customer-billing.unit.mjs`, `tests/customer-billing.smoke.py`.
+
+Not yet: monthly statement (option D); invoice numbering and GST treatment should be confirmed with a CA (who issues the invoice for each service under e-commerce GST rules).

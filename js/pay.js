@@ -4,9 +4,10 @@
 // and no-show rules, weekly and instant payouts, and an admin view of held money.
 // In production the aggregator calls go to Razorpay / Cashfree / PayU; MoveAI never holds funds itself.
 import {esc, pill, inr} from './ops.js';
+import {extrasTotal, pendingExtras, issueInvoice, nextNo} from './customer-billing.js';
 
 export const POLICY = {
-  commission: {moving: 0.10, driver: 0.12, general: 0.15},
+  commission: {moving: 0.10, driver: 0, general: 0.15}, // drivers: model 1 — MoveAI earns the customer's booking fee, driver keeps 100%
   booking: {moving: {pct: 0.2, min: 500}, driver: {pct: 0, min: 0}, general: {pct: 0, min: 0}},
   cancellation: {pct: 0.1, min: 299, max: 1500},
   noShowPenalty: 500, instantFee: 10, cashDebtLimit: 2000, payoutDay: 1, // Monday
@@ -42,6 +43,8 @@ export const gateway = {
 // ---------- ledger access (the one place that writes money records) ----------
 export function record(state, e, actor = 'MoveAI Pay') {
   const entry = {id: uid('PAY'), channel: 'moveai_pay', createdAt: clock(), history: [{action: 'created', status: e.status, actor, at: stamp()}], ...e};
+  if (entry.payer === 'personal' && entry.type === 'customer_payment') entry.receiptNo = nextNo(state, 'MR');
+  if (entry.payee === 'personal' && entry.type === 'refund') entry.creditNoteNo = nextNo(state, 'CN');
   if (entry.channel === 'moveai_pay' && entry.reference && /^(pay|rfnd|pout)_/.test(entry.reference)) (state.gatewayLog ||= []).unshift({ref: entry.reference, ledgerId: entry.id, type: entry.type, amount: entry.amount, status: entry.status, final: entry.gatewayFinal || null, at: clock()});
   state.ledger.unshift(entry);
   return entry;
@@ -84,7 +87,7 @@ export function bookingAmount(type, total, p) { const b = p ? {pct: p.bookingPct
 export const payeeOf = (state, r) => r.movingJobId ? (state.movingJobs.find(j => j.id === r.movingJobId)?.owner || 'movers') : r.type === 'driver' ? (r.provider || 'personalDriver') : 'external:service-partner';
 export const holdsOf = (state, r) => state.ledger.filter(x => x.serviceId === r.id && x.type === 'customer_payment');
 export function paySummary(state, r) {
-  const total = round(r.quote?.total);
+  const total = round(r.quote?.total) + extrasTotal(r);
   const hs = holdsOf(state, r).filter(x => !['refunded', 'failed', 'pending'].includes(x.status));
   const pending = holdsOf(state, r).filter(x => x.status === 'pending').reduce((s, x) => s + x.amount, 0);
   const paidOnline = hs.filter(x => x.channel !== 'cash').reduce((s, x) => s + x.amount, 0);
@@ -118,6 +121,7 @@ export function holdBooking(state, r, pm, ref, amount, g = {}) {
   return record(state, {owner: 'personal', serviceId: r.id, sourceType: 'service', sourceId: r.id, type: 'customer_payment', purpose: 'booking', payer: 'personal', payee: payeeOf(state, r), responsible: 'personal', amount, method: pm.method, reference: ref, status: g.pending ? 'pending' : 'held', gatewayFinal: g.final || null, note: `Booking amount ${r.id}${g.pending ? ' · processing' : ' · held until the job is done'}`}, 'Customer');
 }
 export function payBalance(state, r, pm) {
+  if (pendingExtras(r).length) return {error: 'Approve or reject the extra charges first.'};
   const s = paySummary(state, r); if (!s.due) return {error: 'Nothing left to pay.'};
   if (pm.method === 'cash') {
     const e = record(state, {owner: 'personal', serviceId: r.id, sourceType: 'service', sourceId: r.id, type: 'customer_payment', purpose: 'balance', payer: 'personal', payee: payeeOf(state, r), responsible: 'personal', amount: s.due, method: 'cash', channel: 'cash', reference: `CASH-${r.id}`, status: 'confirmed', note: `Balance paid in cash ${r.id}`}, 'Customer');
@@ -140,11 +144,16 @@ export function release(state, r, actor = 'MoveAI Pay') {
   const held = holdsOf(state, r).filter(x => x.status === 'held');
   if (!held.length) return {ok: true, amount: 0};
   const gross = held.reduce((s, x) => s + x.amount, 0), rate = pr(state, r).commission, party = payeeOf(state, r);
-  const commission = round(gross * rate);
+  const cashPaid = holdsOf(state, r).filter(x => x.channel === 'cash').reduce((a, x) => a + x.amount, 0);
+  const fee = Math.min(gross, round(r.quote?.fee)), ins = Math.min(gross - fee, round(r.quote?.insurance)), pass = (r.extras || []).filter(x => x.status === 'approved' && x.passThrough).reduce((a, x) => a + x.amount, 0);
+  const partnerGross = gross - fee - ins, commission = round(Math.max(0, partnerGross - (cashPaid ? 0 : pass)) * rate);
   held.forEach(x => setStatus(x, 'released', actor));
-  record(state, {owner: party, serviceId: r.id, sourceType: 'service', sourceId: r.id, type: 'wallet_credit', payer: 'moveai', payee: party, responsible: 'moveai', amount: gross - commission, method: 'wallet', reference: `REL-${r.id}`, status: 'confirmed', gross, commission, note: `${r.id} released: ${inr(gross)} − ${Math.round(rate * 100)}% commission ${inr(commission)}`});
-  record(state, {owner: 'moveai', serviceId: r.id, sourceType: 'service', sourceId: r.id, type: 'commission', payer: party, payee: 'moveai', responsible: party, amount: commission, method: 'wallet', reference: `COM-${r.id}`, status: 'confirmed', note: `Commission ${r.id}`});
-  return {ok: true, amount: gross - commission, commission};
+  record(state, {owner: party, serviceId: r.id, sourceType: 'service', sourceId: r.id, type: 'wallet_credit', payer: 'moveai', payee: party, responsible: 'moveai', amount: partnerGross - commission, method: 'wallet', reference: `REL-${r.id}`, status: 'confirmed', gross: partnerGross, commission, note: `${r.id} released: ${inr(partnerGross)}${commission ? ` − ${Math.round(rate * 100)}% commission ${inr(commission)}` : ' (no commission — MoveAI earns the booking fee)'}`});
+  if (commission) record(state, {owner: 'moveai', serviceId: r.id, sourceType: 'service', sourceId: r.id, type: 'commission', payer: party, payee: 'moveai', responsible: party, amount: commission, method: 'wallet', reference: `COM-${r.id}`, status: 'confirmed', note: `Commission ${r.id}`});
+  if (fee) record(state, {owner: 'moveai', serviceId: r.id, sourceType: 'service', sourceId: r.id, type: 'commission', payer: 'personal', payee: 'moveai', responsible: 'personal', amount: fee, method: 'wallet', reference: `FEE-${r.id}`, status: 'confirmed', note: `Booking fee incl. GST · ${r.id}`});
+  if (ins) record(state, {owner: 'moveai', serviceId: r.id, sourceType: 'service', sourceId: r.id, type: 'insurance', payer: 'personal', payee: 'insurer', responsible: 'personal', amount: ins, method: 'wallet', reference: `INS-${r.id}`, status: 'confirmed', note: `Transit insurance premium · ${r.id}`});
+  issueInvoice(state, {kind: 'service', r, party});
+  return {ok: true, amount: partnerGross - commission, commission};
 }
 export function cancellationQuote(state, r, by = 'customer') {
   const job = r.movingJobId && state.movingJobs.find(j => j.id === r.movingJobId);
@@ -211,6 +220,7 @@ function notify(state, to, text, ref) { (state.notifications ||= []).unshift({id
 export function resolvePending(state, onlyServiceId) {
   const out = [];
   for (const x of state.ledger.filter(e => e.status === 'pending' && e.type === 'customer_payment' && (!onlyServiceId || e.serviceId === onlyServiceId))) {
+    if (x.orderId && !x.serviceId) { const o = (state.customerOrders || []).find(q => q.id === x.orderId); if (x.gatewayFinal === 'success') { setStatus(x, 'held', 'Payment company'); if (o) o.status = 'paid'; } else { setStatus(x, 'failed', 'Payment company'); if (o) { o.status = 'cancelled'; o.cancelReason = 'Payment failed — nothing was charged'; } } out.push({x, result: x.status === 'held' ? 'confirmed' : 'failed'}); continue; }
     const r = state.serviceRequests.find(q => q.id === x.serviceId);
     if (x.gatewayFinal === 'success') { setStatus(x, 'held', 'Payment company'); if (r) { r.paymentPending = false; if (x.purpose === 'balance') r.paid = true; } out.push({x, result: 'confirmed'}); }
     else { setStatus(x, 'failed', 'Payment company'); if (r) { r.paymentPending = false; if (x.purpose === 'booking' && r.status !== 'cancelled') { r.status = 'cancelled'; r.cancelReason = 'Booking payment failed — nothing was charged'; const job = r.movingJobId && state.movingJobs.find(j => j.id === r.movingJobId); if (job) job.status = 'cancelled'; notify(state, 'personal', `${r.id}: your payment did not go through, so the booking was cancelled. No money was taken.`, r.id); } } out.push({x, result: 'failed'}); }
@@ -221,7 +231,7 @@ export function resolvePending(state, onlyServiceId) {
 export function runReconciliation(state) {
   const t = clock(), rep = {at: stamp(t), matched: 0, resolved: [], refundsCompleted: [], payoutsReturned: [], mismatches: []};
   rep.resolved = resolvePending(state).map(r => `${r.x.serviceId}: payment ${r.result}`);
-  for (const x of state.ledger.filter(e => e.type === 'refund' && e.status === 'refund_initiated' && e.expectedBy <= t)) { setStatus(x, 'refunded', 'Bank'); rep.refundsCompleted.push(`${x.serviceId}: ${inr(x.amount)} reached the customer`); notify(state, 'personal', `Refund of ${inr(x.amount)} for ${x.serviceId} has reached your account.`, x.serviceId); }
+  for (const x of state.ledger.filter(e => e.type === 'refund' && e.status === 'refund_initiated' && e.expectedBy <= t)) { setStatus(x, 'refunded', 'Bank'); rep.refundsCompleted.push(`${x.serviceId || x.orderId}: ${inr(x.amount)} reached the customer`); notify(state, 'personal', `Refund of ${inr(x.amount)} for ${x.serviceId || x.orderId} has reached your account.`, x.serviceId || x.orderId); }
   for (const x of state.ledger.filter(e => e.type === 'payout' && e.status === 'paid' && e.gatewayFinal === 'returned' && t - (e.createdAt || 0) >= 86400000)) { setStatus(x, 'returned', 'Bank', 'Beneficiary account closed or name mismatch'); rep.payoutsReturned.push(`${x.payee}: ${inr(x.amount)} returned by the bank — back in wallet`); notify(state, x.payee, `Payout of ${inr(x.amount)} was returned by your bank. It is back in your wallet; update your payout account.`, x.id); }
   for (const l of state.gatewayLog || []) {
     const e = state.ledger.find(x => x.id === l.ledgerId);
@@ -248,8 +258,7 @@ export function servicePayPanel(state, r) {
   const refunds = state.ledger.filter(x => x.serviceId === r.id && x.type === 'refund');
   const pend = s.pending ? `<div class="info-banner"><b>Payment processing · ${inr(s.pending)}</b><span>Your bank has not confirmed yet. This usually takes a few minutes. Do not pay again.</span><button class="button secondary compact" data-pay-check="${r.id}">Check status</button></div>` : '';
   const rfp = (s.refundPending || []).map(x => `<p class="muted">Refund ${inr(x.amount)} started · expected by ${new Date(x.expectedBy).toLocaleDateString('en-IN', {day: '2-digit', month: 'short'})} (usually 5 working days)</p>`).join('');
-  return `<section class="panel pay-panel"><h2>Payment · MoveAI Pay</h2>${pend}${rfp}${r.cancelReason && r.status === 'cancelled' ? `<p class="muted">${esc(r.cancelReason)}</p>` : ''}<table class="price-table"><tbody><tr><td>Total</td><td>${inr(s.total)}</td></tr><tr><td>Paid online${s.held ? ' (held until done)' : ''}</td><td>${inr(s.paidOnline)}</td></tr>${s.cash ? `<tr><td>Paid in cash</td><td>${inr(s.cash)}</td></tr>` : ''}${s.fee ? `<tr><td>Cancellation fee</td><td>${inr(s.fee)}</td></tr>` : ''}${s.refunded ? `<tr><td>Refunded</td><td>${inr(s.refunded)}</td></tr>` : ''}<tr class="total"><td>${r.status === 'cancelled' ? 'Status' : 'Still to pay'}</td><td>${r.status === 'cancelled' ? 'Cancelled' : inr(s.due)}</td></tr></tbody></table>
-  ${refunds.filter(x => x.status === 'refunded').map(x => `<p class="muted">Refund ${inr(x.amount)} reached your ${esc(x.method.toUpperCase())} · ${esc(x.reference)}</p>`).join('')}
+  return `<section class="panel pay-panel"><h2>Payment · MoveAI Pay</h2>${pend}${rfp}${r.cancelReason && r.status === 'cancelled' ? `<p class="muted">${esc(r.cancelReason)}</p>` : ''}<p class="muted">${s.held ? `${inr(s.held)} is held by MoveAI Pay until the job is done.` : s.due ? `${inr(s.due)} is due after the job.` : r.status === 'cancelled' ? 'Booking cancelled.' : 'Fully paid.'}</p>
   ${q.allowed && r.status !== 'cancelled' ? `<details class="cancel-box"><summary>Cancel booking</summary><p>${esc(q.note)} Fee ${inr(q.fee)} · refund ${inr(q.refund)}.</p><input id="cancel-reason" placeholder="Reason (optional)"><button class="button secondary" data-pay-cancel="${r.id}">Cancel and refund ${inr(q.refund)}</button></details>` : ''}</section>`;
 }
 export function balanceFormHtml(state, r) {
@@ -327,4 +336,32 @@ export function bindPricing(root, api) {
     const r = addRule(S(), fd, 'Admin Neha'); if (r.error) { const el = root.querySelector('#pr-error'); el.textContent = r.error; el.hidden = false; return; }
     api.save(); api.render(); api.toast(`${r.rule.id} added. It applies to new bookings only.`);
   });
+}
+
+// ---------- video survey → fixed quote (big / intercity moves) ----------
+export function surveyQuoteForm(state, r) {
+  if (!r.surveyRequested || r.fixedQuote) return r.fixedQuote && !r.fixedQuoteAccepted ? `<section class="panel"><h2>Fixed quote sent</h2><p>${inr(r.fixedQuote.amount)} · waiting for the customer to accept.</p></section>` : '';
+  return `<section class="panel attention"><h2>Video survey requested</h2><p class="muted">Do the video call, then send a fixed quote. You must honour it while the inventory matches. The customer pays 20% when they accept.</p><form class="inline-form" data-survey-quote="${r.id}"><input name="amount" type="number" value="${round(r.quote?.total)}"><input name="note" placeholder="What the survey found (e.g. 110 cartons, piano)"><button class="button primary compact">Send fixed quote</button></form></section>`;
+}
+export function surveyPanel(state, r) {
+  if (!r.surveyRequested) return '';
+  if (!r.fixedQuote) return `<section class="panel"><h2>Video survey</h2><p>The mover will call you for a short video walk-through and then send a fixed quote. Nothing is charged until you accept it.</p></section>`;
+  if (r.fixedQuoteAccepted) return '';
+  const now = bookingAmount('moving', r.fixedQuote.amount, r.pricing);
+  return `<section class="panel attention"><h2>Fixed quote: ${inr(r.fixedQuote.amount)}</h2><p>${esc(r.fixedQuote.note || 'After the video survey.')} The mover must honour this price while your inventory matches.</p><div class="pay-box"><label class="pay-field"><span>UPI ID</span><input id="pay-vpa" value="shubham@okaxis"></label><p id="pay-error" class="field-error" hidden></p><button class="button primary" data-survey-accept="${r.id}">Accept and pay ${inr(now)} (20%)</button></div></section>`;
+}
+export function acceptFixedQuote(state, r, vpa) {
+  if (!r.fixedQuote || r.fixedQuoteAccepted) return {error: 'No fixed quote to accept.'};
+  const amt = round(r.fixedQuote.amount), gstRate = r.quote?.gstRate || 18, base = round(amt / (1 + gstRate / 100));
+  r.quote = {...r.quote, partnerLines: [[`Fixed quote after video survey${r.fixedQuote.note ? ` · ${r.fixedQuote.note}` : ''}`, base]], partnerTotal: base, gst: amt - base, insurance: 0, feeLines: [[`GST ${gstRate}%`, amt - base]], total: amt, survey: false};
+  const now = bookingAmount('moving', amt, r.pricing), g = gateway.collect({method: 'upi', vpa, amount: now});
+  if (!g.ok) return {error: g.reason};
+  holdBooking(state, r, {method: 'upi'}, g.ref, now, g); r.fixedQuoteAccepted = true;
+  const job = state.movingJobs.find(j => j.id === r.movingJobId); if (job) job.total = amt;
+  return {ok: true, amount: now};
+}
+export function bindSurvey(root, api) {
+  const S = () => api.getState();
+  root.querySelectorAll('form[data-survey-quote]').forEach(f => f.onsubmit = e => { e.preventDefault(); const s = S(), r = s.serviceRequests.find(q => q.id === f.dataset.surveyQuote), fd = new FormData(f); const amt = round(fd.get('amount')); if (!(amt > 0)) return api.toast('Enter the fixed quote.'); r.fixedQuote = {amount: amt, note: String(fd.get('note') || '').trim(), at: stamp()}; (s.notifications ||= []).unshift({id: uid('NT'), to: 'personal', text: `${r.id}: fixed quote ${inr(amt)} is ready`, ref: r.id, at: stamp(), read: false}); api.save(); api.render(); api.toast('Fixed quote sent to the customer'); });
+  root.querySelectorAll('[data-survey-accept]').forEach(b => b.onclick = () => { const s = S(), r = s.serviceRequests.find(q => q.id === b.dataset.surveyAccept); const res = acceptFixedQuote(s, r, root.querySelector('#pay-vpa')?.value); if (res.error) { const el = root.querySelector('#pay-error'); el.textContent = res.error; el.hidden = false; return; } api.save(); api.render(); api.toast(`Fixed quote accepted · ${inr(res.amount)} paid and held`); });
 }

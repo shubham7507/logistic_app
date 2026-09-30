@@ -160,3 +160,11 @@ td.duty.free{background:#eef8f3}td.duty.on_trip,td.duty.on_job{background:var(--
 .einv-grid{display:flex;gap:14px;align-items:flex-start}.irn{display:block;word-break:break-all;font-size:12px;background:#f4f6f5;padding:6px;border-radius:8px}
 .small-b{font-size:14px!important;word-break:break-all}
 @media(max-width:620px){.route-strip{grid-template-columns:1fr;gap:4px;padding:10px 4px}.route-strip>i{width:4px;height:26px;margin-left:12px;background:repeating-linear-gradient(180deg,var(--brand) 0 8px,transparent 8px 13px)}.route-strip .truck-dot{display:none}}
+/* customer billing */
+.price-table tr.sub td{padding-top:12px;border-bottom:0;color:var(--muted);font-size:13px}.price-table tr.pending td{color:var(--warning)}
+.rate-card summary{cursor:pointer;font-weight:700;margin:8px 0}.rate-card small{margin:3px 0}
+.extra-approve{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px solid #f1d58f;background:var(--warning-soft);border-radius:12px;padding:10px;margin:8px 0}
+.billing-fields{border:1px solid var(--line);border-radius:12px;padding:10px 12px}.survey-box{background:var(--info-soft);padding:10px;border-radius:10px}
+.doc .doc-head{display:flex;justify-content:space-between;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:10px}.doc .doc-head div{display:grid;gap:2px}.doc small{color:var(--muted)}
+@media print{.doc{box-shadow:none;border:0}}
+.price-table tr.sub td{text-align:left!important}

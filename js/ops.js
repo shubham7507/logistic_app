@@ -3,6 +3,7 @@ import {ROLE_TEMPLATES} from './people-rules.js';
 import * as Pay from './pay.js';
 import * as Freight from './freight.js';
 import * as Gst from './gst-portal.js';
+import * as Bill from './customer-billing.js';
 import {PARTY_NAMES} from './ops-data.js';
 import {
   TRIP_STEPS, currentMilestone, stepMeta, tripProgress, docsValid, MOVING_PACKAGES, HOME_SIZES, DRIVER_RATES, GENERAL_SERVICES,
@@ -96,11 +97,16 @@ export function bookScreen(state) {
       <label><span>Floor at pickup</span><input type="number" name="floors" min="0" value="${esc(d.floors ?? 3)}"></label>
       <label><span>Lift available?</span><select name="lift"><option value="yes">Yes</option><option value="no" ${d.lift === 'no' ? 'selected' : ''}>No</option></select></label>
       <label><span>Approx. distance (km)</span><input type="number" name="distanceKm" value="${esc(d.distanceKm || 32)}"></label>
+      <label><span>Floor at drop</span><input type="number" name="dropFloors" min="0" value="${esc(d.dropFloors ?? 0)}"></label>
+      <label><span>Lift at drop?</span><select name="dropLift"><option value="yes">Yes</option><option value="no" ${d.dropLift === 'no' ? 'selected' : ''}>No</option></select></label>
+      <label class="consent-row"><input type="checkbox" name="longCarry" ${d.longCarry ? 'checked' : ''}> Truck must park 50 m or more away</label>
+      <label><span>Insure goods — declared value ₹ (optional)</span><input type="number" name="declaredValue" min="0" value="${esc(d.declaredValue || '')}" placeholder="e.g. 300000"></label>
       <label class="wide"><span>Inventory (one item per line or comma separated)</span><textarea name="inventory" rows="3">${esc(d.inventory || 'Beds and mattresses, Wardrobe, Kitchen cartons, TV and electronics')}</textarea></label>`
     : svc === 'driver' ? `
       <label><span>Hire for</span><select name="hireType">${Object.entries(DRIVER_RATES).map(([id, r]) => `<option value="${id}" ${(d.hireType || 'daily') === id ? 'selected' : ''}>${r.label}</option>`).join('')}</select></label>
-      <label><span>Duration</span><input type="number" name="duration" min="1" value="${esc(d.duration || 1)}"></label>
-      <label><span>Car</span><select name="carType">${['Hatchback manual', 'Sedan manual', 'SUV automatic', 'SUV manual'].map(c => `<option ${d.carType === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+      <label><span>How many (hours / days / trips / months)</span><input type="number" name="duration" min="1" value="${esc(d.duration || 1)}"></label>
+      <label><span>Nights away (outstation only)</span><input type="number" name="nights" min="0" value="${esc(d.nights || 0)}"></label>
+      <label><span>Car</span><select name="carType">${['Hatchback manual', 'Sedan manual', 'SUV automatic', 'SUV manual', 'Luxury automatic'].map(c => `<option ${d.carType === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
       <label><span>Start date</span><input type="date" name="date" value="${esc(d.date || '2026-09-29')}"></label>
       <label class="wide"><span>Pickup location</span><input name="location" value="${esc(d.location || 'Sector 62, Noida')}"></label>`
     : svc === 'general' ? `
@@ -128,7 +134,10 @@ export function bookingReviewScreen(state) {
   return `${head('Review price', 'Check every price component before you book.')}
   <div class="grid two"><section class="panel"><h2>${esc(title)}</h2>
     ${d.service === 'moving' ? `<p class="muted">Date: <b>${esc(d.date)}</b> · Vehicle: <b>${esc(q.vehicle)}</b> · Package: <b>${esc(MOVING_PACKAGES[d.pkg]?.label)}</b></p><div class="chip-row">${inventoryList(d.inventory).map(i => `<span class="chip">${esc(i)}</span>`).join('')}</div>` : ''}
-    <table class="price-table"><tbody>${q.components.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${inr(v)}</td></tr>`).join('')}<tr class="total"><td>Total</td><td>${inr(q.total)}</td></tr></tbody></table>
+    <table class="price-table"><tbody><tr class="sub"><td colspan="2"><b>${d.service === 'moving' ? 'Mover’s charges (SafeMove)' : d.service === 'driver' ? 'Driver’s charges — the driver gets all of this' : 'Service partner’s charges'}</b></td></tr>${(q.partnerLines || q.components).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${inr(v)}</td></tr>`).join('')}${(q.feeLines || []).length ? `<tr class="sub"><td colspan="2"><b>${d.service === 'driver' ? 'MoveAI' : 'Taxes and options'}</b></td></tr>` : ''}${(q.feeLines || []).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${inr(v)}</td></tr>`).join('')}<tr class="total"><td>${d.service === 'moving' ? 'Total' : 'Estimate'}</td><td>${inr(q.total)}</td></tr></tbody></table>
+    <details class="rate-card" open><summary>If anything extra comes up</summary>${(q.rateCard || []).map(([a, b]) => `<small class="block"><b>${esc(a)}:</b> ${esc(b)}</small>`).join('')}<small class="block muted">Every extra needs your approval in the app before it is added.</small></details>
+    ${q.survey ? `<label class="consent-row survey-box"><input type="checkbox" id="survey-req"> Get a free video survey first and a fixed quote (recommended for ${esc(d.size)} / long-distance moves). Nothing is charged until you accept the fixed quote.</label>` : ''}
+    ${Bill.billingFieldsHtml(state, d.billing)}
     ${Pay.checkoutHtml(d.service === 'moving' ? 'moving' : d.service === 'driver' ? 'driver' : 'general', q.total, Pay.resolvePricing(state, {service: d.service === 'moving' ? 'moving' : d.service === 'driver' ? 'driver' : 'general', city: d.from || d.location || '', partner: d.service === 'moving' ? 'movers' : d.service === 'driver' ? 'personalDriver' : '', date: d.date}))}<div class="form-actions"><button class="button secondary" data-route="book">Edit request</button><button class="button primary" data-op="booking-publish">${d.service === 'moving' ? `Pay ${inr(Pay.bookingAmount('moving', q.total, Pay.resolvePricing(state, {service: 'moving', city: d.from || '', partner: 'movers', date: d.date})))} and book` : d.service === 'driver' ? 'Send to nearby Drivers' : 'Book service'}</button></div></section>
   <aside class="panel"><h2>What happens next</h2><ol class="plain-steps">${d.service === 'moving' ? '<li>The platform assigns the best eligible Mover branch near your pickup. You do not need to pick a company.</li><li>The branch confirms your slot, vehicle and crew.</li><li>You track the move and chat in one job conversation.</li><li>Share your completion OTP only after unloading.</li>' : d.service === 'driver' ? '<li>Verified personal Drivers nearby see your request.</li><li>The first Driver to accept is confirmed; you can chat before the start.</li><li>Confirm completion, then pay.</li>' : '<li>A verified partner accepts the visit.</li><li>Confirm completion, pay and rate.</li>'}</ol></aside></div>`;
 }
@@ -142,7 +151,7 @@ export function servicesScreen(state) {
 
 export function serviceDetailScreen(state) {
   const __r = state.serviceRequests.find(x => x.id === state.selectedServiceId && x.customer === 'personal') || state.serviceRequests.find(x => x.customer === 'personal');
-  return serviceDetailBase(state) + (__r ? Pay.servicePayPanel(state, __r) : '');
+  return serviceDetailBase(state) + (__r ? Bill.billPanel(state, __r, Pay.paySummary(state, __r)) + Pay.surveyPanel(state, __r) + Pay.servicePayPanel(state, __r) : '');
 }
 function serviceDetailBase(state) {
   const r = state.serviceRequests.find(x => x.id === state.selectedServiceId && x.customer === 'personal') || state.serviceRequests.find(x => x.customer === 'personal');
@@ -340,6 +349,11 @@ export function movingQueueScreen(state) {
 }
 
 export function movingJobScreen(state) {
+  const base = movingJobBase(state), j = selectedJob(state), ws = opsCtx(state).ownerWs;
+  const r = j && state.serviceRequests.find(x => x.id === j.serviceRequestId);
+  return base + (r && ['movers', 'staff'].includes(opsCtx(state).ws) && ws === j.owner ? Pay.surveyQuoteForm(state, r) + Bill.partnerEarnings(state, r, 'mover') : '');
+}
+function movingJobBase(state) {
   const j = selectedJob(state);
   if (!j) return movingQueueScreen(state);
   const {ws, ownerWs} = opsCtx(state);
@@ -387,6 +401,10 @@ export function myJobsScreen(state) {
 }
 
 export function driverJobScreen(state) {
+  const r = state.serviceRequests.find(x => x.id === state.selectedServiceId && x.provider === 'personalDriver') || state.serviceRequests.find(x => x.provider === 'personalDriver');
+  return driverJobBase(state) + (r && r.status !== 'searching' ? Bill.partnerEarnings(state, r, 'driver') : '');
+}
+function driverJobBase(state) {
   const r = state.serviceRequests.find(x => x.id === state.selectedServiceId && x.provider === 'personalDriver') || state.serviceRequests.find(x => x.provider === 'personalDriver');
   if (!r) return myJobsScreen(state);
   const next = {accepted: ['in_progress', 'Start work'], in_progress: ['provider_done', 'Mark work complete']}[r.status];

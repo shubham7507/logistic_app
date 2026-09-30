@@ -104,29 +104,85 @@ export const MOVING_PACKAGES = {
   premium: {label: 'Premium', includes: 'Standard + unpacking, assembly and transit cover', rate: 1.7},
 };
 export const HOME_SIZES = {'1 BHK': {vehicle: '8-ft mini truck', base: 5200}, '2 BHK': {vehicle: '14-ft closed truck', base: 8400}, '3 BHK': {vehicle: '19-ft closed truck', base: 12600}, 'Office': {vehicle: '19-ft closed truck', base: 15000}};
-export const DRIVER_RATES = {hourly: {label: 'Per hour', rate: 180, unit: 'hours'}, daily: {label: 'Per day (10 hours)', rate: 1200, unit: 'days'}, monthly: {label: 'Per month', rate: 22000, unit: 'months'}};
+export const DRIVER_RATES = {
+  hourly: {label: 'Per hour (local)', rate: 180, unit: 'hours', min: 4},
+  daily: {label: 'Full day (10 hours)', rate: 1200, unit: 'days'},
+  outstation: {label: 'Outstation (per day)', rate: 1200, unit: 'days'},
+  oneway: {label: 'One-way drop (up to 6 hours)', rate: 1100, unit: 'trips'},
+  monthly: {label: 'Monthly driver (8 h × 26 days)', rate: 22000, unit: 'months'},
+};
+export const DRIVER_RATE_CARD = {extraHour: 150, night: 200, foodPerDay: 300, stayPerNight: 400, returnTravel: 450, monthlyExtraHour: 120, monthlyExtraDay: 900, carPremiumPct: 0.1};
+export const BOOKING_FEE = {driver: 49, driverMonthly: 499, gstOnFee: 0.18};
 export const GENERAL_SERVICES = {carpenter: 650, electrician: 450, plumber: 450, cleaning: 1800, painting: 3200};
+export const GENERAL_RATE_CARD = {extraLabourHour: 250, visitIfNoWork: 199};
 
-export function quoteMoving({size = '2 BHK', pkg = 'standard', floors = 0, lift = true, distanceKm = 32}) {
-  const home = HOME_SIZES[size] || HOME_SIZES['2 BHK'];
-  const p = MOVING_PACKAGES[pkg] || MOVING_PACKAGES.standard;
-  const base = Math.round(home.base * p.rate);
-  const distance = Math.max(0, Number(distanceKm) - 20) * 38;
-  const floor = lift ? 0 : Number(floors || 0) * 350;
-  const subtotal = base + distance + floor;
-  const gst = Math.round(subtotal * 0.18);
-  return {vehicle: home.vehicle, components: [[`${p.label} package · ${size}`, base], ['Distance beyond 20 km', distance], ['Floor charge (no lift)', floor], ['GST 18%', gst]].filter(x => x[1] > 0), total: subtotal + gst};
+// Driver price (model 1): driver's charges go 100% to the driver; MoveAI earns only the booking fee (+ GST on the fee).
+export function quoteDriver({hireType = 'daily', duration = 1, carType = 'Hatchback manual', nights = 0}) {
+  const t = DRIVER_RATES[hireType] ? hireType : 'daily', r = DRIVER_RATES[t], rc = DRIVER_RATE_CARD;
+  const n = Math.max(t === 'hourly' ? r.min : 1, Number(duration) || 1);
+  const lines = [[`${r.label} × ${n}${t === 'hourly' ? ' h' : ''}`, r.rate * n]];
+  if (/suv|automatic|luxury/i.test(carType)) lines.push([`${carType} premium (10%)`, Math.round(r.rate * n * rc.carPremiumPct)]);
+  if (t === 'outstation') { lines.push([`Food allowance × ${n} day(s)`, rc.foodPerDay * n]); const nt = Math.max(0, Number(nights) || n - 1); if (nt) lines.push([`Night stay allowance × ${nt} (or you arrange a stay)`, rc.stayPerNight * nt]); }
+  if (t === 'oneway') lines.push(['Driver’s return travel (fixed)', rc.returnTravel]);
+  const partnerTotal = lines.reduce((a, [, v]) => a + v, 0);
+  const feeBase = t === 'monthly' ? BOOKING_FEE.driverMonthly : BOOKING_FEE.driver, feeGst = Math.round(feeBase * BOOKING_FEE.gstOnFee);
+  const feeLines = [['MoveAI booking fee', feeBase], ['GST on booking fee (18%)', feeGst]];
+  const rateCard = t === 'monthly'
+    ? [['Extra hour', `₹${rc.monthlyExtraHour}`], ['Extra day beyond 26', `₹${rc.monthlyExtraDay}`], ['Unpaid leave', `−₹${Math.round(r.rate / 26)} per day`], ['Notice', '7 days either side'], ['Police verification', 'Required for monthly / live-in']]
+    : [['Extra time beyond the booking', `₹${rc.extraHour} per hour — you approve`], ['Driving after 10 pm', `₹${rc.night} night charge`], ['Tolls / parking', 'You pay, or reimbursed with a slip photo'], ['Fuel', 'Your car, your fuel']];
+  return {kind: 'driver', partnerLines: lines, partnerTotal, gst: 0, feeLines, fee: feeBase + feeGst, rateCard, components: [...lines, ...feeLines], total: partnerTotal + feeBase + feeGst, driverEarning: partnerTotal};
 }
-export function quoteDriver({hireType = 'daily', duration = 1, carType = 'Hatchback manual'}) {
-  const r = DRIVER_RATES[hireType] || DRIVER_RATES.daily;
-  const base = r.rate * Math.max(1, Number(duration) || 1);
-  const suv = /suv|automatic/i.test(carType) ? Math.round(base * 0.1) : 0;
-  const fee = 49;
-  return {components: [[`${r.label} × ${Math.max(1, Number(duration) || 1)}`, base], ['SUV / automatic premium', suv], ['Platform booking fee', fee]].filter(x => x[1] > 0), total: base + suv + fee, driverEarning: base + suv};
+
+// Movers price from the inventory (B + C); big or intercity moves recommend a video survey (D).
+const MOVE_ITEMS = [
+  {re: /bed|mattress/, label: 'Bed', units: 12, dismantle: true}, {re: /wardrobe|almirah|cupboard/, label: 'Wardrobe', units: 10, dismantle: true},
+  {re: /sofa|couch/, label: 'Sofa', units: 10}, {re: /fridge|refrigerator/, label: 'Fridge', units: 8, special: 300},
+  {re: /washing machine/, label: 'Washing machine', units: 6, special: 250}, {re: /\bac\b|air ?condition/, label: 'AC', units: 4, install: 900},
+  {re: /piano/, label: 'Piano', units: 15, special: 2500}, {re: /bike|scooter|motorcycle/, label: 'Two-wheeler', units: 8, special: 1200},
+  {re: /tv|television|electronic/, label: 'TV / electronics', units: 3, special: 150}, {re: /dining|table|desk/, label: 'Table', units: 6},
+  {re: /carton|box|kitchen|books|clothes/, label: 'Cartons', units: 1, carton: true},
+];
+export const MOVE_RATE_CARD = {cartonPack: 45, wrapPerBigItem: 120, dismantle: 300, perKm: 38, intercityPerKm: 32, tollPerKm: 2.5, floorNoLift: 350, longCarry: 500, worker: 750, peakPct: 0.1, insurancePct: 0.01, extraCarton: 25, waitingHour: 300, storageDay: 400};
+const TRUCKS = [[40, '8-ft mini truck', 2800, 2], [90, '14-ft closed truck', 4800, 3], [150, '19-ft closed truck', 7200, 4], [Infinity, '32-ft container', 13000, 6]];
+export function parseInventory(text) {
+  return String(text || '').split(/[\n,]+/).map(x => x.trim()).filter(Boolean).map(raw => {
+    const qty = Number((raw.match(/^(\d+)\s*[x×]?\s*/i) || [])[1] || 0);
+    const it = MOVE_ITEMS.find(m => m.re.test(raw.toLowerCase())) || {label: raw, units: 3};
+    const count = qty || (it.carton ? 15 : 1);
+    return {raw, ...it, count, re: undefined};
+  });
+}
+export function quoteMoving({size = '2 BHK', pkg = 'standard', floors = 0, lift = true, dropFloors = 0, dropLift = true, distanceKm = 32, inventory = '', longCarry = false, declaredValue = 0, date = '', gstRate = 18}) {
+  const items = parseInventory(inventory || {'1 BHK': 'Bed, Wardrobe, Fridge, 20 cartons', '2 BHK': 'Beds and mattresses, Wardrobe, Kitchen cartons, TV and electronics', '3 BHK': '3 beds, 3 wardrobes, Sofa, Fridge, Washing machine, 60 cartons', Office: '12 desks, 60 cartons'}[size] || '');
+  const units = items.reduce((a, i) => a + i.units * i.count, 0);
+  const [, vehicle, truckRate, workers] = TRUCKS.find(([max]) => units <= max);
+  const km = Math.max(0, Number(distanceKm) || 0), intercity = km > 300, rc = MOVE_RATE_CARD;
+  const noLift = v => v === false || v === 'no';
+  const lines = [[intercity ? `${vehicle} · door to door` : vehicle, intercity ? Math.round(km * rc.intercityPerKm) + truckRate : truckRate], [`${workers} workers`, workers * rc.worker]];
+  if (pkg !== 'basic') { const cartons = items.filter(i => i.carton).reduce((a, i) => a + i.count, 0), big = items.filter(i => !i.carton).reduce((a, i) => a + i.count, 0); lines.push([`Packing: ${cartons} cartons + wrap for ${big} items`, cartons * rc.cartonPack + big * rc.wrapPerBigItem]); }
+  for (const i of items.filter(i => i.special)) lines.push([`${i.label} handling × ${i.count}`, i.special * i.count]);
+  const dis = items.filter(i => i.dismantle).reduce((a, i) => a + i.count, 0); if (dis) lines.push([`Dismantle & reassemble × ${dis}`, dis * rc.dismantle]);
+  const acs = items.filter(i => i.install).reduce((a, i) => a + i.count, 0); if (acs) lines.push([`AC uninstall & install × ${acs}`, acs * 900]);
+  if (!intercity && km > 20) lines.push([`Distance beyond 20 km (${km - 20} km × ₹${rc.perKm})`, (km - 20) * rc.perKm]);
+  if (intercity) lines.push(['Tolls and state entry (estimate)', Math.round(km * rc.tollPerKm)]);
+  if (noLift(lift) && Number(floors) > 0) lines.push([`Pickup floor ${floors}, no lift`, Number(floors) * rc.floorNoLift]);
+  if (noLift(dropLift) && Number(dropFloors) > 0) lines.push([`Drop floor ${dropFloors}, no lift`, Number(dropFloors) * rc.floorNoLift]);
+  if (longCarry === true || longCarry === 'on' || longCarry === 'yes') lines.push(['Long carry (truck parks 50 m+ away)', rc.longCarry]);
+  const d = date ? new Date(date) : null;
+  if (d && !isNaN(d) && (d.getDay() === 0 || d.getDay() === 6 || d.getDate() >= 28)) { const sub = lines.reduce((a, [, v]) => a + v, 0); lines.push(['Peak date (weekend / month-end) 10%', Math.round(sub * rc.peakPct)]); }
+  const partnerTotal = lines.reduce((a, [, v]) => a + v, 0), gst = Math.round(partnerTotal * gstRate / 100);
+  const insurance = Number(declaredValue) > 0 ? Math.round(Number(declaredValue) * rc.insurancePct) : 0;
+  const feeLines = [[`GST ${gstRate}% (per the mover’s GST setting)`, gst], ...(insurance ? [[`Transit insurance (1% of ₹${Number(declaredValue).toLocaleString('en-IN')})`, insurance]] : [])];
+  const survey = ['3 BHK', 'Office'].includes(size) || intercity || units > 150;
+  return {kind: 'moving', vehicle, units, items, workers, partnerLines: lines, partnerTotal, gst, gstRate, insurance, feeLines, fee: 0, survey,
+    rateCard: [['Extra carton on the day', `₹${rc.extraCarton} each`], ['Extra floor without lift', `₹${rc.floorNoLift} per floor`], ['Long carry', `₹${rc.longCarry}`], ['Waiting after the first hour', `₹${rc.waitingHour} per hour`], ['Storage if the drop is delayed', `₹${rc.storageDay} per day`]],
+    components: [...lines, ...feeLines], total: partnerTotal + gst + insurance};
 }
 export function quoteGeneral({category = 'carpenter'}) {
   const visit = GENERAL_SERVICES[category] || 500;
-  return {components: [['Visit and first hour', visit], ['Platform booking fee', 29]], total: visit + 29};
+  return {kind: 'general', partnerLines: [['Visit and first hour of labour', visit]], partnerTotal: visit, gst: 0, feeLines: [], fee: 0,
+    rateCard: [['Extra labour', `₹${GENERAL_RATE_CARD.extraLabourHour} per hour — you approve`], ['Spare parts', 'At shop price, with a photo of the bill'], ['If no work is possible', `Visit charge ₹${GENERAL_RATE_CARD.visitIfNoWork} only`]],
+    components: [['Visit and first hour of labour', visit]], total: visit};
 }
 
 export function assignMoverBranch(request, branches) {

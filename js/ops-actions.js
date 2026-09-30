@@ -1,6 +1,7 @@
 // MoveAI One — operations actions. Every handler re-checks permissions (never rely on hidden buttons)
 // and writes an audit event. `api` is supplied by app.js so state stays single-sourced.
 import * as Pay from './pay.js';
+import {readBilling} from './customer-billing.js';
 import {
   advanceMilestone, canAdvanceMilestone, validateAssignment, crewEligible, docsValid, findConflict, canMoveJob, MOVING_STEPS,
   validatePayment, applyMoneyAction, parseVoiceCommand, validateAdminDecision, adminResultStatus, EXCEPTION_TYPES, validateException,
@@ -113,10 +114,12 @@ export function bindOps(root, api) {
       const s = S(); const d = s.bookingDraft; if (!d) return;
       if (s.currentWorkspace !== 'personal') return api.toast('Only the customer can book.');
       const q = bookingQuote(d); const id = `SR-${700 + s.serviceRequests.length + 1}`;
-      const payType = d.service === 'moving' ? 'moving' : d.service === 'driver' ? 'driver' : 'general'; const pricing = Pay.resolvePricing(s, {service: payType, city: d.from || d.location || '', partner: payType === 'moving' ? (assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'))?.workspace || '') : payType === 'driver' ? 'personalDriver' : '', date: d.date}); const bookNow = Pay.bookingAmount(payType, q.total, pricing);
+      const bill = readBilling(root); if (bill.error) { const e = root.querySelector('#pay-error') || root.querySelector('#booking-error'); if (e) { e.textContent = bill.error; e.hidden = false; } return api.toast(bill.error); }
+      const surveyWanted = Boolean(root.querySelector('#survey-req')?.checked);
+      const payType = d.service === 'moving' ? 'moving' : d.service === 'driver' ? 'driver' : 'general'; const pricing = Pay.resolvePricing(s, {service: payType, city: d.from || d.location || '', partner: payType === 'moving' ? (assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'))?.workspace || '') : payType === 'driver' ? 'personalDriver' : '', date: d.date}); const bookNow = surveyWanted ? 0 : Pay.bookingAmount(payType, q.total, pricing);
       const pm = {method: root.querySelector('input[name="pay-method"]:checked')?.value || 'upi', vpa: root.querySelector('#pay-vpa')?.value, card: root.querySelector('#pay-card')?.value};
       let g = null; if (bookNow) { if (d.service === 'moving' && !assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'))) return api.toast('No approved Mover covers this pickup yet. Nothing was charged.'); g = Pay.gateway.collect({...pm, amount: bookNow}); if (!g.ok) { const e = root.querySelector('#pay-error'); if (e) { e.textContent = g.reason; e.hidden = false; } return; } }
-      const base = {id, customer: 'personal', date: d.date, quote: q, paid: false, rating: null, createdAt: now()};
+      const base = {id, customer: 'personal', date: d.date, quote: q, paid: false, rating: null, createdAt: now(), billing: bill.billing, surveyRequested: surveyWanted, extras: []};
       if (d.service === 'moving') {
         const branch = assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'));
         if (!branch) return api.toast('No approved Mover covers this pickup yet. Your request is saved; we will notify you.');
@@ -137,7 +140,7 @@ export function bindOps(root, api) {
       { const r0 = s.serviceRequests.find(x => x.id === id); if (r0) { r0.pricing = pricing; r0.payMigrated = true; if (g) Pay.holdBooking(s, r0, pm, g.ref, bookNow, g); } }
       audit(s, `Customer booked ${id} (${d.service})${g ? ` · ${inr(bookNow)} held by MoveAI Pay` : ''}`);
       s.bookingDraft = null; s.selectedServiceId = id;
-      done(d.service === 'moving' ? (g?.pending ? `Payment of ${inr(bookNow)} is processing. We will confirm your booking shortly.` : `Paid ${inr(bookNow)} · booked. The nearest eligible Mover branch was assigned.`) : 'Request sent', 'serviceDetail');
+      done(d.service === 'moving' && surveyWanted ? 'Booked. The mover will call for a video survey and send a fixed quote — nothing charged yet.' : d.service === 'moving' ? (g?.pending ? `Payment of ${inr(bookNow)} is processing. We will confirm your booking shortly.` : `Paid ${inr(bookNow)} · booked. The nearest eligible Mover branch was assigned.`) : 'Request sent', 'serviceDetail');
     },
     'service-confirm': id => { const r = S().serviceRequests.find(x => x.id === id && x.customer === S().currentWorkspace); if (!r || r.status !== 'provider_done') return api.toast('Nothing to confirm yet.'); r.status = 'completed'; audit(S(), `Customer confirmed completion of ${id}`); done('Completion confirmed. Pay when ready.'); },
     'service-pay': id => {
@@ -246,7 +249,7 @@ export function bindOps(root, api) {
       }
       if (next === 'packed' && j.inventory.some(x => !x.packed)) return err('moving-error', 'Tick every inventory item as packed.');
       const proof = root.querySelector('#moving-proof')?.value?.trim() || fileName(root.querySelector('#moving-proof-file'));
-      if (next === 'slot_confirmed') { const b = Pay.partnerBlocked(s, j.owner); if (b) return err('moving-error', b); }
+      if (next === 'slot_confirmed') { const b = Pay.partnerBlocked(s, j.owner); if (b) return err('moving-error', b); const rq = s.serviceRequests.find(x => x.id === j.serviceRequestId); if (rq?.surveyRequested && !rq.fixedQuoteAccepted) return err('moving-error', 'Send the fixed quote after the video survey and wait for the customer to accept it.'); }
       const e = canMoveJob(j, next, {otp: root.querySelector('#moving-otp')?.value, proof});
       if (e) return err('moving-error', e);
       if (next === 'loaded') j.loadingProof = proof;

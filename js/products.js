@@ -21,7 +21,7 @@ export function productForWorkspace(ws) {
 // the way a deep link would open the right app.
 const PARTNER_ROUTES = ['work', 'workerStatus', 'workerVerify', 'workerDocuments', 'candidateProfile', 'applyOpening', 'openingDetail'];
 const BUSINESS_ROUTES = ['businessStart', 'businessDetails', 'businessKyc', 'branches', 'branchEditor', 'bank', 'applicationStatus', 'invitations', 'purposeBusiness'];
-const CUSTOMER_ROUTES = ['book', 'bookingReview', 'services', 'serviceDetail', 'search', 'orders', 'account', 'movingJob', 'payment', 'purpose', 'consentDetails'];
+const CUSTOMER_ROUTES = ['billDoc', 'productCheckout', 'book', 'bookingReview', 'services', 'serviceDetail', 'search', 'orders', 'account', 'movingJob', 'payment', 'purpose', 'consentDetails'];
 export function personalRouteOwner(route) {
   if (PARTNER_ROUTES.includes(route)) return 'partner';
   if (BUSINESS_ROUTES.includes(route)) return 'business';
