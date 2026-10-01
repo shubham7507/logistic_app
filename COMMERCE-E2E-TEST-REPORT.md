@@ -11,6 +11,12 @@ Base: MoveAI_One_P5-P8_Complete_Flow_Netlify (14).zip, plus the shopping-flow up
 - **Admin (`admin.html#/commerceOps`)**: cross-role order/status view, seller and delivery profile approval/suspension, reassignment, delivery reattempt, return review, COD reconciliation, store bank settlement and delivery-partner payout. Every commerce transition writes an actor/time history and scoped notifications.
 - **Platform logic**: seller orders split from one mixed-store checkout; shared order state and payment allocation; automatic offer to an available approved mock courier; payment, fulfilment and settlement tracked independently; simulated seven-day store settlement reserve.
 
+## Grocery role navigation update
+
+The customer desktop menu now includes **Shop** and **Orders**. The mobile menu shows Home, Shop, Orders, Account and More; the earlier Book, My bookings and Messages destinations remain in More. Seller mobile shows Home, Orders, Products, Money and More (Store is in More). Delivery mobile shows Home, Deliveries, Earnings, Profile and More; COD cash is linked from Earnings, appears as a Home alert when collected, and remains in More. Admin mobile shows Overview, Orders, Partners, Payments and More; Issues and the existing non-grocery admin pages remain in More. `#/commerceOps` remains a valid overview link.
+
+Admin Orders shows order history and actions, Partners holds grocery seller and courier approval, Payments holds COD/settlement/payout actions, and Issues lists returns and delivery exceptions. No logistics or movers screens were changed for this update.
+
 ## Example money path
 
 For a ₹710 product paid online: one mock gateway payment of ₹710; seller accepts and hands over; courier verifies delivery; the order records ₹57 product commission, ₹653 store payable, and ₹35 delivery earning. Store settlement waits until the seven-day demo reserve elapses and an admin triggers its mock bank payout. The delivery earning has its own admin payout. A COD order requires the partner's cash handover and admin reconciliation before either payout.
@@ -23,7 +29,7 @@ This is a **demonstration policy**, not a claim that Amazon uses 8% or these exa
 | --- | --- | --- |
 | Cross-role commerce scenarios | `npm run test:commerce` | PASS: 13 scenarios including prepaid, COD, mixed stores, scoped access, wrong codes, declines, refunds, cash reconciliation, payouts, failed bank payout, unavailable items and delivery issue. |
 | Existing unit regression | `npm run test:unit` | PASS |
-| Syntax and screen integration | `npm run test:static` | PASS, including new role pages/routes and access checks. |
+| Syntax and screen integration | `npm run test:static` | PASS, including role-specific mobile tab mappings, every desktop destination in More, grocery admin sections and route access checks. |
 | Browser smoke | `python3 tests/shop-flow.smoke.py` | **Not executed in this environment.** Python Playwright is absent; the Chromium download returned an invalid archive. The script is included for a machine with Playwright and Chromium. |
 
 These results verify the mock state transitions and rendered screen markup. They do not establish that the full UI works in a real browser here. Complete the manual walkthrough below before calling the demo browser-verified.
@@ -37,7 +43,7 @@ Open the unzipped folder through a local static server (or deploy its contents t
 1. Customer: `index.html#/search`. Search **rice**; add India Gate Rice. Search **salt**; add Tata Salt. Cart: set rice quantity to 2. Checkout total should be **₹1,448**, delivery free. Use address `42 MG Road, Delhi 110001` and UPI `shubham@okaxis`. Place the order; note its `ORD-...` number in My orders.
 2. Seller: `seller.html#/shopOrders`, ABC Grocery. Find that order, **Accept**, then **Packed · ready for pickup**. Note its four-digit pickup code.
 3. Delivery: `delivery.html#/deliveryJobs`, Delivery Partner 1. **Accept job**, enter the store pickup code, then **Confirm pickup**. Optionally share **Near destination**. Customer My orders now shows the four-digit delivery code. Enter it in the delivery workspace and **Confirm delivery**.
-4. Admin: `admin.html#/commerceOps`. Verify Delivered, Paid, Pending settlement, courier payout Pending. Attempt **Settle** before the reserve ends: it is blocked. Click **Demo: advance 7 days**, then **Settle** and **Pay delivery partner**. Verify both payout statuses become Paid.
+4. Admin: `admin.html#/commerceOrders` to verify Delivered, Paid, Pending settlement, courier payout Pending. Open **Payments** (`#/commercePayments`). Attempt **Settle** before the reserve ends: it is blocked. Click **Demo: advance 7 days**, then **Settle** and **Pay delivery partner**. Verify both payout statuses become Paid.
 5. Customer: My orders shows Delivered, the history, receipt and tax invoice. The store's Money view shows its own payout; the delivery partner's Earnings view shows its separate payout.
 
 ### B. One checkout, two stores

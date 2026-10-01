@@ -35,7 +35,7 @@ export function personalRouteOwner(route) {
 
 // Menus for the Personal workspace inside each product.
 export const PERSONAL_NAV = {
-  customer: [['home', 'Home'], ['book', 'Book'], ['services', 'My bookings'], ['messages', 'Messages'], ['account', 'Account']],
+  customer: [['home', 'Home'], ['search', 'Shop'], ['orders', 'Orders'], ['book', 'Book'], ['services', 'My bookings'], ['messages', 'Messages'], ['account', 'Account']],
   partner: [['home', 'Home'], ['work', 'Find work'], ['workerStatus', 'Verification'], ['messages', 'Messages'], ['candidateProfile', 'Profile']],
   business: [['home', 'Home'], ['businessStart', 'Business setup'], ['applicationStatus', 'Application'], ['invitations', 'Invitations'], ['messages', 'Messages']],
 };

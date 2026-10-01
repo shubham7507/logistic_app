@@ -1,0 +1,63 @@
+import assert from 'node:assert/strict';
+import {SEED} from '../js/mock-data.js';
+import * as Orders from '../js/product-orders.js';
+import * as Commerce from '../js/commerce.js';
+
+globalThis.__moveaiClockOffset=0;
+const s=structuredClone(SEED),address='42 MG Road, Delhi 110001';
+for(const id of ['PRD-101','PRD-103','PRD-102'])assert.equal(Orders.addToCart(s,id),'');
+assert.equal(Orders.updateCart(s,'PRD-101',2),'');
+assert.match(Orders.cartScreen(s),/data-po-cart-qty="PRD-101"><option[\s\S]*?<option value="2" selected>2<\/option>/);
+assert.equal(Orders.cartLines(s).length,3);
+const checkout=Orders.placeOrder(s,{fromCart:true,address,method:'upi',vpa:'test@okaxis'});
+assert.equal(checkout.ok,true,checkout.error);
+assert.equal(checkout.total,1933);
+assert.equal(checkout.orders.length,2);
+assert.equal(s.productCart.length,0);
+assert.equal(new Set(checkout.orders.map(o=>o.checkoutId)).size,1);
+assert.equal(new Set(s.ledger.filter(x=>x.checkoutId===checkout.checkoutId).map(x=>x.reference)).size,1);
+
+const results=[];
+for(const [ws,store,expectedTotal,expectedLines] of [
+  ['grocery','ABC Grocery',1448,2],['groceryFresh','Fresh Mart',485,1]
+]){
+ const [o]=Commerce.visibleOrders(s,ws).filter(x=>x.checkoutId===checkout.checkoutId);
+ assert.ok(o);assert.equal(o.fulfilmentPartner,store);assert.equal(o.total,expectedTotal);
+ assert.equal(o.items.length,expectedLines);assert.equal(o.status,'paid');
+ assert.match(Commerce.screen(s,'shopOrders',ws),new RegExp(o.id));
+ assert.equal(Commerce.visibleOrders(s,ws).some(x=>x.party!==o.party),false);
+ assert.equal(Commerce.sellerAction(s,ws,o.id,'accept'),'');
+ assert.equal(o.status,'accepted');
+ assert.equal(Commerce.sellerAction(s,ws,o.id,'pack'),'');
+ assert.equal(o.status,'ready_for_pickup');
+ assert.equal(o.deliveryAssignment.status,'offered');
+ assert.match(Commerce.screen(s,'deliveryJobs','deliveryPartner'),new RegExp(o.id));
+ assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');
+ assert.equal(o.deliveryAssignment.status,'accepted');
+ assert.match(Commerce.deliveryAction(s,'deliveryPartner',o.id,'pickup','0000'),/pickup code/);
+ assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode),'');
+ assert.equal(o.status,'out_for_delivery');
+ assert.match(Orders.ordersScreen(s),new RegExp(`Delivery code: <b>${o.deliveryCode}</b>`));
+ assert.equal(Commerce.updateLocation(s,'deliveryPartner',o.id,'En route'),'');
+ assert.equal(Commerce.updateLocation(s,'deliveryPartner',o.id,'Near destination'),'');
+ assert.match(Orders.ordersScreen(s),/Last update: Near destination/);
+ assert.match(Commerce.deliveryAction(s,'deliveryPartner',o.id,'deliver','0000'),/delivery code/);
+ assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode),'');
+ assert.equal(o.status,'delivered');assert.equal(o.paymentStatus,'paid');
+ assert.equal(o.settlementStatus,'pending');assert.equal(o.deliveryPayoutStatus,'pending');
+ assert.ok(s.customerInvoices.some(i=>i.ref===o.id));
+ assert.ok(o.history.some(h=>/accepted order/.test(h.text)));
+ assert.ok(o.history.some(h=>/collected from store/.test(h.text)));
+ assert.ok(o.history.some(h=>/Delivered with customer code/.test(h.text)));
+ results.push({id:o.id,store,total:o.total,items:o.items.length,events:o.history.length,status:o.status});
+}
+assert.equal(checkout.orders.reduce((sum,o)=>sum+o.total,0),1933);
+assert.equal(Commerce.visibleOrders(s,'deliveryPartner2').length,0);
+assert.match(Orders.ordersScreen(s),/Near destination/);
+assert.match(Commerce.screen(s,'commerceOrders','admin'),/Delivered with customer code/);
+const driverView=Commerce.screen(s,'deliveryJobs','deliveryPartner');
+assert.match(driverView,/Pick up:<\/b> ABC Grocery · 18 Market Road/);
+assert.match(driverView,/Pick up:<\/b> Fresh Mart · 7 Main Bazaar/);
+assert.match(driverView,/Deliver to:<\/b> 42 MG Road, Delhi 110001/);
+assert.match(driverView,/Directions to store/);
+console.log(JSON.stringify({status:'PASS',journey:'Three cart products, two seller orders, seller handoff, courier pickup, checkpoints, verified delivery',checkoutTotal:checkout.total,orders:results,driverPickupAndDropoffVisible:true}));

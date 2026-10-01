@@ -165,3 +165,14 @@ Customer product search, mixed-store cart and checkout are available in `index.h
 ## Grocery commerce across roles
 
 Use `index.html` for customer orders, `seller.html` for the two mock grocery stores, `delivery.html` for the two mock delivery partners, and `admin.html#/commerceOps` for oversight. They share mock order state on the same browser origin. See `COMMERCE-E2E-TEST-REPORT.md` for the full manual walkthrough, automated results and demo limits. Run `npm run test:commerce`, `npm run test:unit` and `npm run test:static` from this folder.
+
+### Role navigation on mobile
+
+- Customer: **Home, Shop, Orders, Account, More**. The cart button is on Shop; More contains Book, My bookings and Messages.
+- Seller: **Home, Orders, Products, Money, More**. Store profile is in More.
+- Delivery partner: **Home, Deliveries, Earnings, Profile, More**. COD cash is linked from Earnings and shown as a Home alert when handover is due; its detailed page is also in More.
+- Admin: **Overview, Orders, Partners, Payments, More**. More includes Grocery Issues and the existing platform administration screens. The former `#/commerceOps` link remains an overview with links to the four grocery sections.
+
+On GitHub Pages, publish from the branch root with `index.html` at the top level. Use the same browser profile and origin to test all four entry pages: local storage cannot synchronize orders between separate devices.
+
+`npm run test:commerce` also runs the three-product/two-store customer → seller → courier → customer tracking journey. The courier job shows the mock store pickup and customer drop-off addresses with directions links. See `GROCERY-MULTI-ITEM-E2E-REPORT.md` for results and remaining demo gaps.

@@ -22,7 +22,7 @@ export const SEED={
     deliveryPartner2:{name:'Sana Delivery',role:'Delivery Partner',initials:'SD'},
   },
   workspaces:['personal','goods','transporter','vehicle','movers','commercialDriver','personalDriver','helper','admin','grocery','groceryFresh','deliveryPartner','deliveryPartner2'],
-  shopPartners:{grocery:{name:'ABC Grocery',party:'store:abc-grocery',status:'approved',bank:'•••• 1254',payoutAccount:{accountNumber:'1234561254'}},groceryFresh:{name:'Fresh Mart',party:'store:fresh-mart',status:'approved',bank:'•••• 9210',payoutAccount:{accountNumber:'1234569210'}}},
+  shopPartners:{grocery:{name:'ABC Grocery',party:'store:abc-grocery',pickupAddress:'18 Market Road, Karol Bagh, Delhi 110005',status:'approved',bank:'•••• 1254',payoutAccount:{accountNumber:'1234561254'}},groceryFresh:{name:'Fresh Mart',party:'store:fresh-mart',pickupAddress:'7 Main Bazaar, Lajpat Nagar, Delhi 110024',status:'approved',bank:'•••• 9210',payoutAccount:{accountNumber:'1234569210'}}},
   deliveryPartners:{deliveryPartner:{id:'DP-001',name:'Ravi Delivery',status:'approved',available:true,payoutAccount:{accountNumber:'1234567801'}},deliveryPartner2:{id:'DP-002',name:'Sana Delivery',status:'approved',available:true,payoutAccount:{accountNumber:'1234567802'}}},
   badges:{transporter:{work:3,messages:4},vehicle:{work:2,messages:5},goods:{work:3,messages:2},movers:{work:4},admin:{approvals:7}},
   branches:{goods:['All branches','Patna Warehouse','Bihta Plant','Ranchi Depot'],transporter:['All branches','Noida HQ','Jaipur Branch'],vehicle:['All branches','Patna Yard'],movers:['All branches','Noida Moving Branch','Gurugram Branch']},
