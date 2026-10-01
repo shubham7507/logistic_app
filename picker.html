@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b6655">
+  <meta name="description" content="MoveAI One vNext phased application prototype">
+  <title>MoveAI Picker — grocery tasks</title>
+  <link rel="stylesheet" href="./css/tokens.css">
+  <link rel="stylesheet" href="./css/components.css">
+  <link rel="stylesheet" href="./css/responsive.css">
+  <link rel="stylesheet" href="./css/people.css">
+  <link rel="stylesheet" href="./css/marketplace.css">
+  <link rel="stylesheet" href="./css/ops.css">
+</head>
+<body data-product="picker">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div id="app" class="app-shell" aria-busy="true">
+    <aside id="sidebar" class="sidebar" aria-label="Primary navigation">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">P</span><span><b>MoveAI Picker</b><small>Pick grocery orders for your store</small></span></div>
+      <p class="eyebrow">Workspace</p>
+      <button id="workspace-button" class="workspace-button" type="button" aria-haspopup="dialog">
+        <span id="workspace-icon" class="workspace-icon" aria-hidden="true">P</span>
+        <span class="workspace-copy"><b id="workspace-name">Personal</b><small id="workspace-role">Personal workspace</small></span>
+        <span aria-hidden="true">⌄</span>
+      </button>
+      <nav id="desktop-nav" class="desktop-nav"></nav>
+      <button id="reset-demo" class="reset-button" type="button">Reset demo data</button>
+      <div class="profile-card"><span id="profile-avatar" class="avatar">SK</span><span><b id="profile-name">Shubham Kumar</b><small id="profile-role">General Customer · Mock user</small></span></div>
+    </aside>
+
+    <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+    <section class="app-main">
+      <header class="topbar">
+        <button id="menu-button" class="icon-button menu-button" type="button" aria-label="Open navigation">☰</button>
+        <div class="topbar-title"><b id="page-title">Home</b><small id="page-context">Personal</small></div>
+        <button id="branch-button" class="branch-button" type="button">All branches</button>
+        <button id="notifications-button" class="icon-button bell-button" type="button" aria-label="Notifications" data-route="notifications">🔔<span class="bell-count" hidden></span></button>
+      </header>
+      <main id="main-content" class="content" tabindex="-1"></main>
+    </section>
+    <nav id="mobile-nav" class="mobile-nav" aria-label="Mobile navigation"></nav>
+    <button id="ai-button" class="ai-button" type="button" aria-label="Open MoveAI assistant"><span aria-hidden="true">✦</span><span>Ask MoveAI</span></button>
+  </div>
+
+  <div id="workspace-dialog" class="dialog-backdrop" hidden>
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="workspace-heading">
+      <header class="dialog-header"><div><h2 id="workspace-heading">Switch workspace</h2><p>One identity, separate authorized contexts</p></div><button class="icon-button" data-close-dialog type="button" aria-label="Close">×</button></header>
+      <div id="workspace-list" class="workspace-list"></div>
+    </section>
+  </div>
+
+  <div id="more-sheet" class="dialog-backdrop bottom" hidden>
+    <section class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="more-heading">
+      <header class="dialog-header"><div><h2 id="more-heading">More</h2><p>Additional actions for this role</p></div><button class="icon-button" data-close-more type="button" aria-label="Close">×</button></header>
+      <div id="more-list" class="more-list"></div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="ai-dialog" class="dialog-backdrop" hidden>
+    <section class="dialog ai-panel" role="dialog" aria-modal="true" aria-labelledby="ai-heading">
+      <header class="dialog-header"><div><h2 id="ai-heading">Ask MoveAI</h2><p>Speak or type. Critical actions are read back before they run.</p></div><button class="icon-button" data-close-ai type="button" aria-label="Close">×</button></header>
+      <form id="ai-form" class="ai-form"><label for="ai-input" class="sr-only">Command</label><input id="ai-input" name="text" autocomplete="off" placeholder="e.g. summarize TRP-501"><button id="ai-mic" type="button" class="button secondary" aria-label="Speak">🎤</button><button type="submit" class="button primary">Send</button></form>
+      <p id="ai-status" class="muted" aria-live="polite"></p>
+      <div id="ai-readback" class="ai-readback" aria-live="polite"></div>
+      <div id="ai-confirm" class="row-actions" hidden><button id="ai-yes" type="button" class="button primary">Confirm</button><button id="ai-no" type="button" class="button secondary">Cancel</button></div>
+    </section>
+  </div>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

@@ -12,6 +12,8 @@ const nav={
   staff:[['home','Home'],['work','My Work'],['trips','Trips'],['messages','Messages'],['money','My Money'],['profile','My Profile']],
   grocery:[['home','Home'],['shopOrders','Orders'],['shopCatalog','Products'],['shopEarnings','Money'],['shopProfile','Store']],
   groceryFresh:[['home','Home'],['shopOrders','Orders'],['shopCatalog','Products'],['shopEarnings','Money'],['shopProfile','Store']],
+  picker:[['home','Home'],['pickTasks','Pick tasks'],['pickProfile','Profile']],
+  pickerFresh:[['home','Home'],['pickTasks','Pick tasks'],['pickProfile','Profile']],
   deliveryPartner:[['home','Home'],['deliveryJobs','Deliveries'],['deliveryCash','COD cash'],['deliveryEarnings','Earnings'],['deliveryProfile','Profile']],
   deliveryPartner2:[['home','Home'],['deliveryJobs','Deliveries'],['deliveryCash','COD cash'],['deliveryEarnings','Earnings'],['deliveryProfile','Profile']],
   admin:[['home','Overview'],['commerceOrders','Orders'],['commercePartners','Partners'],['commercePayments','Payments'],['commerceIssues','Issues'],['verification','Verification'],['payOps','MoveAI Pay'],['approvals','Approvals'],['cases','Cases'],['documents','Documents'],['users','Users'],['audit','Audit']],
@@ -30,12 +32,14 @@ export const ROLE_CONFIG={
   admin:{label:'Platform Admin',subtitle:'Verification and safety',icon:'A',nav:nav.admin,branches:false,homePhase:'P2'},
   grocery:{label:'ABC Grocery',subtitle:'Grocery Store · Approved',icon:'S',nav:nav.grocery,branches:false,homePhase:'P16'},
   groceryFresh:{label:'Fresh Mart',subtitle:'Grocery Store · Approved',icon:'S',nav:nav.groceryFresh,branches:false,homePhase:'P16'},
+  picker:{label:'ABC Grocery picker',subtitle:'Store picker',icon:'P',nav:nav.picker,branches:false,homePhase:'P16'},
+  pickerFresh:{label:'Fresh Mart picker',subtitle:'Store picker',icon:'P',nav:nav.pickerFresh,branches:false,homePhase:'P16'},
   deliveryPartner:{label:'Delivery Partner 1',subtitle:'Grocery delivery · Approved',icon:'D',nav:nav.deliveryPartner,branches:false,homePhase:'P16'},
   deliveryPartner2:{label:'Delivery Partner 2',subtitle:'Grocery delivery · Approved',icon:'D',nav:nav.deliveryPartner2,branches:false,homePhase:'P16'},
 };
 
 export const ROUTES={
-  home:{title:'Home',phase:'P0'}, search:{title:'Search products',phase:'P4'},cart:{title:'Cart',phase:'P16'},orders:{title:'My orders',phase:'P4'},
+  home:{title:'Home',phase:'P0'}, search:{title:'Search products',phase:'P4'},productDetail:{title:'Product details',phase:'P16'},cartAdded:{title:'Added to cart',phase:'P16'},cart:{title:'Cart',phase:'P16'},orders:{title:'My orders',phase:'P4'},orderTracking:{title:'Track order',phase:'P16'},pickTasks:{title:'Pick tasks',phase:'P16'},pickProfile:{title:'Picker profile',phase:'P16'},
   shopOrders:{title:'Store orders',phase:'P16'},shopCatalog:{title:'Products and stock',phase:'P16'},shopEarnings:{title:'Store settlements',phase:'P16'},shopProfile:{title:'Store profile',phase:'P16'},
   deliveryJobs:{title:'Delivery jobs',phase:'P16'},deliveryCash:{title:'COD cash',phase:'P16'},deliveryEarnings:{title:'Delivery earnings',phase:'P16'},deliveryProfile:{title:'Delivery profile',phase:'P16'},commerceOps:{title:'Shop operations',phase:'P16'},commerceOrders:{title:'Grocery orders',phase:'P16'},commercePartners:{title:'Grocery partners',phase:'P16'},commercePayments:{title:'Grocery payments',phase:'P16'},commerceIssues:{title:'Grocery issues',phase:'P16'},
   work:{title:'Work',phase:'P4'},fleet:{title:'Fleet',phase:'P5'},people:{title:'People',phase:'P3'},messages:{title:'Messages',phase:'P5'},money:{title:'Money',phase:'P7'},business:{title:'Business',phase:'P2'},profile:{title:'Profile',phase:'P3'},
@@ -63,8 +67,8 @@ export function allowedRoutes(roleKey){
   const businessPeople=['ewayBills','invoices','invoiceNew','invoiceDetail','workforce','dutyBoard','payroll','khata','tripSettlement','addStaff','inviteSent','staffDetail','staffReview','roles','staffAccess','hiring','postOpening','findWorkers','openingDetail','applications','ownerCover','offboarding','candidateReview','employmentChange'];
   const workerPeople=['candidateProfile','openingDetail','workerDocuments','workerStatus','workerVerify'];
   const phase4ByRole={goods:['goodsOrder','transportRequirement','arrangement','buyWithDelivery','transporterRequirements','opportunityDetail','opportunityChat','ownVehicleAssignment','postAvailableTruck'],transporter:['goodsRequirements','postAvailableLoad','postLoadRequirement','transporterRequirements','postAvailableTruck','routeOpportunities','opportunityDetail','opportunityChat','sellerSourcing','transportOffer'],vehicle:['postAvailableTruck','routeOpportunities','opportunityDetail','opportunityChat','truckOffer'],movers:[]};
-  const extra=roleKey==='personal'?['purpose','consentDetails','recoverySupport','businessStart','businessDetails','businessKyc','branches','bank','applicationStatus','candidateProfile','applyOpening','workerDocuments','workerStatus','workerVerify','work','search','cart','orders','money','invitations','productCheckout','billDoc']:roleKey==='admin'?['applicationReview','candidateReview','commerceOps']:roleKey==='staff'?['staffInvite','staffOtp','staffOnboarding','staffSubmission']:['commercialDriver','personalDriver','helper'].includes(roleKey)?[...workerPeople,'applyOpening']:role.branches?['branches','branchEditor','bank','serviceExpansion',...businessPeople,...(phase4ByRole[roleKey]||[])]:[];
-  const common=['grocery','groceryFresh','deliveryPartner','deliveryPartner2'].includes(roleKey)?['notifications']:['notifications','conversation','exceptions','exceptionDetail','paymentDetail'];
+  const extra=roleKey==='personal'?['purpose','consentDetails','recoverySupport','businessStart','businessDetails','businessKyc','branches','bank','applicationStatus','candidateProfile','applyOpening','workerDocuments','workerStatus','workerVerify','work','search','productDetail','cartAdded','cart','orders','orderTracking','money','invitations','productCheckout','billDoc']:roleKey==='admin'?['applicationReview','candidateReview','commerceOps']:roleKey==='staff'?['staffInvite','staffOtp','staffOnboarding','staffSubmission']:['commercialDriver','personalDriver','helper'].includes(roleKey)?[...workerPeople,'applyOpening']:role.branches?['branches','branchEditor','bank','serviceExpansion',...businessPeople,...(phase4ByRole[roleKey]||[])]:[];
+  const common=['grocery','groceryFresh','picker','pickerFresh','deliveryPartner','deliveryPartner2'].includes(roleKey)?['notifications']:['notifications','conversation','exceptions','exceptionDetail','paymentDetail'];
   const tripRoutes=['trips','tripDetail'];
   const opsExtra=role.branches?[...tripRoutes,'assignTrip','vehicleOffer','vehicleDetail','addVehicle','movingJob','payment','staffEvents']:
     roleKey==='personal'?['book','bookingReview','services','serviceDetail','movingJob','tripDetail','payment']:

@@ -28,6 +28,16 @@ for(const [ws,store,expectedTotal,expectedLines] of [
  assert.equal(Commerce.visibleOrders(s,ws).some(x=>x.party!==o.party),false);
  assert.equal(Commerce.sellerAction(s,ws,o.id,'accept'),'');
  assert.equal(o.status,'accepted');
+ const pickerWs=ws==='grocery'?'picker':'pickerFresh';
+ assert.match(Commerce.pickerAction(s,pickerWs==='picker'?'pickerFresh':'picker',o.id,'start'),/denied/);
+ assert.match(Commerce.sellerAction(s,ws,o.id,'pack'),/Picker must confirm/);
+ assert.match(Commerce.screen(s,'pickTasks',pickerWs),new RegExp(o.id));
+ assert.equal(Commerce.pickerAction(s,pickerWs,o.id,'start'),'');
+ assert.match(Commerce.pickerAction(s,pickerWs,o.id,'complete'),/Confirm every/);
+ assert.match(Commerce.screen(s,'pickTasks',pickerWs),/Mark picked/);
+ for(const i of o.items)assert.equal(Commerce.pickerAction(s,pickerWs,o.id,'check',i.productId),'');
+ assert.equal(Commerce.pickerAction(s,pickerWs,o.id,'complete'),'');
+ assert.match(Commerce.screen(s,'shopOrders',ws),/All items confirmed/);
  assert.equal(Commerce.sellerAction(s,ws,o.id,'pack'),'');
  assert.equal(o.status,'ready_for_pickup');
  assert.equal(o.deliveryAssignment.status,'offered');
@@ -37,6 +47,8 @@ for(const [ws,store,expectedTotal,expectedLines] of [
  assert.match(Commerce.deliveryAction(s,'deliveryPartner',o.id,'pickup','0000'),/pickup code/);
  assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode),'');
  assert.equal(o.status,'out_for_delivery');
+ s.selectedTrackingOrderId=o.id;
+ assert.match(Orders.trackingScreen(s),/Courier collected/);
  assert.match(Orders.ordersScreen(s),new RegExp(`Delivery code: <b>${o.deliveryCode}</b>`));
  assert.equal(Commerce.updateLocation(s,'deliveryPartner',o.id,'En route'),'');
  assert.equal(Commerce.updateLocation(s,'deliveryPartner',o.id,'Near destination'),'');
@@ -44,6 +56,7 @@ for(const [ws,store,expectedTotal,expectedLines] of [
  assert.match(Commerce.deliveryAction(s,'deliveryPartner',o.id,'deliver','0000'),/delivery code/);
  assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode),'');
  assert.equal(o.status,'delivered');assert.equal(o.paymentStatus,'paid');
+ assert.match(Orders.trackingScreen(s),/✓ Delivered/);
  assert.equal(o.settlementStatus,'pending');assert.equal(o.deliveryPayoutStatus,'pending');
  assert.ok(s.customerInvoices.some(i=>i.ref===o.id));
  assert.ok(o.history.some(h=>/accepted order/.test(h.text)));

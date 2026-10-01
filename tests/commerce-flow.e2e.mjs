@@ -8,7 +8,8 @@ const order=(s,method='upi',productId='PRD-101')=>{
  const v={productId,qty:1,address:'42 MG Road, Delhi 110001',method,vpa:'test@okaxis'};
  const r=PO.placeOrder(s,v);assert.ok(r.ok,r.error);return r.order;
 };
-const pack=(s,o,ws='grocery')=>{assert.equal(C.sellerAction(s,ws,o.id,'accept'),'');assert.equal(C.sellerAction(s,ws,o.id,'pack'),'');};
+const pick=(s,o,ws='picker')=>{assert.equal(C.pickerAction(s,ws,o.id,'start'),'');for(const i of o.items)assert.equal(C.pickerAction(s,ws,o.id,'check',i.productId),'');assert.equal(C.pickerAction(s,ws,o.id,'complete'),'');};
+const pack=(s,o,ws='grocery')=>{assert.equal(C.sellerAction(s,ws,o.id,'accept'),'');pick(s,o,ws==='grocery'?'picker':'pickerFresh');assert.equal(C.sellerAction(s,ws,o.id,'pack'),'');};
 const deliver=(s,o,ws='deliveryPartner')=>{assert.equal(C.deliveryAction(s,ws,o.id,'accept'),'');assert.match(C.deliveryAction(s,ws,o.id,'pickup','0000'),/pickup code/);assert.equal(C.deliveryAction(s,ws,o.id,'pickup',o.pickupCode),'');assert.match(C.deliveryAction(s,ws,o.id,'deliver','0000'),/delivery code/);assert.equal(C.deliveryAction(s,ws,o.id,'deliver',o.deliveryCode),'');};
 // Prepaid: distinct role scopes, verified handoff, delayed settlement, idempotence, invoice.
 let s=fresh(),o=order(s);
@@ -93,6 +94,7 @@ assert.equal(C.unavailableItem(s,'grocery',o.id,'PRD-103'),'');assert.equal(o.st
 assert.match(C.sellerAction(s,'grocery',o.id,'pack'),/not available/);
 assert.equal(C.removeUnavailable(s,o.id),'');assert.equal(o.total,710);
 assert.equal(s.ledger.find(x=>x.orderId===o.id&&x.type==='refund').amount,28);
+pick(s,o);
 assert.equal(C.sellerAction(s,'grocery',o.id,'pack'),'');
 s=fresh();PO.addToCart(s,'PRD-101');PO.addToCart(s,'PRD-103');
 cart=PO.placeOrder(s,{fromCart:true,address:'Delhi',method:'cod',substitution:'refund'});o=cart.order;

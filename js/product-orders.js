@@ -23,14 +23,15 @@ export function quote(p, qty) {
 export function cartLines(state) {
   return (state.productCart || []).map(i => ({...i, product:state.products.find(p => p.id === i.productId)})).filter(i => i.product && Number.isInteger(i.quantity) && i.quantity > 0);
 }
-export function addToCart(state, productId) {
+export function addToCart(state, productId, quantity=1) {
   const p = state.products.find(x => x.id === productId);
   if (!p || p.stock !== 'In stock') return 'This product is unavailable.';
   if (!Object.values(state.shopPartners||{}).some(x=>x.name===p.fulfilmentPartner&&x.status==='approved')) return 'This store is unavailable right now.';
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10) return 'Choose 1 to 10 items.';
   state.productCart ||= [];
   const line = state.productCart.find(i => i.productId === productId);
-  if (line && line.quantity >= 10) return 'Maximum 10 per product.';
-  if (line) line.quantity += 1; else state.productCart.push({productId, quantity:1});
+  if (line && line.quantity + quantity > 10) return 'Maximum 10 per product.';
+  if (line) line.quantity += quantity; else state.productCart.push({productId, quantity});
   return '';
 }
 export function updateCart(state, id, quantity) {
@@ -126,13 +127,29 @@ export function searchScreen(state) {
   const query = String(state.productQuery || '').trim().toLowerCase();
   const found = state.products.filter(p => `${p.name} ${p.category} ${p.size}`.toLowerCase().includes(query));
   const count = cartLines(state).reduce((n, i) => n + i.quantity, 0);
-  return `${head('Shop products', 'Search by product name or category. The store is assigned by the platform.', `<button class="button secondary" data-route="cart">Cart (${count})</button>`)}
+  const categories=[...new Set(state.products.map(p=>p.category))];
+  return `${head('Shop products', 'Search groceries and review each item before checkout.')}
+    <div class="shop-toolbar"><span>Deliver to ${esc(state.deliveryAddress||'your address at checkout')}</span><button class="button secondary shop-cart-link" data-route="cart" aria-label="Open cart with ${count} item${count===1?'':'s'}">🛒 Cart <b>${count}</b></button></div>
     <form id="product-search-form" class="panel filter-bar"><label class="sr-only" for="product-query">Search products</label><input id="product-query" name="query" value="${esc(state.productQuery || '')}" placeholder="Search rice, flour, salt…"><button class="button primary">Search</button></form>
-    <p class="muted">${found.length} product${found.length === 1 ? '' : 's'} found</p><div class="candidate-grid">${found.map(p => `<article class="panel candidate-card"><span class="market-icon">🛒</span><h2>${esc(p.name)}</h2><p>${esc(p.size)} · ${esc(p.category)}</p><b>${inr(p.price)}</b><small>${esc(p.stock)} · Delivery estimate shown at checkout</small><div class="row-actions"><button class="button secondary" data-po-add="${esc(p.id)}">Add to cart</button><button class="button primary" data-action="buy-product" data-product="${esc(p.id)}">Buy now</button></div></article>`).join('') || '<div class="panel empty-inline"><b>No products found</b><p>Try a different name or category.</p></div>'}</div>`;
+    <div class="shop-categories" aria-label="Product categories"><button class="${!query?'active':''}" data-po-query="">All</button>${categories.map(c=>`<button class="${query===c.toLowerCase()?'active':''}" data-po-query="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    <p class="muted">${found.length} product${found.length === 1 ? '' : 's'} found · Store assigned by MoveAI</p><div class="shop-grid">${found.map(p => `<article class="panel shop-product-card"><button class="shop-product-open" data-po-detail="${esc(p.id)}" aria-label="View ${esc(p.name)} details"><span class="shop-product-visual" aria-hidden="true">${productIcon(p)}</span><strong>${esc(p.name)}</strong></button><small>${esc(p.size)} · ${esc(p.category)}</small><b class="shop-price">${inr(p.price)}</b><span class="stock-label">${esc(p.stock)}</span><div class="row-actions"><button class="button secondary" data-po-detail="${esc(p.id)}">View details</button><button class="button primary" data-po-add="${esc(p.id)}" ${p.stock==='In stock'?'':'disabled'}>＋ Add</button></div></article>`).join('') || '<div class="panel empty-inline"><b>No products found</b><p>Try a different name or category.</p></div>'}</div>`;
+}
+const productIcon=p=>({Rice:'🍚',Flour:'🌾',Essentials:'🧂'}[p.category]||'🛒');
+export function productDetailScreen(state){
+  const p=state.products.find(x=>x.id===state.selectedProductId);
+  if(!p)return `${head('Product unavailable','Choose another product.')}<button class="button secondary" data-route="search">Back to Shop</button>`;
+  const count=cartLines(state).reduce((n,i)=>n+i.quantity,0);
+  return `${head('Product details',`${p.category} · ${p.size}`)}<div class="shop-toolbar"><button class="button secondary" data-route="search">← Shop</button><button class="button secondary shop-cart-link" data-route="cart">🛒 Cart <b>${count}</b></button></div>
+    <div class="shop-detail"><div class="panel shop-detail-visual" aria-hidden="true">${productIcon(p)}</div><section class="panel shop-detail-info"><h2>${esc(p.name)}</h2><p>${esc(p.size)} · ${esc(p.category)}</p><b class="shop-price">${inr(p.price)}</b><p class="stock-label">${esc(p.stock)}</p><p>Delivery address and available payment methods are confirmed at checkout. MoveAI assigns the store.</p><label for="product-detail-qty">Quantity</label><select id="product-detail-qty" data-po-detail-qty>${Array.from({length:10},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('')}</select><div class="shop-detail-actions"><button class="button primary" data-po-add="${esc(p.id)}" ${p.stock==='In stock'?'':'disabled'}>Add to cart</button><button class="button secondary" data-action="buy-product" data-product="${esc(p.id)}" ${p.stock==='In stock'?'':'disabled'}>Buy now</button></div></section></div>`;
+}
+export function cartAddedScreen(state){
+ const p=state.products.find(x=>x.id===state.lastAddedProductId),lines=cartLines(state),q=quote(lines.map(i=>({price:i.product.price,quantity:i.quantity}))),count=lines.reduce((n,i)=>n+i.quantity,0);
+ if(!p||!count)return cartScreen(state);
+ return `${head('Added to cart','Your selection is saved in this browser.')}<section class="panel shop-added"><span class="shop-added-mark" aria-hidden="true">✓</span><div><h2>${esc(p.name)} added</h2><p>${count} item${count===1?'':'s'} in cart · Subtotal ${inr(q.items)}</p></div><div class="shop-added-actions"><button class="button primary" data-route="cart">Go to cart</button><button class="button secondary" data-po-checkout>Proceed to checkout</button><button class="button text" data-route="search">Continue shopping</button></div></section>`;
 }
 export function cartScreen(state) {
-  const lines = cartLines(state), q = quote(lines.map(i => ({price:i.product.price, quantity:i.quantity})));
-  return `${head('Your cart', 'Review quantities before checkout.', '<button class="button secondary" data-route="search">Continue shopping</button>')}
+  const lines = cartLines(state), q = quote(lines.map(i => ({price:i.product.price, quantity:i.quantity}))); 
+  return `${head('Your cart', 'Review quantities before checkout.')}<div class="shop-toolbar"><button class="button secondary" data-route="search">← Continue shopping</button><strong>${lines.reduce((n,i)=>n+i.quantity,0)} item(s)</strong></div>
     <section class="panel form-panel narrow">${lines.map(i => `<div class="cart-line"><div><b>${esc(i.product.name)}</b><small>${esc(i.product.size)} · ${inr(i.product.price)} each</small></div><label><span>Quantity</span><select data-po-cart-qty="${esc(i.productId)}">${Array.from({length:11}, (_, n) => `<option value="${n}" ${n === i.quantity ? 'selected' : ''}>${n === 0 ? 'Remove' : n}</option>`).join('')}</select></label><strong>${inr(i.product.price * i.quantity)}</strong></div>`).join('') || '<div class="empty-inline"><b>Your cart is empty</b></div>'}
     ${lines.length ? `<table class="price-table"><tbody><tr><td>Items</td><td>${inr(q.items)}</td></tr><tr><td>Delivery</td><td>${q.delivery ? inr(q.delivery) : 'Free'}</td></tr><tr class="total"><td>Estimated total</td><td>${inr(q.total)}</td></tr></tbody></table><button class="button primary full" data-po-checkout>Proceed to checkout</button>` : '<button class="button primary full" data-route="search">Shop products</button>'}</section>`;
 }
@@ -140,15 +157,19 @@ export function checkoutScreen(state) {
   const fromCart = state.checkoutFromCart, lines = fromCart ? cartLines(state) : [{product:state.products.find(x => x.id === state.checkoutProductId) || state.products[0],quantity:Number(state.checkoutQty || 1)}];
   if (!lines.length) return `${head('Checkout', 'Your cart is empty.')}<button class="button primary" data-route="search">Shop products</button>`;
   const q = quote(lines.map(i => ({price:i.product.price,quantity:i.quantity})));
-  return `${head('Review and place order', `${lines.length} product${lines.length === 1 ? '' : 's'} · estimated delivery today, 6:30 PM`)}
+  return `${head('Secure checkout', `${lines.length} product${lines.length === 1 ? '' : 's'} · estimated delivery today, 6:30 PM`)}
   <section class="panel form-panel narrow"><form data-po-form="checkout" class="form-grid two">
+    <div class="shop-checkout-steps wide"><span>1 Delivery address</span><span>2 Payment method</span><span>3 Review order</span></div>
     ${fromCart ? '<button type="button" class="button secondary wide" data-route="cart">Edit cart</button>' : `<label><span>Quantity</span><select name="qty" data-po-qty>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<option ${n === lines[0].quantity ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`}
+    <h2 class="wide shop-step-title">1 · Delivery address</h2>
     <label class="wide"><span>Delivery address</span><textarea name="address" rows="2" required placeholder="House, street, landmark, city and PIN code">${esc(state.deliveryAddress || 'Flat 402, Sector 62, Noida 201301')}</textarea></label>
     <label class="wide"><span>If a grocery item is unavailable</span><select name="substitution"><option value="contact">Contact me before replacing</option><option value="refund">Do not replace; refund the item</option></select></label>
-    <table class="price-table wide"><tbody>${lines.map(i => `<tr><td>${i.quantity} × ${esc(i.product.name)} · ${esc(i.product.size)}</td><td>${inr(i.quantity * i.product.price)}</td></tr>`).join('')}<tr><td>Delivery${q.delivery ? ` (free above ${inr(PRODUCT_POLICY.freeDeliveryAbove)})` : ''}</td><td>${q.delivery ? inr(q.delivery) : 'Free'}</td></tr><tr class="total"><td>Total</td><td>${inr(q.total)}</td></tr></tbody></table>
+    <h2 class="wide shop-step-title">2 · Payment method</h2>
     <div class="pay-box wide"><div class="pay-methods"><label><input type="radio" name="method" value="upi" checked> UPI</label><label><input type="radio" name="method" value="card"> Card</label><label><input type="radio" name="method" value="cod"> Cash on delivery${q.total > PRODUCT_POLICY.codLimit ? ' (not available above ₹5,000)' : ''}</label></div>
     <label class="pay-field" data-for="upi"><span>UPI ID</span><input name="vpa" id="pay-vpa" value="shubham@okaxis"></label><label class="pay-field" data-for="card" hidden><span>Card number</span><input name="card" id="pay-card" inputmode="numeric"></label>
     <p class="muted">Online payments are held by MoveAI Pay until the order is delivered. Cancel before dispatch for a full refund; return within ${PRODUCT_POLICY.returnDays} days of delivery.</p><p class="mock-hint">${esc(TEST)}</p></div>
+    <h2 class="wide shop-step-title">3 · Review items and total</h2>
+    <table class="price-table wide"><tbody>${lines.map(i => `<tr><td>${i.quantity} × ${esc(i.product.name)} · ${esc(i.product.size)}</td><td>${inr(i.quantity * i.product.price)}</td></tr>`).join('')}<tr><td>Delivery${q.delivery ? ` (free above ${inr(PRODUCT_POLICY.freeDeliveryAbove)})` : ''}</td><td>${q.delivery ? inr(q.delivery) : 'Free'}</td></tr><tr class="total"><td>Total</td><td>${inr(q.total)}</td></tr></tbody></table>
     ${billingFieldsHtml(state)}
     <p id="po-error" class="field-error wide" hidden></p><div class="form-actions wide"><button type="button" class="button secondary" data-route="${fromCart ? 'cart' : 'search'}">Back</button><button class="button primary" type="submit">Place order · ${inr(q.total)}</button></div></form></section>`;
 }
@@ -162,17 +183,27 @@ export function ordersScreen(state) {
     ${refunds.map(x => `<p class="muted">Refund ${inr(x.amount)} · ${x.status === 'refunded' ? 'reached your account' : `expected by ${new Date(x.expectedBy).toLocaleDateString('en-IN', {day: '2-digit', month: 'short'})}`}</p>`).join('')}
     ${o.status==='out_for_delivery'?`<p class="info-banner">Delivery code: <b>${esc(o.deliveryCode)}</b> · share it only when the package reaches you.</p>`:''}
     ${o.status==='item_review'?`<div class="info-banner"><b>Item unavailable: ${esc(o.items.find(i=>i.productId===o.pendingItemId)?.name||'Product')}</b><span>Remove it and continue with the remaining order, or cancel this store order.</span><button class="button primary compact" data-po="remove-unavailable" data-id="${esc(o.id)}">Remove item and continue</button></div>`:''}
-    <div class="row-actions">${['paid', 'confirmed', 'accepted', 'item_review', 'ready_for_pickup'].includes(o.status) ? `<button class="button secondary compact" data-po="cancel" data-id="${o.id}">Cancel order</button>` : ''}${o.status === 'delivered' && o.deliveredAt ? `<details><summary class="button secondary compact">Return</summary><form class="inline-form" data-po-form="return" data-id="${o.id}"><input name="reason" placeholder="Reason (damaged, wrong item…)" required>${o.cod?'<input name="destination" placeholder="UPI ID for refund" required>':''}<button class="button secondary compact">Request return</button></form></details>` : ''}</div>
+    <div class="row-actions"><button class="button primary compact" data-po-track="${esc(o.id)}">Track order</button>${['paid', 'confirmed', 'accepted', 'item_review', 'ready_for_pickup'].includes(o.status) ? `<button class="button secondary compact" data-po="cancel" data-id="${o.id}">Cancel order</button>` : ''}${o.status === 'delivered' && o.deliveredAt ? `<details><summary class="button secondary compact">Return</summary><form class="inline-form" data-po-form="return" data-id="${o.id}"><input name="reason" placeholder="Reason (damaged, wrong item…)" required>${o.cod?'<input name="destination" placeholder="UPI ID for refund" required>':''}<button class="button secondary compact">Request return</button></form></details>` : ''}</div>
     <p class="muted">Payment: ${esc(o.paymentStatus||'legacy')} · Delivery: ${esc(o.deliveryAssignment?.partnerName||'Not assigned')} · Seller payout: ${esc(o.settlementStatus||'legacy')}</p>
     <div class="row-actions">${state.ledger.filter(x => x.orderId === o.id && x.receiptNo).map(x => `<button class="button text compact" data-bill-doc="receipt" data-id="${x.id}">Receipt ${esc(x.receiptNo.split('/').pop())}</button>`).join('')}${(state.customerInvoices || []).filter(i => i.ref === o.id).map(i => `<button class="button text compact" data-bill-doc="invoice" data-id="${i.id}">${esc(i.docType)}</button>`).join('')}${refunds.map(x => `<button class="button text compact" data-bill-doc="credit" data-id="${x.id}">Credit note</button>`).join('')}</div>
     <details><summary class="muted">History</summary>${(o.history || []).map(h => `<small class="block">${esc(h.at)} · ${esc(h.text)}</small>`).join('')}</details></section>`; }).join('') || '<div class="empty-inline"><b>No orders yet</b></div>'}`;
 }
+export function trackingScreen(state){
+ const o=state.customerOrders.find(x=>x.id===state.selectedTrackingOrderId);
+ if(!o)return `${head('Track order','Select a package from My orders')}<button class="button secondary" data-route="orders">My orders</button>`;
+ const steps=[['Order placed',true],['Store accepted',!!o.history?.some(h=>/Store accepted order/.test(h.text))],['Picking',!!o.pick?.startedAt],['Items picked',!!o.pick?.completedAt],['Packed', ['ready_for_pickup','out_for_delivery','delivery_issue','delivered','return_requested','returned'].includes(o.status)],['Courier collected', ['out_for_delivery','delivery_issue','delivered','return_requested','returned'].includes(o.status)],['Delivered', ['delivered','return_requested','returned'].includes(o.status)]];
+ if(['cancelled','item_review','delivery_issue','return_requested','returned'].includes(o.status))steps.push([o.status.replaceAll('_',' '),true]);
+ return `${head(`Track ${o.id}`,`${o.fulfilmentPartner||'Store'} · ${o.items.length} item line(s)`,'<button class="button secondary" data-route="orders">All orders</button>')}<section class="panel"><h2>${esc(o.status.replaceAll('_',' '))}</h2><p>${esc(o.address||'Address unavailable')}</p><p>Courier: ${esc(o.deliveryAssignment?.partnerName||'Awaiting assignment')}</p><p>${o.latestLocation?`Last shared checkpoint: ${esc(o.latestLocation.label)} · ${new Date(o.latestLocation.at).toLocaleString('en-IN')}`:'No courier checkpoint yet'}</p><p class="muted">Checkpoints are shared manually in this demo; no live GPS or guaranteed ETA.</p>${o.status==='out_for_delivery'?`<p class="info-banner">Delivery code <b>${esc(o.deliveryCode)}</b> · share when the package arrives.</p>`:''}<ol class="order-timeline">${steps.map(([label,done])=>`<li class="${done?'done':''}">${done?'✓':'○'} ${label}</li>`).join('')}</ol><h3>Items</h3>${o.items.map(i=>`<p>${i.quantity} × ${esc(i.name||i.productId)} · ${inr(i.quantity*i.unitPrice)}</p>`).join('')}<p><b>Total ${inr(o.total)}</b> · ${esc(o.cod?'Cash on delivery':o.method||'Payment pending')}</p><details><summary>All updates</summary>${(o.history||[]).map(h=>`<small class="block">${esc(h.at)} · ${esc(h.actor||'MoveAI')}: ${esc(h.text)}</small>`).join('')}</details></section>`;
+}
 export function bindOrders(root, api) {
   const S = () => api.getState(), find = id => S().customerOrders.find(o => o.id === id);
   const done = (e, ok) => { if (e) return api.toast(e); api.save(); api.render(); if (ok) api.toast(ok); };
+  root.querySelectorAll('[data-po-track]').forEach(b=>b.onclick=()=>{S().selectedTrackingOrderId=b.dataset.poTrack;api.save();api.navigate('orderTracking');});
   root.querySelector('#product-search-form')?.addEventListener('submit', e => { e.preventDefault(); S().productQuery = new FormData(e.currentTarget).get('query'); api.save(); api.render(); });
-  root.querySelectorAll('[data-po-add]').forEach(b => b.onclick = () => { const error = addToCart(S(), b.dataset.poAdd); if (error) return api.toast(error); api.save(); api.render(); api.toast('Added to cart'); });
-  root.querySelectorAll('[data-action="buy-product"]').forEach(b => b.onclick = () => { S().checkoutFromCart = false; S().checkoutProductId = b.dataset.product; S().checkoutQty = 1; api.save(); api.navigate('productCheckout'); });
+  root.querySelectorAll('[data-po-query]').forEach(b => b.onclick = () => { S().productQuery = b.dataset.poQuery; api.save(); api.render(); });
+  root.querySelectorAll('[data-po-detail]').forEach(b => b.onclick = () => { S().selectedProductId = b.dataset.poDetail; api.save(); api.navigate('productDetail'); });
+  root.querySelectorAll('[data-po-add]').forEach(b => b.onclick = () => { const s=S(),qty=Number(root.querySelector('[data-po-detail-qty]')?.value||1),error=addToCart(s,b.dataset.poAdd,qty); if (error) return api.toast(error); s.lastAddedProductId=b.dataset.poAdd; api.save(); api.navigate('cartAdded'); });
+  root.querySelectorAll('[data-action="buy-product"]').forEach(b => b.onclick = () => { S().checkoutFromCart = false; S().checkoutProductId = b.dataset.product; S().checkoutQty = Number(root.querySelector('[data-po-detail-qty]')?.value||1); api.save(); api.navigate('productCheckout'); });
   root.querySelectorAll('[data-po-cart-qty]').forEach(x => x.onchange = () => { const error = updateCart(S(), x.dataset.poCartQty, Number(x.value)); if (error) return api.toast(error); api.save(); api.render(); });
   root.querySelector('[data-po-checkout]')?.addEventListener('click', () => { S().checkoutFromCart = true; api.save(); api.navigate('productCheckout'); });
   root.querySelector('[data-po-qty]')?.addEventListener('change', e => { S().checkoutQty = Number(e.target.value); api.save(); api.render(); });
