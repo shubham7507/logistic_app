@@ -1,13 +1,12 @@
 // Alerts are actionable summaries. The order history retains every event.
 const id=()=>`NT-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-const pickerFor=store=>store==='grocery'?'picker':'pickerFresh';
 export function notifyOrder(s,o,text){
  const store=Object.keys(s.shopPartners||{}).find(ws=>s.shopPartners[ws].party===o.party);
  const courier=Object.keys(s.deliveryPartners||{}).find(ws=>s.deliveryPartners[ws].id===o.deliveryAssignment?.partnerId);
  const alerts=[];
  const send=(to,message,route,priority='update')=>{if(to)alerts.push({to,text:`${o.id}: ${message}`,route,priority})};
  if(text==='Order sent to store')send(store,'New order to accept','shopOrders','action');
- else if(text==='Store accepted order'){send('personal','Store confirmed your order','orderTracking');if(!o.pick?.startedAt)send(pickerFor(store),'Items ready to pick','pickTasks','action');}
+ else if(text==='Store accepted order'){send('personal','Store confirmed your order','orderTracking');send(store,'Assign a picker or pick items in store','shopOrders','action');}
  else if(text==='All items picked; awaiting store packing')send(store,'Items checked; pack this order','shopOrders','action');
  else if(text==='Packed and ready for pickup'){send('personal','Order ready for pickup','orderTracking');}
  else if(text.startsWith('Delivery offered to '))send(courier,'New delivery offer','deliveryJobs','action');

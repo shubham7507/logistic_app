@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import {SEED} from '../js/mock-data.js';
 import * as PO from '../js/product-orders.js';
 import * as C from '../js/commerce.js';
+import {assignPicker} from '../js/grocery-staff.js';
 import {canOpen} from '../js/permissions.js';
 const fresh=()=>{globalThis.__moveaiClockOffset=0;return structuredClone(SEED)};
 const order=(s,method='upi',productId='PRD-101')=>{
  const v={productId,qty:1,address:'42 MG Road, Delhi 110001',method,vpa:'test@okaxis'};
  const r=PO.placeOrder(s,v);assert.ok(r.ok,r.error);return r.order;
 };
-const pick=(s,o,ws='picker')=>{assert.equal(C.pickerAction(s,ws,o.id,'start'),'');for(const i of o.items)assert.equal(C.pickerAction(s,ws,o.id,'check',i.productId),'');assert.equal(C.pickerAction(s,ws,o.id,'complete'),'');};
+const pick=(s,o,ws='picker')=>{assert.equal(assignPicker(s,ws==='picker'?'grocery':'groceryFresh',o.id,s.activePicker[ws]),'');assert.equal(C.pickerAction(s,ws,o.id,'start'),'');for(const i of o.items)assert.equal(C.pickerAction(s,ws,o.id,'check',i.productId),'');assert.equal(C.pickerAction(s,ws,o.id,'complete'),'');};
 const pack=(s,o,ws='grocery')=>{assert.equal(C.sellerAction(s,ws,o.id,'accept'),'');pick(s,o,ws==='grocery'?'picker':'pickerFresh');assert.equal(C.sellerAction(s,ws,o.id,'pack'),'');};
 const deliver=(s,o,ws='deliveryPartner')=>{assert.equal(C.deliveryAction(s,ws,o.id,'accept'),'');assert.match(C.deliveryAction(s,ws,o.id,'pickup','0000'),/pickup code/);assert.equal(C.deliveryAction(s,ws,o.id,'pickup',o.pickupCode,o.bagCount),'');assert.match(C.deliveryAction(s,ws,o.id,'deliver','0000'),/delivery code/);assert.equal(C.deliveryAction(s,ws,o.id,'deliver',o.deliveryCode),'');};
 // Prepaid: distinct role scopes, verified handoff, delayed settlement, idempotence, invoice.

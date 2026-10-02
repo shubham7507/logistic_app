@@ -5,6 +5,7 @@ import * as Freight from './freight.js';
 import * as Gst from './gst-portal.js';
 import * as Bill from './customer-billing.js';
 import {PARTY_NAMES} from './ops-data.js';
+import {currentPicker} from './grocery-staff.js';
 import {
   TRIP_STEPS, currentMilestone, stepMeta, tripProgress, docsValid, MOVING_PACKAGES, HOME_SIZES, DRIVER_RATES, GENERAL_SERVICES,
   quoteMoving, quoteDriver, quoteGeneral, MOVING_STEPS, movingStepIndex, MONEY_TYPES, earningsSummary, visibleLedger, visibleConversations,
@@ -578,7 +579,7 @@ export function staffEventsScreen(state) {
 // ---------- Notifications ----------
 export function notificationsScreen(state) {
   const {ws, ownerWs} = opsCtx(state);
-  const list = state.notifications.filter(n => n.to === ws || (ws === 'staff' && n.to === ownerWs && n.staffVisible));
+  const list = state.notifications.filter(n => (n.to === ws && (!n.pickerId || n.pickerId === currentPicker(state,ws)?.id)) || (ws === 'staff' && n.to === ownerWs && n.staffVisible));
   return `${head('Notifications', 'Important updates and actions for your role. Full order history stays in the order.', list.some(n => !n.read) ? '<button class="button secondary" data-op="notif-read-all">Mark all read</button>' : '')}<section class="panel">${list.map(n => `<article class="market-row ${n.read ? '' : 'unread'}"><span class="market-icon">${n.priority==='action'?'!':'●'}</span><span><b>${esc(n.text)}</b><small>${n.priority==='action'?'Action needed · ':''}${esc(n.at)} · ${esc(n.ref || '')}</small></span><span></span><button class="button secondary" data-op="notif-open" data-id="${n.id}">Open</button></article>`).join('') || empty('All caught up', 'New updates about your work appear here.')}</section>`;
 }
 

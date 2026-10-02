@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {SEED} from '../js/mock-data.js';
 import * as Orders from '../js/product-orders.js';
 import * as Commerce from '../js/commerce.js';
+import {assignPicker} from '../js/grocery-staff.js';
 
 globalThis.__moveaiClockOffset=0;
 const s=structuredClone(SEED),address='42 MG Road, Delhi 110001';
@@ -29,6 +30,7 @@ for(const [ws,store,expectedTotal,expectedLines] of [
  assert.equal(Commerce.sellerAction(s,ws,o.id,'accept'),'');
  assert.equal(o.status,'accepted');
  const pickerWs=ws==='grocery'?'picker':'pickerFresh';
+ assert.equal(assignPicker(s,ws,o.id,s.activePicker[pickerWs]),'');
  assert.match(Commerce.pickerAction(s,pickerWs==='picker'?'pickerFresh':'picker',o.id,'start'),/denied/);
  assert.match(Commerce.sellerAction(s,ws,o.id,'pack'),/Confirm every item/);
  assert.match(Commerce.screen(s,'pickTasks',pickerWs),new RegExp(o.id));

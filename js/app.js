@@ -1,6 +1,7 @@
 import {ROLE_CONFIG,ROUTES,ICONS,PUBLIC_ROUTES,routeTitle} from './config.js';
 import {mobileNavigation} from './navigation.js';
 import {loadState as storeLoad,saveState as storeSave,resetState as storeReset,signupDemoState} from './store.js';
+import {currentPicker} from './grocery-staff.js';
 // Tab-scoped view: an invited staff member's session in one tab does not change who is signed in elsewhere.
 let tabView=null;try{tabView=JSON.parse(sessionStorage.getItem('moveai-tab-view')||'null')}catch{tabView=null}
 const TAB_KEYS=['currentWorkspace','staffSession','selectedStaffId'];
@@ -59,6 +60,7 @@ function activePersona(key=state.currentWorkspace){
     if(member)return {name:member.name,role:ROLE_TEMPLATES[member.role]?.label||member.designation||'Staff',initials:initials(member.name)};
   }
   const seeded=state.mockUsers?.[key];
+  if(['picker','pickerFresh'].includes(key)){const p=currentPicker(state,key);if(p)return {name:p.name,role:`${state.shopPartners?.[p.store]?.name||'Store'} picker`,initials:initials(p.name)};}
   if(key==='personal'&&state.person?.name)return {...seeded,name:state.person.name,initials:initials(state.person.name),role:activeProduct==='customer'?(seeded?.role||'Customer'):PERSONAL_LABEL[activeProduct]?.subtitle||seeded?.role};
   return seeded||{name:'Mock User',role:roleForWorkspace(key).subtitle,initials:'MU'};
 }
@@ -117,7 +119,7 @@ function opsRoute(route){
   return '';
 }
 const opsApi={getState:()=>state,save:()=>saveState(state),render:()=>{renderRoute();renderBell()},toast:m=>toast(m),navigate:r=>{if(readRoute()===r)renderRoute();else navigate(r);renderBell()}};
-function unreadCount(){const ws=state.currentWorkspace,key=ws==='staff'?`staff:${state.selectedStaffId}`:ws;return (state.notifications||[]).filter(n=>(n.to===ws||n.to===key||(n.parties||[]).includes(ws))&&!n.read).length}
+function unreadCount(){const ws=state.currentWorkspace,key=ws==='staff'?`staff:${state.selectedStaffId}`:ws;return (state.notifications||[]).filter(n=>(n.to===ws||n.to===key||(n.parties||[]).includes(ws))&&(!n.pickerId||n.pickerId===currentPicker(state,ws)?.id)&&!n.read).length}
 function renderBell(){const b=$('notifications-button');if(!b)return;const n=unreadCount();b.querySelector('.bell-count').textContent=n||'';b.querySelector('.bell-count').hidden=!n;b.setAttribute('aria-label',`Notifications${n?`, ${n} unread`:''}`)}
 let aiPending=null;
 function openAssistant(){const d=$('ai-dialog');if(!d)return;d.hidden=false;$('ai-input').value='';$('ai-readback').innerHTML=`<p class="muted">Ask about work, or give a command. Examples: “summarize TRP-501”, “record advance 5000 to Raj Transport UPI ref 88231 for TRP-501”, “reached dharamkata”, “report breakdown”.</p>`;$('ai-confirm').hidden=true;aiPending=null;$('ai-input').focus()}
@@ -251,5 +253,5 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeOverlays()});wi
 function renderAll(){renderWorkspace();renderDesktopNav();renderMobileNav();if(!location.hash)location.hash=state.auth?.status==='authenticated'?'#/home':'#/welcome';renderRoute();app.setAttribute('aria-busy','false')}
 renderAll();
 
-window.addEventListener('storage',e=>{if(!e.key||!e.key.startsWith('moveai')||e.key==='moveai-tab-view'||e.key.startsWith('moveai-workspace-'))return;state=loadState();const r=readRoute();if(document.body.classList.contains('join-mode')||['people','staffDetail','inviteSent','notifications','home','search','cart','orders','orderTracking','shopOrders','shopCatalog','shopEarnings','pickTasks','pickProfile','deliveryJobs','deliveryCash','deliveryEarnings','commerceOps','commerceOrders','commercePartners','commercePayments','commerceIssues'].includes(r)){syncingFromStorage=true;try{renderWorkspace();renderDesktopNav();renderMobileNav();renderRoute()}finally{syncingFromStorage=false}}});
+window.addEventListener('storage',e=>{if(!e.key||!e.key.startsWith('moveai')||e.key==='moveai-tab-view'||e.key.startsWith('moveai-workspace-'))return;state=loadState();const r=readRoute();if(document.body.classList.contains('join-mode')||['people','staffDetail','inviteSent','notifications','home','search','cart','orders','orderTracking','shopOrders','shopTeam','shopCatalog','shopEarnings','pickTasks','pickProfile','deliveryJobs','deliveryCash','deliveryEarnings','commerceOps','commerceOrders','commercePartners','commercePayments','commerceIssues'].includes(r)){syncingFromStorage=true;try{renderWorkspace();renderDesktopNav();renderMobileNav();renderRoute()}finally{syncingFromStorage=false}}});
 window.MoveAIVNextTest={state:()=>structuredClone(state),switchWorkspace,product:()=>activeProduct,canOpen,reset:()=>{state=resetState();renderAll()},startSignup:()=>{state=signupDemoState();saveState(state);navigate('welcome')},routes:()=>Object.keys(ROUTES)};

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {SEED} from '../js/mock-data.js';
 import * as PO from '../js/product-orders.js';
 import * as C from '../js/commerce.js';
+import {assignPicker} from '../js/grocery-staff.js';
 import {bindOps} from '../js/ops-actions.js';
 
 const fresh=()=>structuredClone(SEED);
@@ -13,7 +14,7 @@ assert.equal(C.sellerAction(s,'grocery',o.id,'accept'),'');
 assert.match(C.screen(s,'shopOrders','grocery'),/Pick items myself/);
 assert.equal(C.pickerAction(s,'grocery',o.id,'start'),'');
 assert.equal(o.pick.mode,'self');
-assert.match(C.pickerAction(s,'picker',o.id,'check','PRD-101'),/another store worker/);
+assert.match(C.pickerAction(s,'picker',o.id,'check','PRD-101'),/access denied/);
 assert.match(C.pickerAction(s,'grocery',o.id,'complete'),/every ordered item/);
 assert.equal(C.pickerAction(s,'grocery',o.id,'check','PRD-101'),'');
 assert.equal(C.pickerAction(s,'grocery',o.id,'complete'),'');
@@ -60,6 +61,7 @@ assert.equal(s.ledger.find(e=>e.orderId===o.id&&e.type==='refund').amount,60);
 // Unanswered offer is reoffered. Admin can resolve a failed delivery with a refund.
 s=fresh();o=order(s);
 assert.equal(C.sellerAction(s,'grocery',o.id,'accept'),'');
+assert.equal(assignPicker(s,'grocery',o.id,'PICK-001'),'');
 assert.equal(C.pickerAction(s,'picker',o.id,'start'),'');
 assert.equal(C.pickerAction(s,'picker',o.id,'check','PRD-101'),'');
 assert.equal(C.pickerAction(s,'picker',o.id,'complete'),'');

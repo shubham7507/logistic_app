@@ -164,7 +164,7 @@ Customer product search, mixed-store cart and checkout are available in `index.h
 
 ## Grocery commerce across roles
 
-Use `index.html` for customer orders, `seller.html` for the two mock grocery stores, `picker.html` for the two assigned store pickers, `delivery.html` for the two mock delivery partners, and `admin.html#/commerceOps` for oversight. They share mock order state on the same browser origin. See `GROCERY-ORDER-TO-DELIVERY-REPORT.md` for the latest walkthrough, automated results and demo limits. Run `npm run test:commerce`, `npm run test:unit` and `npm run test:static` from this folder.
+Use `index.html` for customer orders, `seller.html` for the two mock grocery stores, `picker.html` for store picker accounts, `delivery.html` for the two mock delivery partners, and `admin.html#/commerceOps` for oversight. In Seller → Team, invite a picker by name and mobile. On the corresponding Picker → Profile, select the invited demo account and accept. Seller → Orders can assign an accepted order to that active picker or use **Pick items myself**. Reassignment clears partial checklist progress, and removing access releases unfinished tasks. Admin → Partners shows each staff picker and status. These screens share mock order state on the same browser origin. See `GROCERY-PICKER-TEAM-REPORT.md` for the current walkthrough, tests and demo limits. Run `npm run test:commerce`, `npm run test:unit` and `npm run test:static` from this folder.
 
 ### Role navigation on mobile
 

@@ -2,6 +2,7 @@
 // and writes an audit event. `api` is supplied by app.js so state stays single-sourced.
 import * as Pay from './pay.js';
 import {readBilling} from './customer-billing.js';
+import {currentPicker,pickerCanSee} from './grocery-staff.js';
 import {
   advanceMilestone, canAdvanceMilestone, validateAssignment, crewEligible, docsValid, findConflict, canMoveJob, MOVING_STEPS,
   validatePayment, applyMoneyAction, parseVoiceCommand, validateAdminDecision, adminResultStatus, EXCEPTION_TYPES, validateException,
@@ -406,18 +407,18 @@ export function bindOps(root, api) {
       s.staffInvitations.push({id: uid('SINV'), workspace: ownerWs, mobile: f.mobile || '9876501177', name: f.name, role: 'operations', branchId: s.businessProfiles[ownerWs]?.branches?.[0]?.id, responsibilities: ['Trip updates'], payType: 'monthly', employmentType: 'permanent', status: 'pending', expires: '10 Oct 2026', invitedBy: opsCtx(s).persona.name, rehireOf: id});
       s.staffEvents.unshift({workspace: ownerWs, text: `Rehire invitation sent to ${f.name} · new employment period`, at: now()}); audit(s, `Rehire started for ${f.name}`); done('Rehire invitation sent. Old employment history is kept.');
     },
-    'notif-read-all': () => { const s = S(); s.notifications.forEach(n => { if (n.to === s.currentWorkspace) n.read = true; }); done('All read'); },
+    'notif-read-all': () => { const s = S(); s.notifications.forEach(n => { if (n.to === s.currentWorkspace && (!n.pickerId || n.pickerId===currentPicker(s,s.currentWorkspace)?.id)) n.read = true; }); done('All read'); },
     'notif-open': id => {
-      const s = S(); const n = s.notifications.find(x => x.id === id && (x.to===s.currentWorkspace || s.currentWorkspace==='staff'&&x.staffVisible)); if (!n) return; n.read = true; const r = n.ref || '';
+      const s = S(); const n = s.notifications.find(x => x.id === id && (x.to===s.currentWorkspace&&(!x.pickerId||x.pickerId===currentPicker(s,s.currentWorkspace)?.id) || s.currentWorkspace==='staff'&&x.staffVisible)); if (!n) return; n.read = true; const r = n.ref || '';
       if(r.startsWith('ORD-')){
         const o=s.customerOrders.find(x=>x.id===r);if(!o)return done(null,'home');
         const ws=s.currentWorkspace,store=s.shopPartners?.[ws]?.party===o.party,pickerStore=ws==='picker'?'grocery':ws==='pickerFresh'?'groceryFresh':null;
-        const allowed=ws==='personal'||ws==='admin'||store||pickerStore&&s.shopPartners?.[pickerStore]?.party===o.party||s.deliveryPartners?.[ws]?.id===o.deliveryAssignment?.partnerId;
+        const allowed=ws==='personal'||ws==='admin'||store||pickerStore&&pickerCanSee(s,ws,o)||s.deliveryPartners?.[ws]?.id===o.deliveryAssignment?.partnerId;
         if(!allowed)return api.toast('Order access denied.');
         if(ws==='personal')s.selectedTrackingOrderId=r;
         return done(null,ws==='personal'?(n.route==='orders'?'orders':'orderTracking'):ws==='admin'&&['commerceIssues','commercePayments','commerceOrders'].includes(n.route)?n.route:ws==='admin'?'commerceOrders':store?(n.route==='shopEarnings'?'shopEarnings':'shopOrders'):pickerStore?'pickTasks':n.route==='deliveryEarnings'?'deliveryEarnings':'deliveryJobs');
       }
-      const route = r.startsWith('TRP') ? (s.selectedTripId = r, 'tripDetail') : r.startsWith('MOV') ? (s.currentWorkspace === 'personal' ? (s.selectedServiceId = s.movingJobs.find(j => j.id === r)?.serviceRequestId, 'serviceDetail') : (s.selectedMovingJobId = r, 'movingJob')) : r.startsWith('SR') ? (s.currentWorkspace === 'personalDriver' ? (s.selectedServiceId = r, 'driverJob') : (s.selectedServiceId = r, 'serviceDetail')) : r.startsWith('VEH') ? (s.selectedVehicleId = r, 'vehicleDetail') : r.startsWith('OFF') ? 'myJobs' : r.startsWith('PAY') ? (s.selectedPaymentId = r, 'paymentDetail') : 'home';
+      const route = r.startsWith('PICK-') ? (['picker','pickerFresh'].includes(s.currentWorkspace)?'pickProfile':'shopTeam') : r.startsWith('TRP') ? (s.selectedTripId = r, 'tripDetail') : r.startsWith('MOV') ? (s.currentWorkspace === 'personal' ? (s.selectedServiceId = s.movingJobs.find(j => j.id === r)?.serviceRequestId, 'serviceDetail') : (s.selectedMovingJobId = r, 'movingJob')) : r.startsWith('SR') ? (s.currentWorkspace === 'personalDriver' ? (s.selectedServiceId = r, 'driverJob') : (s.selectedServiceId = r, 'serviceDetail')) : r.startsWith('VEH') ? (s.selectedVehicleId = r, 'vehicleDetail') : r.startsWith('OFF') ? 'myJobs' : r.startsWith('PAY') ? (s.selectedPaymentId = r, 'paymentDetail') : 'home';
       done(null, route);
     },
   };
