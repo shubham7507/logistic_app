@@ -408,7 +408,15 @@ export function bindOps(root, api) {
     },
     'notif-read-all': () => { const s = S(); s.notifications.forEach(n => { if (n.to === s.currentWorkspace) n.read = true; }); done('All read'); },
     'notif-open': id => {
-      const s = S(); const n = s.notifications.find(x => x.id === id); if (!n) return; n.read = true; const r = n.ref || '';
+      const s = S(); const n = s.notifications.find(x => x.id === id && (x.to===s.currentWorkspace || s.currentWorkspace==='staff'&&x.staffVisible)); if (!n) return; n.read = true; const r = n.ref || '';
+      if(r.startsWith('ORD-')){
+        const o=s.customerOrders.find(x=>x.id===r);if(!o)return done(null,'home');
+        const ws=s.currentWorkspace,store=s.shopPartners?.[ws]?.party===o.party,pickerStore=ws==='picker'?'grocery':ws==='pickerFresh'?'groceryFresh':null;
+        const allowed=ws==='personal'||ws==='admin'||store||pickerStore&&s.shopPartners?.[pickerStore]?.party===o.party||s.deliveryPartners?.[ws]?.id===o.deliveryAssignment?.partnerId;
+        if(!allowed)return api.toast('Order access denied.');
+        if(ws==='personal')s.selectedTrackingOrderId=r;
+        return done(null,ws==='personal'?(n.route==='orders'?'orders':'orderTracking'):ws==='admin'&&['commerceIssues','commercePayments','commerceOrders'].includes(n.route)?n.route:ws==='admin'?'commerceOrders':store?(n.route==='shopEarnings'?'shopEarnings':'shopOrders'):pickerStore?'pickTasks':n.route==='deliveryEarnings'?'deliveryEarnings':'deliveryJobs');
+      }
       const route = r.startsWith('TRP') ? (s.selectedTripId = r, 'tripDetail') : r.startsWith('MOV') ? (s.currentWorkspace === 'personal' ? (s.selectedServiceId = s.movingJobs.find(j => j.id === r)?.serviceRequestId, 'serviceDetail') : (s.selectedMovingJobId = r, 'movingJob')) : r.startsWith('SR') ? (s.currentWorkspace === 'personalDriver' ? (s.selectedServiceId = r, 'driverJob') : (s.selectedServiceId = r, 'serviceDetail')) : r.startsWith('VEH') ? (s.selectedVehicleId = r, 'vehicleDetail') : r.startsWith('OFF') ? 'myJobs' : r.startsWith('PAY') ? (s.selectedPaymentId = r, 'paymentDetail') : 'home';
       done(null, route);
     },

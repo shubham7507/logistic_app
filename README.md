@@ -178,3 +178,5 @@ On GitHub Pages, publish from the branch root with `index.html` at the top level
 `npm run test:commerce` also runs the three-product/two-store customer → seller → courier → customer tracking journey. The courier job shows the mock store pickup and customer drop-off addresses with directions links. See `GROCERY-MULTI-ITEM-E2E-REPORT.md` for results and remaining demo gaps.
 
 The grocery Shop has a visible mobile Cart button, product detail and quantity screen, added-to-cart confirmation, basket and address → payment → review checkout. See `PRODUCT-ORDERING-CART-FIX-REPORT.md` for the cart issue, checks and GitHub Pages walkthrough.
+
+The latest grocery enhancements add optional seller self-picking, targeted order notifications with order links, customer-approved same-store replacements, sealed-bag verification, courier offer reassignments, clearer tracking and exception/payment views. See `GROCERY-PRIORITIES-1-8-REPORT.md` for the full manual walkthrough, test results and static-demo limits.

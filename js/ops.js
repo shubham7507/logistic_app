@@ -579,7 +579,7 @@ export function staffEventsScreen(state) {
 export function notificationsScreen(state) {
   const {ws, ownerWs} = opsCtx(state);
   const list = state.notifications.filter(n => n.to === ws || (ws === 'staff' && n.to === ownerWs && n.staffVisible));
-  return `${head('Notifications', 'Only updates about your own work.', list.some(n => !n.read) ? '<button class="button secondary" data-op="notif-read-all">Mark all read</button>' : '')}<section class="panel">${list.map(n => `<article class="market-row ${n.read ? '' : 'unread'}"><span class="market-icon">●</span><span><b>${esc(n.text)}</b><small>${esc(n.at)} · ${esc(n.ref || '')}</small></span><span></span><button class="button secondary" data-op="notif-open" data-id="${n.id}">Open</button></article>`).join('') || empty('All caught up', 'New updates about your work appear here.')}</section>`;
+  return `${head('Notifications', 'Important updates and actions for your role. Full order history stays in the order.', list.some(n => !n.read) ? '<button class="button secondary" data-op="notif-read-all">Mark all read</button>' : '')}<section class="panel">${list.map(n => `<article class="market-row ${n.read ? '' : 'unread'}"><span class="market-icon">${n.priority==='action'?'!':'●'}</span><span><b>${esc(n.text)}</b><small>${n.priority==='action'?'Action needed · ':''}${esc(n.at)} · ${esc(n.ref || '')}</small></span><span></span><button class="button secondary" data-op="notif-open" data-id="${n.id}">Open</button></article>`).join('') || empty('All caught up', 'New updates about your work appear here.')}</section>`;
 }
 
 // ---------- AI summary ----------

@@ -110,6 +110,7 @@ export const SEED={
     {id:'PRD-101',name:'India Gate Basmati Rice',size:'5 kg',price:710,category:'Rice',fulfilmentPartner:'ABC Grocery',stock:'In stock'},
     {id:'PRD-102',name:'Fortune Chakki Atta',size:'10 kg',price:485,category:'Flour',fulfilmentPartner:'Fresh Mart',stock:'In stock'},
     {id:'PRD-103',name:'Tata Salt',size:'1 kg',price:28,category:'Essentials',fulfilmentPartner:'ABC Grocery',stock:'In stock'},
+    {id:'PRD-104',name:'Everyday Basmati Rice',size:'5 kg',price:650,category:'Rice',fulfilmentPartner:'ABC Grocery',stock:'In stock'},
   ],
   customerOrders:[{id:'ORD-9001',customer:'Shubham Kumar',items:[{productId:'PRD-103',quantity:2}],total:56,status:'out_for_delivery',fulfilmentPartner:'ABC Grocery',eta:'Today, 12:40 PM'}],
   ownedVehicles:{

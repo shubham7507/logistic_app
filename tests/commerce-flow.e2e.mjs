@@ -10,7 +10,7 @@ const order=(s,method='upi',productId='PRD-101')=>{
 };
 const pick=(s,o,ws='picker')=>{assert.equal(C.pickerAction(s,ws,o.id,'start'),'');for(const i of o.items)assert.equal(C.pickerAction(s,ws,o.id,'check',i.productId),'');assert.equal(C.pickerAction(s,ws,o.id,'complete'),'');};
 const pack=(s,o,ws='grocery')=>{assert.equal(C.sellerAction(s,ws,o.id,'accept'),'');pick(s,o,ws==='grocery'?'picker':'pickerFresh');assert.equal(C.sellerAction(s,ws,o.id,'pack'),'');};
-const deliver=(s,o,ws='deliveryPartner')=>{assert.equal(C.deliveryAction(s,ws,o.id,'accept'),'');assert.match(C.deliveryAction(s,ws,o.id,'pickup','0000'),/pickup code/);assert.equal(C.deliveryAction(s,ws,o.id,'pickup',o.pickupCode),'');assert.match(C.deliveryAction(s,ws,o.id,'deliver','0000'),/delivery code/);assert.equal(C.deliveryAction(s,ws,o.id,'deliver',o.deliveryCode),'');};
+const deliver=(s,o,ws='deliveryPartner')=>{assert.equal(C.deliveryAction(s,ws,o.id,'accept'),'');assert.match(C.deliveryAction(s,ws,o.id,'pickup','0000'),/pickup code/);assert.equal(C.deliveryAction(s,ws,o.id,'pickup',o.pickupCode,o.bagCount),'');assert.match(C.deliveryAction(s,ws,o.id,'deliver','0000'),/delivery code/);assert.equal(C.deliveryAction(s,ws,o.id,'deliver',o.deliveryCode),'');};
 // Prepaid: distinct role scopes, verified handoff, delayed settlement, idempotence, invoice.
 let s=fresh(),o=order(s);
 assert.equal(C.visibleOrders(s,'grocery').some(x=>x.id===o.id),true);
@@ -19,7 +19,7 @@ assert.match(C.sellerAction(s,'groceryFresh',o.id,'accept'),/denied/);
 assert.match(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),/denied/);
 pack(s,o);assert.equal(o.deliveryAssignment.partnerId,'DP-001');
 assert.equal(C.visibleOrders(s,'deliveryPartner2').some(x=>x.id===o.id),false);
-assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode),'');
+assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,o.bagCount),'');
 assert.match(C.updateLocation(s,'deliveryPartner2',o.id,'En route'),/only for your/);
 assert.equal(C.updateLocation(s,'deliveryPartner',o.id,'Near destination'),'');assert.equal(o.latestLocation.label,'Near destination');
 assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode),'');assert.equal(o.status,'delivered');assert.equal(o.settlementStatus,'pending');
@@ -56,9 +56,9 @@ o=order(s);assert.equal(C.customerCancel(s,o.id),'');assert.equal(o.status,'canc
 s.deliveryPartners.deliveryPartner.available=false;s.deliveryPartners.deliveryPartner2.available=false;
 o=order(s);pack(s,o);assert.equal(o.deliveryAssignment,null);assert.match(C.assign(s,o.id,'DP-001'),/not found/);
 s.deliveryPartners.deliveryPartner.available=true;assert.equal(C.assign(s,o.id,'DP-001'),'');
-assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode),'');
+assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,o.bagCount),'');
 assert.match(C.customerCancel(s,o.id),/before pickup/);
-assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'issue'),'');assert.equal(o.status,'delivery_issue');
+assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'issue','Customer unavailable'),'');assert.equal(o.status,'delivery_issue');
 assert.equal(C.retryDelivery(s,o.id),'');assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode),'');
 assert.equal(C.requestReturn(s,o.id,'Damaged pack'),'');assert.equal(C.resolveReturn(s,o.id,false),'');assert.equal(o.status,'delivered');
 // A seller toggles only its own stock, and new orders respect availability.

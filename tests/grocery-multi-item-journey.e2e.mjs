@@ -30,7 +30,7 @@ for(const [ws,store,expectedTotal,expectedLines] of [
  assert.equal(o.status,'accepted');
  const pickerWs=ws==='grocery'?'picker':'pickerFresh';
  assert.match(Commerce.pickerAction(s,pickerWs==='picker'?'pickerFresh':'picker',o.id,'start'),/denied/);
- assert.match(Commerce.sellerAction(s,ws,o.id,'pack'),/Picker must confirm/);
+ assert.match(Commerce.sellerAction(s,ws,o.id,'pack'),/Confirm every item/);
  assert.match(Commerce.screen(s,'pickTasks',pickerWs),new RegExp(o.id));
  assert.equal(Commerce.pickerAction(s,pickerWs,o.id,'start'),'');
  assert.match(Commerce.pickerAction(s,pickerWs,o.id,'complete'),/Confirm every/);
@@ -45,7 +45,7 @@ for(const [ws,store,expectedTotal,expectedLines] of [
  assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');
  assert.equal(o.deliveryAssignment.status,'accepted');
  assert.match(Commerce.deliveryAction(s,'deliveryPartner',o.id,'pickup','0000'),/pickup code/);
- assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode),'');
+ assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,o.bagCount),'');
  assert.equal(o.status,'out_for_delivery');
  s.selectedTrackingOrderId=o.id;
  assert.match(Orders.trackingScreen(s),/Courier collected/);

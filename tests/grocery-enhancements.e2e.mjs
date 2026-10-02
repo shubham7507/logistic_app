@@ -1,0 +1,81 @@
+import assert from 'node:assert/strict';
+import {SEED} from '../js/mock-data.js';
+import * as PO from '../js/product-orders.js';
+import * as C from '../js/commerce.js';
+import {bindOps} from '../js/ops-actions.js';
+
+const fresh=()=>structuredClone(SEED);
+const order=(s,productId='PRD-101',method='upi')=>{const r=PO.placeOrder(s,{productId,qty:2,address:'42 MG Road, Delhi 110001',method,vpa:'test@okaxis'});assert.ok(r.ok,r.error);return r.order;};
+
+// Small store: seller picks, verifies quantities and seals two bags.
+let s=fresh(),o=order(s);
+assert.equal(C.sellerAction(s,'grocery',o.id,'accept'),'');
+assert.match(C.screen(s,'shopOrders','grocery'),/Pick items myself/);
+assert.equal(C.pickerAction(s,'grocery',o.id,'start'),'');
+assert.equal(o.pick.mode,'self');
+assert.match(C.pickerAction(s,'picker',o.id,'check','PRD-101'),/another store worker/);
+assert.match(C.pickerAction(s,'grocery',o.id,'complete'),/every ordered item/);
+assert.equal(C.pickerAction(s,'grocery',o.id,'check','PRD-101'),'');
+assert.equal(C.pickerAction(s,'grocery',o.id,'complete'),'');
+assert.equal(C.sellerAction(s,'grocery',o.id,'pack',2),'');
+assert.equal(o.bagCount,2);
+assert.match(C.screen(s,'deliveryJobs','deliveryPartner'),/2 sealed bag/);
+assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');
+assert.match(C.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,1),/2 sealed bag/);
+assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,2),'');
+assert.equal(C.updateLocation(s,'deliveryPartner',o.id,'En route'),'');
+const historyLength=o.history.length;
+assert.match(C.updateLocation(s,'deliveryPartner',o.id,'En route'),/already shared/);
+assert.equal(o.history.length,historyLength);
+assert.equal(C.updateLocation(s,'deliveryPartner',o.id,'Near destination'),'');
+const customerAlerts=s.notifications.filter(n=>n.to==='personal'&&n.ref===o.id);
+assert.ok(customerAlerts.some(n=>/near your address/.test(n.text)));
+assert.equal(customerAlerts.filter(n=>/En route|offered to|Picked 2/.test(n.text)).length,0);
+assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode),'');
+assert.equal(o.status,'delivered');
+assert.match(C.screen(s,'commercePayments','admin'),/Payment records/);
+assert.match(C.screen(s,'commercePayments','admin'),/customer payment/);
+assert.match(PO.trackingScreen({...s,selectedTrackingOrderId:o.id}),/no live GPS or calculated ETA/);
+const deliveredAlert=s.notifications.find(n=>n.to==='personal'&&n.ref===o.id&&/Delivered; view/.test(n.text));
+let click,route='';s.currentWorkspace='personal';
+const node={dataset:{op:'notif-open',id:deliveredAlert.id},addEventListener:(event,fn)=>{if(event==='click')click=fn}};
+bindOps({querySelectorAll:sel=>sel==='[data-op]'?[node]:[],querySelector:()=>null},{getState:()=>s,save:()=>{},render:()=>{},navigate:r=>route=r,toast:m=>{throw new Error(m)}});
+click({preventDefault(){}});
+assert.equal(route,'orderTracking');assert.equal(s.selectedTrackingOrderId,o.id);assert.equal(deliveredAlert.read,true);
+
+// Customer approves a lower-cost, same-store alternative; the difference is refunded.
+s=fresh();PO.addToCart(s,'PRD-101');PO.addToCart(s,'PRD-103');
+o=PO.placeOrder(s,{fromCart:true,address:'Delhi',method:'upi',vpa:'test@okaxis',substitution:'contact'}).order;
+assert.equal(C.sellerAction(s,'grocery',o.id,'accept'),'');
+assert.equal(C.unavailableItem(s,'grocery',o.id,'PRD-101'),'');
+assert.match(C.suggestReplacement(s,'groceryFresh',o.id,'PRD-104'),/denied/);
+assert.match(C.suggestReplacement(s,'grocery',o.id,'PRD-102'),/same or a lower/);
+assert.equal(C.suggestReplacement(s,'grocery',o.id,'PRD-104'),'');
+assert.match(PO.ordersScreen(s),/Approve replacement/);
+assert.equal(C.approveReplacement(s,o.id),'');
+assert.equal(o.status,'accepted');assert.equal(o.total,678);
+assert.ok(o.items.some(i=>i.productId==='PRD-104'));
+assert.equal(s.ledger.find(e=>e.orderId===o.id&&e.type==='refund').amount,60);
+
+// Unanswered offer is reoffered. Admin can resolve a failed delivery with a refund.
+s=fresh();o=order(s);
+assert.equal(C.sellerAction(s,'grocery',o.id,'accept'),'');
+assert.equal(C.pickerAction(s,'picker',o.id,'start'),'');
+assert.equal(C.pickerAction(s,'picker',o.id,'check','PRD-101'),'');
+assert.equal(C.pickerAction(s,'picker',o.id,'complete'),'');
+assert.equal(C.sellerAction(s,'grocery',o.id,'pack'),'');
+assert.match(C.expireOffer(s,o.id),/still has time/);
+o.deliveryAssignment.offeredAt-=11*60000;
+assert.equal(C.expireOffer(s,o.id),'');
+assert.equal(o.deliveryAssignment.partnerId,'DP-002');
+assert.equal(C.deliveryAction(s,'deliveryPartner2',o.id,'accept'),'');
+assert.equal(C.deliveryAction(s,'deliveryPartner2',o.id,'pickup',o.pickupCode,1),'');
+assert.match(C.deliveryAction(s,'deliveryPartner2',o.id,'issue',''),/reason/);
+assert.equal(C.deliveryAction(s,'deliveryPartner2',o.id,'issue','Customer unavailable'),'');
+assert.match(C.screen(s,'commerceIssues','admin'),/Customer unavailable/);
+assert.equal(C.cancelFailedDelivery(s,o.id),'');
+assert.equal(o.status,'cancelled');assert.equal(o.paymentStatus,'refund_pending');
+assert.equal(o.settlementStatus,'not_eligible');
+assert.equal(s.ledger.find(e=>e.orderId===o.id&&e.type==='refund').amount,o.total);
+assert.match(C.payDelivery(s,o.id),/not ready/);
+console.log(JSON.stringify({status:'PASS',suite:'Grocery enhancements: self-pick, role alerts and deep link, replacement, bag handoff, offer expiry, failed delivery refund'}));
