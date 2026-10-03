@@ -177,6 +177,10 @@ The UI prototype now includes **Seller → Team** pay plans, **Seller → Money 
 
 On GitHub Pages, publish from the branch root with `index.html` at the top level. Use the same browser profile and origin to test all five entry pages: local storage cannot synchronize orders between separate devices.
 
+### Mixed seller shopping demo
+
+Open `index.html#/search` and add India Gate Basmati Rice, LED Bulb 9 W, and Cotton Shirt. One checkout creates a separate order for ABC Grocery, Sharma Electricals, and City Fashion. Delivery is priced per seller package and shown before placing the order. Use `seller.html` to switch to each seller and accept, check items, and pack. Grocery may also assign its own picker. Then use `delivery.html` as Ravi for each separately offered package: accept, collect with the store code, and deliver with the customer code. `index.html#/orders` shows the shared checkout summary and individual tracking. `admin.html` shows all seller orders and payments. COD is collected and reconciled per package. This is a same-browser mock; no combined multi-store courier route, live ETA, or real payment is included. See `MIXED-MARKETPLACE-TEST-REPORT.md`.
+
 `npm run test:commerce` also runs the three-product/two-store customer → seller → courier → customer tracking journey. The courier job shows the mock store pickup and customer drop-off addresses with directions links. See `GROCERY-MULTI-ITEM-E2E-REPORT.md` for results and remaining demo gaps.
 
 The grocery Shop has a visible mobile Cart button, product detail and quantity screen, added-to-cart confirmation, basket and address → payment → review checkout. See `PRODUCT-ORDERING-CART-FIX-REPORT.md` for the cart issue, checks and GitHub Pages walkthrough.

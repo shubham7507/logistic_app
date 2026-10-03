@@ -24,7 +24,7 @@ assert.equal(O.cancelOrder(s,r.order),'');assert.equal(s.ledger.find(x=>x.orderI
 // One checkout can create two independently fulfilled store orders.
 s=fresh();O.addToCart(s,'PRD-101');O.addToCart(s,'PRD-102');
 r=O.placeOrder(s,{fromCart:true,address:'Delhi',method:'upi',vpa:'a@okaxis'});
-assert.equal(r.orders.length,2);assert.equal(r.total,1195);assert.equal(r.orders.reduce((n,o)=>n+o.total,0),1195);
+assert.equal(r.orders.length,2);assert.equal(r.total,1235);assert.equal(r.orders.reduce((n,o)=>n+o.total,0),1235);
 assert.equal(new Set(r.orders.map(o=>o.party)).size,2);
 assert.equal(new Set(s.ledger.filter(x=>x.checkoutId===r.checkoutId).map(x=>x.reference)).size,1);
 // A successful order keeps the item price snapshot for billing even when the catalogue changes.

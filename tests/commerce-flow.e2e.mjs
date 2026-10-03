@@ -71,7 +71,7 @@ assert.match(C.screen(s,'commerceOps','admin'),/Shop operations/);
 // One customer checkout creates one payment attempt and separate store tasks.
 s=fresh();PO.addToCart(s,'PRD-101');PO.addToCart(s,'PRD-102');
 let cart=PO.placeOrder(s,{fromCart:true,address:'Delhi',method:'upi',vpa:'pending@upi'});
-assert.equal(cart.orders.length,2);assert.equal(cart.orders.reduce((n,x)=>n+x.total,0),1195);
+assert.equal(cart.orders.length,2);assert.equal(cart.orders.reduce((n,x)=>n+x.total,0),1235);
 assert.equal(C.visibleOrders(s,'grocery').filter(x=>x.checkoutId===cart.checkoutId).length,1);
 assert.equal(C.visibleOrders(s,'groceryFresh').filter(x=>x.checkoutId===cart.checkoutId).length,1);
 assert.match(C.sellerAction(s,'grocery',cart.orders[0].id,'accept'),/not available/);

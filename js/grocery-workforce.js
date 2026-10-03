@@ -2,7 +2,7 @@
 import {currentPicker,staffFor,storeWorkspace,removePicker} from './grocery-staff.js';
 import {payPeriod,payRunFor,shiftsFor} from './grocery-picker-pay.js';
 
-const owner=ws=>['grocery','groceryFresh'].includes(ws);
+const owner=ws=>['grocery','groceryFresh','electrical','fashion'].includes(ws);
 export const manager=ws=>['groceryManager','groceryFreshManager'].includes(ws);
 export const managerStore=ws=>ws==='groceryManager'?'grocery':ws==='groceryFreshManager'?'groceryFresh':null;
 export const activeManager=(s,ws)=>manager(ws)?(s.storeManagers||[]).find(m=>m.id===s.activeStoreManager?.[ws]&&m.store===managerStore(ws)):null;

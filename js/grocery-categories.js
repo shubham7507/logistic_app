@@ -29,7 +29,8 @@ export const GROCERY_CATEGORIES = {
  'Bathroom supplies':['Bathroom accessories'], 'Bedroom & bedding':['Bedding'],
  'Baby care':['Baby supplies'], 'Pet care':['Pet accessories & supplies'],
  'Garden & outdoor':['Garden supplies'], 'Clothing & shoe care':['Shoe care'],
- 'Home fragrance':['Fresheners'], 'Home safety':['Safety supplies']
+ 'Home fragrance':['Fresheners'], 'Home safety':['Safety supplies'],
+ 'Fashion & clothing':['Shirts','Trousers','Other clothing']
 };
 export const categoryOptions=Object.keys(GROCERY_CATEGORIES);
 export const HOUSEHOLD_CATEGORIES=new Set(categoryOptions.slice(categoryOptions.indexOf('Personal care')));

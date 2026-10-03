@@ -7,7 +7,7 @@ export const PRODUCTS = {
   partner: {name: 'MoveAI Partner', tagline: 'Driving and helper work', file: 'partner.html', mark: 'P', roles: ['personal', 'commercialDriver', 'personalDriver', 'helper'], defaultWs: 'personal'},
   business: {name: 'MoveAI Business', tagline: 'Loads, fleet, moving and team', file: 'business.html', mark: 'B', roles: ['personal', 'goods', 'transporter', 'vehicle', 'movers', 'staff'], defaultWs: 'transporter'},
   admin: {name: 'MoveAI Admin', tagline: 'Internal console', file: 'admin.html', mark: 'A', roles: ['admin'], defaultWs: 'admin'},
-  seller: {name: 'MoveAI Seller', tagline: 'Grocery orders and store payouts', file: 'seller.html', mark: 'S', roles: ['grocery','groceryFresh','groceryManager','groceryFreshManager'], defaultWs: 'grocery'},
+  seller: {name: 'MoveAI Seller', tagline: 'Products, orders and store payouts', file: 'seller.html', mark: 'S', roles: ['grocery','groceryFresh','electrical','fashion','groceryManager','groceryFreshManager'], defaultWs: 'grocery'},
   picker: {name: 'MoveAI Picker', tagline: 'Pick grocery orders for your store', file: 'picker.html', mark: 'P', roles: ['picker','pickerFresh'], defaultWs: 'picker'},
   delivery: {name: 'MoveAI Delivery', tagline: 'Deliveries and COD cash', file: 'delivery.html', mark: 'D', roles: ['deliveryPartner','deliveryPartner2'], defaultWs: 'deliveryPartner'},
 };
@@ -17,7 +17,7 @@ export function productForWorkspace(ws) {
   if (['commercialDriver', 'personalDriver', 'helper'].includes(ws)) return 'partner';
   if (['goods', 'transporter', 'vehicle', 'movers', 'staff'].includes(ws)) return 'business';
   if (ws === 'admin') return 'admin';
-  if (['grocery','groceryFresh','groceryManager','groceryFreshManager'].includes(ws)) return 'seller';
+  if (['grocery','groceryFresh','electrical','fashion','groceryManager','groceryFreshManager'].includes(ws)) return 'seller';
   if (['picker','pickerFresh'].includes(ws)) return 'picker';
   if (['deliveryPartner','deliveryPartner2'].includes(ws)) return 'delivery';
   return 'customer';

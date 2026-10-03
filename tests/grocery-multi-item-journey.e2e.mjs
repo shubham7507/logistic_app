@@ -12,7 +12,7 @@ assert.match(Orders.cartScreen(s),/data-po-cart-qty="PRD-101"><option[\s\S]*?<op
 assert.equal(Orders.cartLines(s).length,3);
 const checkout=Orders.placeOrder(s,{fromCart:true,address,method:'upi',vpa:'test@okaxis'});
 assert.equal(checkout.ok,true,checkout.error);
-assert.equal(checkout.total,1933);
+assert.equal(checkout.total,1973);
 assert.equal(checkout.orders.length,2);
 assert.equal(s.productCart.length,0);
 assert.equal(new Set(checkout.orders.map(o=>o.checkoutId)).size,1);
@@ -20,7 +20,7 @@ assert.equal(new Set(s.ledger.filter(x=>x.checkoutId===checkout.checkoutId).map(
 
 const results=[];
 for(const [ws,store,expectedTotal,expectedLines] of [
-  ['grocery','ABC Grocery',1448,2],['groceryFresh','Fresh Mart',485,1]
+  ['grocery','ABC Grocery',1448,2],['groceryFresh','Fresh Mart',525,1]
 ]){
  const [o]=Commerce.visibleOrders(s,ws).filter(x=>x.checkoutId===checkout.checkoutId);
  assert.ok(o);assert.equal(o.fulfilmentPartner,store);assert.equal(o.total,expectedTotal);
@@ -66,7 +66,7 @@ for(const [ws,store,expectedTotal,expectedLines] of [
  assert.ok(o.history.some(h=>/Delivered with customer code/.test(h.text)));
  results.push({id:o.id,store,total:o.total,items:o.items.length,events:o.history.length,status:o.status});
 }
-assert.equal(checkout.orders.reduce((sum,o)=>sum+o.total,0),1933);
+assert.equal(checkout.orders.reduce((sum,o)=>sum+o.total,0),1973);
 assert.equal(Commerce.visibleOrders(s,'deliveryPartner2').length,0);
 assert.match(Orders.ordersScreen(s),/Near destination/);
 assert.match(Commerce.screen(s,'commerceOrders','admin'),/Delivered with customer code/);
