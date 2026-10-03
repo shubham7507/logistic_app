@@ -27,7 +27,7 @@ for(const method of ['cash','upi','card']){
 for(const method of ['cash','upi','card','cod']){
  const s=fresh(),res=C.createCounterDelivery(s,'grocery','PRD-101',1,'Noida','Customer',false,method,method==='cash'||method==='cod'?'':`${method}-REF`),o=res.order;
  assert.ok(o,res.error);if(method==='cod')assert.equal(entry(s,o.id,'customer_payment'),undefined);else assert.equal(entry(s,o.id,'customer_payment').channel,'outside_app');prepare(s,o);ok(C.deliveryAction(s,'deliveryPartner',o.id,'accept'));ok(C.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,1));ok(C.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode));
- if(method==='cod'){assert.equal(entry(s,o.id,'customer_payment').method,'cash');ok(C.deliveryAction(s,'deliveryPartner',o.id,'remit'));ok(C.reconcileCash(s,o.id));assert.ok(entry(s,o.id,'cash_handover'));assert.ok(entry(s,o.id,'cash_reconciliation'));assert.ok(entry(s,o.id,'seller_settlement'))}else{assert.equal(entry(s,o.id,'seller_settlement'),undefined);assert.equal(entry(s,o.id,'platform_commission_due').status,'due')}
+ if(method==='cod'){assert.equal(entry(s,o.id,'customer_payment').method,'cash');ok(C.deliveryAction(s,'deliveryPartner',o.id,'remit','','',{amount:o.total,receiver:'Cash desk'}));ok(C.reconcileCash(s,o.id,o.total,'RCPT-001','Cash desk'));assert.ok(entry(s,o.id,'cash_handover'));assert.ok(entry(s,o.id,'cash_reconciliation'));assert.ok(entry(s,o.id,'seller_settlement'))}else{assert.equal(entry(s,o.id,'seller_settlement'),undefined);assert.equal(entry(s,o.id,'platform_commission_due').status,'due')}
  assert.equal(entry(s,o.id,'delivery_earning').amount,35);cases++;
 }
 for(const [v,status] of [['pending@upi','paid'],['pendingfail@upi','cancelled']]){

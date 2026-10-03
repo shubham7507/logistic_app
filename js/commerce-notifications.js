@@ -26,7 +26,10 @@ export function notifyOrder(s,o,text){
  else if(text.startsWith('Customer cancelled')||text.startsWith('Store rejected:')||text.startsWith('Only item unavailable')){send('personal',text,'orderTracking','action');send(store,'Order cancelled','shopOrders');}
  else if(text==='Return requested')send('admin','Return request needs review','commerceIssues','action');
  else if(text.startsWith('Return approved')||text.startsWith('Return declined'))send('personal',text,'orderTracking');
- else if(text.startsWith('COD cash ')&&text.includes('handed over'))send('admin','COD cash ready to reconcile','commercePayments','action');
+ else if(text.startsWith('COD cash ')&&text.includes('submitted'))send('admin','COD cash submitted; count and confirm receipt','commercePayments','action');
+ else if(text.startsWith('COD discrepancy')){send('admin','COD amount mismatch needs investigation','commercePayments','action');send(courier,'COD cash discrepancy; contact the cash desk','deliveryCash','action');}
+ else if(text.startsWith('COD cash ')&&text.includes('reconciled'))send(courier,'COD cash receipt confirmed','deliveryCash');
+ else if(text.startsWith('COD refund '))send('personal','COD refund transfer recorded; check the reference in My orders','orders');
  else if(text.startsWith('Store settlement '))send(store,text,'shopEarnings');
  else if(text.startsWith('Delivery earning '))send(courier,text,'deliveryEarnings');
  for(const a of [...alerts,...alerts.filter(a=>a.to===store&&['shopOrders'].includes(a.route)).map(a=>({...a,to:store==='grocery'?'groceryManager':'groceryFreshManager',managerId:s.activeStoreManager?.[store==='grocery'?'groceryManager':'groceryFreshManager']})).filter(a=>(s.storeManagers||[]).some(m=>m.id===a.managerId&&m.status==='active'))])(s.notifications||=[]).unshift({id:id(),...a,ref:o.id,at:new Date().toLocaleString('en-IN'),read:false});
