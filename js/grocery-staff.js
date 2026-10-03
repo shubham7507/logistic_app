@@ -1,5 +1,6 @@
 // Seller staff and assignment rules for the single-browser demo.
 import {SELLER_WORKSPACES,MANAGER_BY_STORE,WORKER_BY_STORE,STORE_BY_MANAGER,STORE_BY_WORKER} from './seller-roles.js';
+import {defaultBranch,selectedBranch,staffAt,staffBranches} from './seller-branches.js';
 const storeRole=ws=>SELLER_WORKSPACES.includes(ws);
 const managerStore=ws=>STORE_BY_MANAGER[ws]||null;
 const canAssign=(s,ws)=>storeRole(ws)||!!managerStore(ws)&&(s.storeManagers||[]).some(m=>m.id===s.activeStoreManager?.[ws]&&m.store===managerStore(ws)&&m.status==='active');
@@ -16,7 +17,7 @@ export function invitePicker(s,ws,name,mobile){
  if(name.length<2)return 'Enter the picker name.';
  if(!/^\d{10}$/.test(mobile))return 'Enter a 10-digit mobile number.';
  if((s.pickerStaff||[]).some(p=>p.mobile===mobile&&p.status!=='removed'))return 'This mobile already has an active or pending store invitation.';
- const p={id:`PICK-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,store:ws,name,mobile,role:ws==='electrical'||ws==='fashion'?'fulfilment':'picker',status:'invited',invitedBy:s.shopPartners[ws].name,invitedAt:new Date().toISOString()};
+ const p={id:`PICK-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,store:ws,name,mobile,role:ws==='electrical'||ws==='fashion'?'fulfilment':'picker',branchIds:[selectedBranch(s,ws)],status:'invited',invitedBy:s.shopPartners[ws].name,invitedAt:new Date().toISOString()};
  (s.pickerStaff||=[]).push(p);audit(s,s.shopPartners[ws].name,`Invited ${name} as store worker for ${s.shopPartners[ws].name}`);
  alert(s,pickerWorkspace(ws),'pickProfile',`${name}: invitation to join ${s.shopPartners[ws].name}`,p.id,p.id);
  return '';
@@ -34,14 +35,14 @@ export function acceptPickerInvite(s,ws){
 }
 export function pickerCanSee(s,ws,o){
  const p=currentPicker(s,ws),store=storeWorkspace(ws);
- return !!p&&p.status==='active'&&s.shopPartners?.[store]?.status==='approved'&&o.party===s.shopPartners[store].party&&o.pickerId===p.id;
+ return !!p&&p.status==='active'&&s.shopPartners?.[store]?.status==='approved'&&o.party===s.shopPartners[store].party&&staffAt(s,p,o.branchId||defaultBranch(s,store))&&o.pickerId===p.id;
 }
 export function assignPicker(s,ws,orderId,pickerId){
  const store=managerStore(ws)||ws;
  if(!canAssign(s,ws)||s.shopPartners?.[store]?.status!=='approved')return 'Approved store access required.';
  const o=s.customerOrders?.find(x=>x.id===orderId&&x.party===s.shopPartners[store].party);
  if(!o||o.status!=='accepted'||o.pick?.completedAt)return 'Only an accepted, unfinished store order can be assigned.';
- const p=staffFor(s,store).find(x=>x.id===pickerId&&x.status==='active'&&(!x.offboarding?.effectiveDate||x.offboarding.effectiveDate>=new Date().toISOString().slice(0,10)));if(!p)return 'Choose an active picker from this store.';
+ const p=staffFor(s,store).find(x=>x.id===pickerId&&x.status==='active'&&staffAt(s,x,o.branchId||defaultBranch(s,store))&&(!x.offboarding?.effectiveDate||x.offboarding.effectiveDate>=new Date().toISOString().slice(0,10)));if(!p)return 'Choose an active picker from this store.';
  if(o.pick?.mode==='self')return 'The seller has already started picking this order.';
  if(o.pickerId===p.id)return 'This order is already assigned to that picker.';
  const prior=staffFor(s,store).find(x=>x.id===o.pickerId);
@@ -61,10 +62,10 @@ export function releasePickTask(s,ws,orderId){
  if(old)alert(s,pickerWorkspace(store),'pickTasks',`${o.id} is now being picked in store`,o.id,old);
  return '';
 }
-export function availablePickers(s,store,now=new Date()){
+export function availablePickers(s,store,now=new Date(),branchId=null){
  const day=now.toISOString().slice(0,10),time=now.toISOString().slice(11,16);
- return staffFor(s,store).filter(p=>p.status==='active'&&(!p.offboarding?.effectiveDate||p.offboarding.effectiveDate>=day)&&!p.onBreak&&
-  (s.pickerShifts||[]).some(x=>x.store===store&&x.pickerId===p.id&&x.status==='open'&&x.date===day)&&
+ return staffFor(s,store).filter(p=>p.status==='active'&&(!branchId||staffAt(s,p,branchId))&&(!p.offboarding?.effectiveDate||p.offboarding.effectiveDate>=day)&&!p.onBreak&&
+  (s.pickerShifts||[]).some(x=>x.store===store&&(!branchId||x.branchId===branchId||!x.branchId&&branchId===defaultBranch(s,store))&&x.pickerId===p.id&&x.status==='open'&&x.date===day)&&
   !(s.pickerSchedules||[]).some(x=>x.store===store&&x.pickerId===p.id&&x.date===day&&['cover_requested','cancelled'].includes(x.status))&&
   (s.pickerSchedules||[]).filter(x=>x.store===store&&x.pickerId===p.id&&x.date===day&&x.status!=='cancelled').every(x=>x.start<=time&&time<x.end)&&
   (s.customerOrders||[]).filter(o=>o.pickerId===p.id&&['accepted','item_review'].includes(o.status)&&!o.pick?.completedAt).length<3);
@@ -72,7 +73,7 @@ export function availablePickers(s,store,now=new Date()){
 export function autoAssignPicker(s,store,orderId,excluded=[]){
  const o=s.customerOrders?.find(x=>x.id===orderId&&x.party===s.shopPartners?.[store]?.party);
  if(!o||o.status!=='accepted'||o.pick?.startedAt)return 'Order is unavailable for automatic assignment.';
- const eligible=availablePickers(s,store).filter(p=>!excluded.includes(p.id));
+ const eligible=availablePickers(s,store,new Date(),o.branchId||defaultBranch(s,store)).filter(p=>!excluded.includes(p.id));
  eligible.sort((a,b)=>{
   const load=p=>(s.customerOrders||[]).filter(x=>x.pickerId===p.id&&['accepted','item_review'].includes(x.status)&&!x.pick?.completedAt).length;
   return load(a)-load(b)||String(a.joinedAt||'').localeCompare(String(b.joinedAt||''))||a.id.localeCompare(b.id);
@@ -88,7 +89,7 @@ export function respondPickOffer(s,ws,orderId,accept){
  const p=currentPicker(s,ws),store=storeWorkspace(ws),o=s.customerOrders?.find(x=>x.id===orderId&&x.party===s.shopPartners?.[store]?.party);
  if(!p||p.status!=='active'||!o||o.status!=='accepted'||o.pickerId!==p.id||o.pickerOffer?.status!=='offered')return 'This pick offer is no longer available.';
  if(Date.now()>=o.pickerOffer.expiresAt)return 'This pick offer expired. Ask the store to reoffer it.';
- if(accept){if(!availablePickers(s,store).some(x=>x.id===p.id))return 'Start your shift and end your break before accepting.';o.pickerOffer.status='accepted';o.pickerOffer.respondedAt=Date.now();(o.history||=[]).push({at:new Date().toLocaleString('en-IN'),actor:p.name,text:'Pick task accepted'});return '';}
+ if(accept){if(!availablePickers(s,store,new Date(),o.branchId||defaultBranch(s,store)).some(x=>x.id===p.id))return 'Start your shift and end your break before accepting.';o.pickerOffer.status='accepted';o.pickerOffer.respondedAt=Date.now();(o.history||=[]).push({at:new Date().toLocaleString('en-IN'),actor:p.name,text:'Pick task accepted'});return '';}
  o.pickerOffer.status='declined';(o.history||=[]).push({at:new Date().toLocaleString('en-IN'),actor:p.name,text:'Pick task declined'});
  autoAssignPicker(s,store,orderId,[p.id]);return '';
 }

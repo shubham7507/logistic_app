@@ -38,7 +38,7 @@ for(const [store,manager,worker,product] of [
  assert.equal(o.pickerId,p.id);assert.equal(o.pickerOffer.status,'offered');
  assert.match(Commerce.screen(s,'pickTasks',worker),new RegExp(o.id));
  ok(Staff.respondPickOffer(s,worker,o.id,true));ok(Commerce.pickerAction(s,worker,o.id,'start'));
- ok(Commerce.pickerAction(s,worker,o.id,'check',product));ok(Commerce.pickerAction(s,worker,o.id,'complete'));
+ assert.match(Commerce.pickerAction(s,worker,o.id,'check',product),/product-specific check/);ok(Commerce.pickerAction(s,worker,o.id,'check',product,[true,true]));ok(Commerce.pickerAction(s,worker,o.id,'complete'));
  ok(Commerce.sellerAction(s,manager,o.id,'pack',1));
  assert.equal(o.status,'ready_for_pickup');
  ok(Commerce.deliveryAction(s,'deliveryPartner',o.id,'accept'));

@@ -11,7 +11,7 @@ assert.equal(canOpen('grocery','shopPickerPay'),true);
 assert.equal(canOpen('picker','pickEarnings'),true);
 assert.equal(canOpen('picker','shopPickerPay'),false);
 assert.match(Commerce.screen(s,'shopTeam','grocery'),/Monthly/);
-assert.match(Commerce.screen(s,'shopEarnings','grocery'),/Picker Pay/);
+assert.match(Commerce.screen(s,'shopEarnings','grocery'),/Staff pay/);
 assert.match(Commerce.screen(s,'pickEarnings','picker'),/12,000/);
 assert.match(Pay.startPickerShift(s,'grocery'),/Picker access/);
 assert.equal(Pay.startPickerShift(s,'picker'),'');
@@ -91,7 +91,7 @@ tap('grocery','adjust-picker-pay',uiRun.id,{[`[data-picker-adjustment="${uiRun.i
 tap('grocery','approve-picker-pay',uiRun.id);
 tap('grocery','record-picker-payment',uiRun.id,{[`[data-picker-payment-method="${uiRun.id}"]`]:'bank',[`[data-picker-payment-ref="${uiRun.id}"]`]:'BANK-001'});
 assert.equal(uiRun.status,'paid');assert.equal(uiRun.amount,12100);assert.equal(saved,7);
-assert.match(Commerce.screen(ui,'commercePayments','admin'),/Store-funded Picker Pay/);
+assert.match(Commerce.screen(ui,'commercePayments','admin'),/Store-funded staff pay/);
 assert.match(Commerce.screen(ui,'commercePayments','admin'),/BANK-001/);
 
 console.log(JSON.stringify({status:'PASS',suite:'Picker monthly and daily plans, shifts, approval, adjustments, recorded payment, role boundaries, removed staff and order money isolation'}));

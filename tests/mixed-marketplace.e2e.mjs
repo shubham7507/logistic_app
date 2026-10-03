@@ -37,7 +37,7 @@ for(const method of ['upi','cod']){
   if(ws!=='grocery')assert.ok(!o.pickerId);
   // The grocery seller can pick in store; the other sellers check their own packages.
   assert.equal(Commerce.pickerAction(s,ws,o.id,'start'),'');
-  for(const item of o.items)assert.equal(Commerce.pickerAction(s,ws,o.id,'check',item.productId),'');
+  for(const item of o.items)assert.equal(Commerce.pickerAction(s,ws,o.id,'check',item.productId,ws==='grocery'?[]:[true,true]),'');
   assert.equal(Commerce.pickerAction(s,ws,o.id,'complete'),'');
   assert.equal(Commerce.sellerAction(s,ws,o.id,'pack'),'');
   assert.equal(o.status,'ready_for_pickup');

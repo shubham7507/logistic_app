@@ -34,9 +34,9 @@ assert.equal(spoken.lines.length,2);assert.equal(spoken.lines[0].productId,'PRD-
 const hindi=Voice.orderDraft('दो नमक और एक चावल',s.products.filter(Inventory.published));assert.equal(hindi.lines[0].productId,'PRD-103');assert.equal(hindi.lines[0].quantity,2);assert.equal(hindi.lines[1].options.length,2);
 ok(Orders.addToCart(s,spoken.lines[0].productId,2));ok(Orders.addToCart(s,'PRD-101',1));
 const {order,error}=Orders.placeOrder(s,{fromCart:true,address:'Flat 402, Noida',method:'cod'});assert.equal(error,undefined);assert.equal(order.items.length,2);
-assert.match(Commerce.screen(s,'shopOrders','grocery'),/automatically offer/);
+assert.match(Commerce.screen(s,'shopOrders','grocery'),/offer to an on-shift worker/);
 ok(Commerce.sellerAction(s,'grocery',order.id,'accept'));assert.equal(order.pickerId,null);
-assert.ok(s.notifications.some(n=>n.to==='grocery'&&/no on-shift picker/.test(n.text)));
+assert.ok(s.notifications.some(n=>n.to==='grocery'&&/no on-shift worker/.test(n.text)));
 
 // Only an open shift at this store makes a picker eligible for automatic offers.
 ok(PickerPay.startPickerShift(s,'picker'));

@@ -224,3 +224,7 @@ Seller/manager → In-store sale now supports editing/removing cart lines, up to
 ### All seller teams demo
 
 Sharma Electricals and City Fashion now have the same Team, Schedule, Offboarding, manager and store-staff workspaces as grocery. Switch seller workspaces in `seller.html`; select the matching store-staff workspace in `picker.html`. The seller owner invites staff and managers in Team, the worker accepts in Profile, the manager publishes a shift, and accepted orders offer preparation to available staff. Seller Staff pay records mock wages. See `SELLER-TEAM-ALL-ROLES-REPORT.md` for the role walkthrough, tested journey and limits. Run `npm run test:commerce` for the new electrical/fashion end-to-end model test.
+
+### Seller exceptions, item checks and demo guide
+
+Open `demo-guide.html` for a six-step customer-to-delivery walkthrough. Owners and managers have **Needs attention** for stalled orders. Electrical, fashion, and fresh-category items ask staff to confirm the relevant item details before completing the checklist. These are mock confirmations, not external barcode or expiry validation. See `STORE-OPERATIONS-ENHANCEMENT-REPORT.md` for the scenario and tests.

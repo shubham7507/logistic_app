@@ -8,3 +8,13 @@
 .order-timeline{list-style:none;padding:0;margin:1rem 0;border-left:2px solid #d8e2e0}.order-timeline li{padding:.42rem 0 .42rem 1rem;color:#64736f}.order-timeline li.done{color:#0b6655;font-weight:650}.pick-checklist{width:100%}.pick-checklist .market-row{align-items:center}.pick-checklist .market-row span{flex:1}.pick-checklist .market-row small{display:block}
 
 .shop-product-visual img,.shop-detail-visual img{width:100%;height:100%;max-height:340px;object-fit:contain;border-radius:12px}
+.pick-checklist .quality-check{grid-column:1/-1;display:flex;gap:8px;align-items:center;font-size:13px;color:#183b34}.pick-checklist .quality-check input{width:18px;height:18px;accent-color:#086b59}.demo-guide-link{display:inline-block;margin:12px 0;padding:10px 14px;border-radius:10px;background:#e7f4ef;color:#086b59;font-weight:700;text-decoration:none}
+/* Team rows contain a person and an action, without the icon column used elsewhere. */
+.market-row.team-person-row{grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center}
+.team-person-row .team-person-details{min-width:0;overflow-wrap:anywhere}
+.team-person-row .team-person-details b,.team-person-row .team-person-details small{display:block;line-height:1.4}
+.team-person-row .button{white-space:normal}
+.pick-checklist .market-row{grid-template-columns:minmax(0,1fr) auto auto}
+.pick-checklist .market-row>span:first-child{min-width:0;overflow-wrap:anywhere}
+@media(max-width:620px){.market-row.team-person-row{grid-template-columns:minmax(0,1fr)}.team-person-row .button{grid-column:1;justify-self:start}.pick-checklist .market-row{grid-template-columns:minmax(0,1fr) auto}.pick-checklist .market-row>span:first-child{grid-column:1/-1}}
+.staff-assignment{width:100%;display:grid;gap:9px}.staff-assignment>p{margin:0}.assignment-person{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;background:#fff;border:1px solid var(--line);border-radius:11px}.assignment-person span{min-width:0}.assignment-person strong,.assignment-person small{display:block}.assignment-person small{color:var(--muted);font-size:12px}.assignment-person .button{flex-shrink:0}@media(max-width:620px){.assignment-person{align-items:stretch;flex-direction:column}.assignment-person .button{align-self:flex-start}}

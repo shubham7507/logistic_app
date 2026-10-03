@@ -8,6 +8,7 @@ import {gateway, record, TEST, clock} from './pay.js';
 import {issueInvoice, billingFieldsHtml, readBilling} from './customer-billing.js';
 import * as Commerce from './commerce.js';
 import * as Inventory from './grocery-inventory.js';
+import {routeBranch} from './seller-branches.js';
 import * as Voice from './grocery-voice.js';
 import {categoryFor,categoryOptions} from './grocery-categories.js';
 
@@ -66,15 +67,17 @@ export function placeOrder(state, v) {
   if(v.fulfilment==='pickup'&&stores.length>1)return {error:'Store pickup requires one seller per checkout. Remove other sellers or choose home delivery.'};
   const payAtStore=v.fulfilment==='pickup'&&String(v.method).startsWith('store_');
   if(payAtStore&&!['store_cash','store_upi','store_card'].includes(v.method))return {error:'Choose a valid store payment method.'};
+  const branchByStore={};for(const name of stores){const store=Object.keys(state.shopPartners||{}).find(k=>state.shopPartners[k].name===name),own=lines.filter(i=>i.product.fulfilmentPartner===name);own.forEach(i=>Inventory.ensureProductBranches(state,i.product));const chosen=routeBranch(state,store,own,v.fulfilment==='pickup'?'':v.address,Inventory.available);if(!chosen)return {error:`${name} has no active branch with all items in stock. Review your cart.`};branchByStore[store]=chosen.id;}
   const gatewayResult = v.method === 'cod'||payAtStore ? null : gateway.collect({method:v.method, vpa:v.vpa, card:v.card, amount:q.total});
   if (gatewayResult && !gatewayResult.ok) return {error:gatewayResult.reason};
-  const reserveError=Inventory.reserve(state,lines);if(reserveError)return {error:reserveError};
+  const reserveError=Inventory.reserve(state,lines,branchByStore);if(reserveError)return {error:reserveError};
   const checkoutId = `CHK-${Date.now().toString().slice(-5)}${Math.random().toString(36).slice(2,5).toUpperCase()}`;
   const orders = stores.map((name,index) => {
     const own = lines.filter(i => i.product.fulfilmentPartner === name);
     const itemTotal = own.reduce((n,i) => n+i.product.price*i.quantity,0), deliveryFee=v.fulfilment==='pickup'?0:deliveryFor(itemTotal);
     const id=`ORD-${Date.now().toString().slice(-5)}${Math.random().toString(36).slice(2,5).toUpperCase()}`,party=partyOf(name);
-    const order={id,checkoutId,billing:v.billing,payAtStore,paymentMethod:payAtStore?v.method.slice(6):v.method,fulfilment:v.fulfilment==='pickup'?'pickup':'delivery',inventoryCommitted:own.map(i=>({productId:i.productId,quantity:i.quantity})),customer:state.person?.name,items:own.map(i=>({productId:i.productId,quantity:i.quantity,name:i.product.name,unitPrice:i.product.price})),itemTotal,deliveryFee,total:itemTotal+deliveryFee,fulfilmentPartner:name,party,address:v.fulfilment==='pickup'?'Store pickup':v.address.trim(),method:v.method,eta:null,substitution:v.substitution||'contact',history:[{at:stamp(),text:'Order placed · awaiting store acceptance'}],status:v.method==='cod'||payAtStore?'confirmed':gatewayResult.pending?'payment_pending':'paid',cod:v.method==='cod'};
+    const store=Object.keys(state.shopPartners||{}).find(k=>state.shopPartners[k].name===name),chosenBranch=state.sellerBranches[store].find(b=>b.id===branchByStore[store]);
+    const order={id,checkoutId,branchId:chosenBranch.id,branchName:chosenBranch.name,pickupAddress:chosenBranch.address,billing:v.billing,payAtStore,paymentMethod:payAtStore?v.method.slice(6):v.method,fulfilment:v.fulfilment==='pickup'?'pickup':'delivery',inventoryCommitted:own.map(i=>({productId:i.productId,quantity:i.quantity})),customer:state.person?.name,items:own.map(i=>({productId:i.productId,quantity:i.quantity,name:i.product.name,unitPrice:i.product.price})),itemTotal,deliveryFee,total:itemTotal+deliveryFee,fulfilmentPartner:name,party,address:v.fulfilment==='pickup'?'Store pickup':v.address.trim(),method:v.method,eta:null,substitution:v.substitution||'contact',history:[{at:stamp(),text:'Order placed · awaiting store acceptance'}],status:v.method==='cod'||payAtStore?'confirmed':gatewayResult.pending?'payment_pending':'paid',cod:v.method==='cod'};
     if (gatewayResult) record(state,{owner:'personal',orderId:id,checkoutId,sourceType:'order',sourceId:id,type:'customer_payment',purpose:'order',payer:'personal',payee:party,responsible:'personal',amount:order.total,method:v.method,reference:gatewayResult.ref,status:gatewayResult.pending?'pending':'held',gatewayFinal:gatewayResult.final||null,note:`Checkout ${checkoutId} · order ${id}`},'Customer');
     Commerce.initializeOrder(state,order);return order;
   });
