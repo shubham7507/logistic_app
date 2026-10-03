@@ -1,5 +1,6 @@
 // Store-funded picker pay: mock tracking and recorded offline payment only.
 import {currentPicker,staffFor,storeWorkspace} from './grocery-staff.js';
+import {record} from './pay.js';
 
 const seller=ws=>['grocery','groceryFresh'].includes(ws);
 const managerStore=ws=>ws==='groceryManager'?'grocery':ws==='groceryFreshManager'?'groceryFresh':null;
@@ -80,7 +81,7 @@ export function recordPickerPayment(s,ws,id,method,reference){
  if(!seller(ws)||s.shopPartners?.[ws]?.status!=='approved')return 'Approved store access required.';
  const r=(s.pickerPayRuns||[]).find(x=>x.id===id&&x.store===ws&&x.status==='approved');if(!r)return 'Approve this pay run before recording payment.';
  if(!['bank','upi','cash'].includes(method)||!String(reference||'').trim())return 'Choose a payment method and enter its reference or receipt note.';
- r.status='paid';r.paidAt=now();r.method=method;r.reference=String(reference).trim().slice(0,80);log(s,s.shopPartners[ws].name,`Recorded store-paid picker pay ${r.id}: ${money(r.amount)} · ${method} · ${r.reference}`);return '';
+ r.status='paid';r.paidAt=now();r.method=method;r.reference=String(reference).trim().slice(0,80);record(s,{owner:s.shopPartners[ws].party,sourceType:'picker_pay',sourceId:r.id,type:'picker_wage_payment',payer:s.shopPartners[ws].party,payee:r.pickerId,responsible:ws,amount:r.amount,method,channel:'outside_app',reference:r.reference,status:'confirmed',note:`Store-paid picker wages · ${r.period}`},s.shopPartners[ws].name);log(s,s.shopPartners[ws].name,`Recorded store-paid picker pay ${r.id}: ${money(r.amount)} · ${method} · ${r.reference}`);return '';
 }
 
 export function sellerPickerPayScreen(s,ws){
