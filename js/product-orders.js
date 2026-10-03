@@ -8,6 +8,8 @@ import {gateway, record, TEST, clock} from './pay.js';
 import {issueInvoice, billingFieldsHtml, readBilling} from './customer-billing.js';
 import * as Commerce from './commerce.js';
 import * as Inventory from './grocery-inventory.js';
+import * as Voice from './grocery-voice.js';
+import {categoryFor,categoryOptions} from './grocery-categories.js';
 
 export const PRODUCT_POLICY = {commission: 0.08, freeDeliveryAbove: 499, deliveryFee: 40, codLimit: 5000, returnDays: 7};
 const DAY = 86400000;
@@ -132,18 +134,22 @@ export function completeReturn(state, o) {
 }
 
 // ---------- screens ----------
+const voiceShop=(state)=>{
+ const draft=state.voiceOrderDraft;
+ return `<section class="panel"><h2>Order by voice</h2><p>Say “two Tata Salt and one rice”. Review each match before adding to cart.</p><label>Language <select data-voice-language><option value="en-IN">English (India)</option><option value="hi-IN">Hindi</option></select></label><label>Spoken shopping list <textarea class="form-control" data-voice-order-text rows="2" placeholder="Two Tata Salt and one rice">${esc(draft?.transcript||'')}</textarea></label><div class="row-actions"><button type="button" class="button secondary" data-voice-target="[data-voice-order-text]">🎤 Speak</button><button type="button" class="button primary" data-po-voice-parse>Find products</button></div>${draft?.lines?.length?`<div class="info-banner"><b>Review the draft list</b><p>Choose the exact pack and quantity; nothing is added until you confirm.</p>${draft.lines.map((line,i)=>`<div class="market-row"><span>${esc(line.term)}${line.issue?` · ${esc(line.issue)}`:''}</span><label>Product <select data-po-voice-product="${i}"><option value="">Choose product</option>${line.options.map(p=>`<option value="${esc(p.id)}" ${line.productId===p.id?'selected':''}>${esc(p.name)} · ${esc(p.size)} · ${inr(p.price)}</option>`).join('')}</select></label><label>Quantity <input class="form-control compact" type="number" min="1" max="10" data-po-voice-qty="${i}" value="${esc(line.quantity)}"></label></div>`).join('')}<button type="button" class="button primary" data-po-voice-apply>Add reviewed items to cart</button></div>`:''}</section>`;
+};
 export function searchScreen(state) {
   const query = String(state.productQuery || '').trim().toLowerCase();
-  const found = state.products.filter(p => p.status!=='draft'&&p.status!=='paused'&&`${p.name} ${p.category} ${p.size}`.toLowerCase().includes(query));
+  const found = state.products.filter(p => Inventory.published(p)&&`${p.name} ${p.category} ${categoryFor(p)} ${p.size} ${p.brand||''}`.toLowerCase().includes(query));
   const count = cartLines(state).reduce((n, i) => n + i.quantity, 0);
-  const categories=[...new Set(state.products.map(p=>p.category))];
+  const categories=categoryOptions.filter(c=>state.products.some(p=>Inventory.published(p)&&categoryFor(p)===c));
   return `${head('Shop products', 'Search groceries and review each item before checkout.')}
     <div class="shop-toolbar"><span>Deliver to ${esc(state.deliveryAddress||'your address at checkout')}</span><button class="button secondary shop-cart-link" data-route="cart" aria-label="Open cart with ${count} item${count===1?'':'s'}">🛒 Cart <b>${count}</b></button></div>
-    <form id="product-search-form" class="panel filter-bar"><label class="sr-only" for="product-query">Search products</label><input id="product-query" name="query" value="${esc(state.productQuery || '')}" placeholder="Search rice, flour, salt…"><button class="button primary">Search</button></form>
+    ${voiceShop(state)}<form id="product-search-form" class="panel filter-bar"><label class="sr-only" for="product-query">Search products</label><input id="product-query" name="query" value="${esc(state.productQuery || '')}" placeholder="Search rice, flour, salt…"><button class="button primary">Search</button></form>
     <div class="shop-categories" aria-label="Product categories"><button class="${!query?'active':''}" data-po-query="">All</button>${categories.map(c=>`<button class="${query===c.toLowerCase()?'active':''}" data-po-query="${esc(c)}">${esc(c)}</button>`).join('')}</div>
-    <p class="muted">${found.length} product${found.length === 1 ? '' : 's'} found · Store assigned by MoveAI</p><div class="shop-grid">${found.map(p => `<article class="panel shop-product-card"><button class="shop-product-open" data-po-detail="${esc(p.id)}" aria-label="View ${esc(p.name)} details"><span class="shop-product-visual" aria-hidden="true">${p.photo?`<img src="${esc(p.photo)}" alt="" loading="lazy">`:productIcon(p)}</span><strong>${esc(p.name)}</strong></button><small>${esc(p.size)} · ${esc(p.category)}</small><b class="shop-price">${inr(p.price)}</b><span class="stock-label">${esc(Inventory.label(p))}</span><div class="row-actions"><button class="button secondary" data-po-detail="${esc(p.id)}">View details</button><button class="button primary" data-po-add="${esc(p.id)}" ${Inventory.published(p)?'':'disabled'}>＋ Add</button></div></article>`).join('') || '<div class="panel empty-inline"><b>No products found</b><p>Try a different name or category.</p></div>'}</div>`;
+    <p class="muted">${found.length} product${found.length === 1 ? '' : 's'} found · Store assigned by MoveAI</p><div class="shop-grid">${found.map(p => `<article class="panel shop-product-card"><button class="shop-product-open" data-po-detail="${esc(p.id)}" aria-label="View ${esc(p.name)} details"><span class="shop-product-visual" aria-hidden="true">${p.photo?`<img src="${esc(p.photo)}" alt="" loading="lazy">`:productIcon(p)}</span><strong>${esc(p.name)}</strong></button><small>${esc(p.size)} · ${esc(categoryFor(p))}</small><b class="shop-price">${inr(p.price)}</b><span class="stock-label">${esc(Inventory.label(p))}</span><div class="row-actions"><button class="button secondary" data-po-detail="${esc(p.id)}">View details</button><button class="button primary" data-po-add="${esc(p.id)}" ${Inventory.published(p)?'':'disabled'}>＋ Add</button></div></article>`).join('') || '<div class="panel empty-inline"><b>No products found</b><p>Try a different name or category.</p></div>'}</div>`;
 }
-const productIcon=p=>({Rice:'🍚',Flour:'🌾',Essentials:'🧂'}[p.category]||'🛒');
+const productIcon=p=>({'Rice, grains & cereals':'🍚','Flour & atta':'🌾','Spices & masala':'🧂','Dairy & paneer':'🥛','Fresh fruits':'🍎','Fresh vegetables':'🥕'}[categoryFor(p)]||'🛒');
 export function productDetailScreen(state){
   const p=state.products.find(x=>x.id===state.selectedProductId);
   if(!p)return `${head('Product unavailable','Choose another product.')}<button class="button secondary" data-route="search">Back to Shop</button>`;
@@ -208,6 +214,17 @@ export function trackingScreen(state){
 export function bindOrders(root, api) {
   const S = () => api.getState(), find = id => S().customerOrders.find(o => o.id === id);
   const done = (e, ok) => { if (e) return api.toast(e); api.save(); api.render(); if (ok) api.toast(ok); };
+  Voice.bindMicrophones(root,api.toast);
+  root.querySelector('[data-po-voice-parse]')?.addEventListener('click',()=>{
+    const s=S();s.voiceOrderDraft=Voice.orderDraft(root.querySelector('[data-voice-order-text]')?.value,s.products.filter(Inventory.published));
+    if(!s.voiceOrderDraft.lines.length)return api.toast('Say or type at least one product.');api.save();api.render();
+  });
+  root.querySelector('[data-po-voice-apply]')?.addEventListener('click',()=>{
+    const s=S(),draft=s.voiceOrderDraft,lines=draft?.lines.map((line,i)=>({productId:root.querySelector(`[data-po-voice-product="${i}"]`)?.value,quantity:Number(root.querySelector(`[data-po-voice-qty="${i}"]`)?.value)}));
+    if(!lines?.length||lines.some(x=>!x.productId||!Number.isInteger(x.quantity)||x.quantity<1||x.quantity>10))return api.toast('Choose an exact product and a quantity from 1 to 10 for every line.');
+    const prior=structuredClone(s.productCart||[]);for(const line of lines){const error=addToCart(s,line.productId,line.quantity);if(error){s.productCart=prior;return api.toast(error);}}
+    s.voiceOrderDraft=null;api.save();api.navigate('cart');api.toast('Reviewed items added. Confirm the total at checkout.');
+  });
   root.querySelectorAll('[data-po-track]').forEach(b=>b.onclick=()=>{S().selectedTrackingOrderId=b.dataset.poTrack;api.save();api.navigate('orderTracking');});
   root.querySelector('#product-search-form')?.addEventListener('submit', e => { e.preventDefault(); S().productQuery = new FormData(e.currentTarget).get('query'); api.save(); api.render(); });
   root.querySelectorAll('[data-po-query]').forEach(b => b.onclick = () => { S().productQuery = b.dataset.poQuery; api.save(); api.render(); });

@@ -115,10 +115,10 @@ export const SEED={
   ownerCovers:[],
   counterSales:[],counterCarts:{grocery:[],groceryFresh:[]},stockMovements:[],
   products:[
-    {id:'PRD-101',name:'India Gate Basmati Rice',size:'5 kg',price:710,category:'Rice',fulfilmentPartner:'ABC Grocery',stock:'In stock',quantity:20,reserved:0,lowStockAt:5,status:'active'},
-    {id:'PRD-102',name:'Fortune Chakki Atta',size:'10 kg',price:485,category:'Flour',fulfilmentPartner:'Fresh Mart',stock:'In stock',quantity:20,reserved:0,lowStockAt:5,status:'active'},
-    {id:'PRD-103',name:'Tata Salt',size:'1 kg',price:28,category:'Essentials',fulfilmentPartner:'ABC Grocery',stock:'In stock',quantity:20,reserved:0,lowStockAt:5,status:'active'},
-    {id:'PRD-104',name:'Everyday Basmati Rice',size:'5 kg',price:650,category:'Rice',fulfilmentPartner:'ABC Grocery',stock:'In stock',quantity:20,reserved:0,lowStockAt:5,status:'active'},
+    {id:'PRD-101',name:'India Gate Basmati Rice',size:'5 kg',price:710,category:'Rice, grains & cereals',subcategory:'Rice',vegStatus:'vegetarian',fulfilmentPartner:'ABC Grocery',stock:'In stock',quantity:20,reserved:0,lowStockAt:5,status:'active'},
+    {id:'PRD-102',name:'Fortune Chakki Atta',size:'10 kg',price:485,category:'Flour & atta',subcategory:'Atta',vegStatus:'vegetarian',fulfilmentPartner:'Fresh Mart',stock:'In stock',quantity:20,reserved:0,lowStockAt:5,status:'active'},
+    {id:'PRD-103',name:'Tata Salt',size:'1 kg',price:28,category:'Spices & masala',subcategory:'Salt',vegStatus:'vegetarian',fulfilmentPartner:'ABC Grocery',stock:'In stock',quantity:20,reserved:0,lowStockAt:5,status:'active'},
+    {id:'PRD-104',name:'Everyday Basmati Rice',size:'5 kg',price:650,category:'Rice, grains & cereals',subcategory:'Rice',vegStatus:'vegetarian',fulfilmentPartner:'ABC Grocery',stock:'In stock',quantity:20,reserved:0,lowStockAt:5,status:'active'},
   ],
   customerOrders:[{id:'ORD-9001',customer:'Shubham Kumar',items:[{productId:'PRD-103',quantity:2}],total:56,status:'out_for_delivery',fulfilmentPartner:'ABC Grocery',eta:'Today, 12:40 PM'}],
   ownedVehicles:{

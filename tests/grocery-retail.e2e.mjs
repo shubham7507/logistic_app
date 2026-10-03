@@ -12,8 +12,8 @@ assert.equal(canOpen('groceryManager','shopEarnings'),false);
 assert.match(C.screen(s,'shopCatalog','grocery'),/Add product/);
 assert.match(C.screen(s,'shopCounter','groceryManager'),/In-store sale/);
 assert.match(C.screen(s,'shopCounterDelivery','grocery'),/Counter delivery order/);
-ok(I.saveProduct(s,'grocery',null,{name:'Draft Tomato',size:'1 kg',category:'Vegetables',price:60,quantity:4,lowStockAt:2,status:'draft'}));const draft=s.products.at(-1);assert.doesNotMatch(O.searchScreen(s),/Draft Tomato/);assert.match(C.screen(s,'shopCatalog','grocery'),/Publish/);ok(I.setAvailability(s,'grocery',draft.id,'active'));assert.match(O.searchScreen(s),/Draft Tomato/);
-const spec={name:'Demo Milk',size:'1 litre',category:'Dairy',brand:'Farm',description:'Chilled milk',price:65,quantity:10,lowStockAt:3,status:'active'};
+ok(I.saveProduct(s,'grocery',null,{name:'Draft Tomato',size:'1 kg',category:'Fresh vegetables',vegStatus:'vegetarian',price:60,quantity:4,lowStockAt:2,status:'draft'}));const draft=s.products.at(-1);assert.doesNotMatch(O.searchScreen(s),/Draft Tomato/);assert.match(C.screen(s,'shopCatalog','grocery'),/Publish/);ok(I.setAvailability(s,'grocery',draft.id,'active'));assert.match(O.searchScreen(s),/Draft Tomato/);
+const spec={name:'Demo Milk',size:'1 litre',category:'Dairy & paneer',vegStatus:'vegetarian',brand:'Farm',description:'Chilled milk',price:65,quantity:10,lowStockAt:3,status:'active'};
 assert.match(I.saveProduct(s,'groceryManager',null,spec),/owner access/);
 ok(I.saveProduct(s,'grocery',null,spec));const p=s.products.at(-1);assert.match(O.searchScreen(s),/Demo Milk/);
 assert.match(I.saveProduct(s,'groceryFresh',p.id,{...spec,price:70}),/another store/);
@@ -82,7 +82,7 @@ assert.equal(delivery.status,'delivered');assert.match(C.screen(s,'commerceOrder
 // Exercise the rendered button wiring as a user would click it.
 const ui=structuredClone(SEED);ui.currentWorkspace='grocery';let saved=0,rendered=0;
 function click(action,values,id){const button={dataset:{commerce:action,id}},root={querySelectorAll:sel=>sel==='[data-commerce]'?[button]:[],querySelector:sel=>sel in values?{value:values[sel],checked:values[sel]===true}:null};C.bind(root,{getState:()=>ui,save:()=>saved++,render:()=>rendered++,toast:m=>{if(m!=='Updated')throw new Error(m)}});button.onclick()}
-click('catalog-add',{'[data-catalog-name]':'Counter Beans','[data-catalog-size]':'500 g','[data-catalog-category]':'Essentials','[data-catalog-price]':'90','[data-catalog-quantity]':'12','[data-catalog-low]':'3'});
+click('catalog-add',{'[data-catalog-name]':'Counter Beans','[data-catalog-size]':'500 g','[data-catalog-category]':'Pulses, dal & beans','[data-catalog-veg]':'vegetarian','[data-catalog-price]':'90','[data-catalog-quantity]':'12','[data-catalog-low]':'3'});
 const bean=ui.products.at(-1);assert.equal(bean.name,'Counter Beans');
 click('counter-add',{'[data-counter-product]':bean.id,'[data-counter-qty]':'2'});
 click('counter-complete',{'[data-counter-method]':'cash','[data-counter-discount]':'0'});
