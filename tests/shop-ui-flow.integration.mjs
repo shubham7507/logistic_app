@@ -14,7 +14,7 @@ const api={getState:()=>s,save:()=>saved++,render:()=>{},navigate:r=>route=r,toa
 Shop.bindOrders(root,api);
 detail.onclick();assert.equal(route,'productDetail');assert.equal(s.selectedProductId,'PRD-101');
 assert.match(Shop.productDetailScreen(s),/Quantity/);
-add.onclick();assert.equal(route,'cartAdded');assert.deepEqual(s.productCart,[{productId:'PRD-101',quantity:2}]);
+add.onclick();assert.equal(route,'cartAdded');assert.deepEqual(s.productCart,[{productId:'PRD-101',quantity:2,priceAtAdd:710}]);
 assert.match(Shop.cartAddedScreen(s),/Go to cart/);
 assert.match(Shop.cartScreen(s),/₹1,420/);
 assert.match(Shop.searchScreen(s),/shop-cart-link/);
@@ -29,7 +29,7 @@ assert.equal(canOpen('personal','productDetail'),true);
 assert.equal(canOpen('personal','cartAdded'),true);
 assert.equal(canOpen('grocery','cartAdded'),false);
 s.checkoutFromCart=true;
-for(const step of ['1 · Delivery address','2 · Payment method','3 · Review items and total'])assert.ok(Shop.checkoutScreen(s).includes(step));
+for(const step of ['1 · Fulfilment','2 · Payment method','3 · Review items and total'])assert.ok(Shop.checkoutScreen(s).includes(step));
 const mobileCss=fs.readFileSync(new URL('../css/marketplace.css',import.meta.url),'utf8');
 assert.match(mobileCss,/\.shop-toolbar/);
 console.log(JSON.stringify({status:'PASS',suite:'Product detail → add button → visible cart confirmation → basket → checkout'}));

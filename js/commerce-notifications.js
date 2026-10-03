@@ -8,7 +8,8 @@ export function notifyOrder(s,o,text){
  if(text==='Order sent to store')send(store,'New order to accept','shopOrders','action');
  else if(text==='Store accepted order'){send('personal','Store confirmed your order','orderTracking');send(store,'Assign a picker or pick items in store','shopOrders','action');}
  else if(text==='All items picked; awaiting store packing')send(store,'Items checked; pack this order','shopOrders','action');
- else if(text==='Packed and ready for pickup'){send('personal','Order ready for pickup','orderTracking');}
+ else if(text==='Packed and ready for pickup'){send('personal',o.fulfilment==='pickup'?'Ready for store collection; show your pickup code':'Order ready for courier pickup','orderTracking');}
+ else if(text==='Collected from store with customer code'){send('personal','Store pickup completed; view your receipt','orderTracking');send(store,'Store pickup completed; settlement pending','shopSales');}
  else if(text.startsWith('Delivery offered to '))send(courier,'New delivery offer','deliveryJobs','action');
  else if(text==='Delivery offer accepted')send(store,`${o.deliveryAssignment?.partnerName||'Courier'} accepted pickup`,'shopOrders');
  else if(text==='Delivery offer expired')send('admin','Delivery offer expired; reassign','commerceIssues','action');
