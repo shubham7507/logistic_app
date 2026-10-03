@@ -28,5 +28,5 @@ export function notifyOrder(s,o,text){
  else if(text.startsWith('COD cash ')&&text.includes('handed over'))send('admin','COD cash ready to reconcile','commercePayments','action');
  else if(text.startsWith('Store settlement '))send(store,text,'shopEarnings');
  else if(text.startsWith('Delivery earning '))send(courier,text,'deliveryEarnings');
- for(const a of alerts)(s.notifications||=[]).unshift({id:id(),...a,ref:o.id,at:new Date().toLocaleString('en-IN'),read:false});
+ for(const a of [...alerts,...alerts.filter(a=>a.to===store&&['shopOrders'].includes(a.route)).map(a=>({...a,to:store==='grocery'?'groceryManager':'groceryFreshManager',managerId:s.activeStoreManager?.[store==='grocery'?'groceryManager':'groceryFreshManager']})).filter(a=>(s.storeManagers||[]).some(m=>m.id===a.managerId&&m.status==='active'))])(s.notifications||=[]).unshift({id:id(),...a,ref:o.id,at:new Date().toLocaleString('en-IN'),read:false});
 }

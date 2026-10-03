@@ -26,6 +26,7 @@ import {canViewOpportunity,validateOffer} from './marketplace-rules.js';
 import * as OPS from './ops.js';
 import * as WO from './worker-onboarding.js';
 import {bindBusinessVerify,draftPanel,activateDrafts,bindDrafts} from './business-verify.js';
+import * as GroceryWorkforce from './grocery-workforce.js';
 import {PRODUCTS,productForWorkspace,personalRouteOwner,PERSONAL_NAV,PERSONAL_LABEL,PRODUCT_TITLES} from './products.js';
 import {customerHomeScreen,accountScreen,otherAppsHtml} from './product-screens.js';
 import * as SJ from './staff-join.js';
@@ -55,6 +56,7 @@ function roleForWorkspace(key){const base0=ROLE_CONFIG[key]||ROLE_CONFIG.persona
 function currentRole(){return roleForWorkspace(state.currentWorkspace)}
 function initials(name='Mock User'){return String(name).split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'MU'}
 function activePersona(key=state.currentWorkspace){
+ if(GroceryWorkforce.manager(key)){const m=GroceryWorkforce.activeManager(state,key);if(m)return {name:m.name,role:'Store Manager',initials:m.name.split(' ').map(x=>x[0]).join('').slice(0,2)};}
   if(key==='staff'){
     const member=selectedStaff();
     if(member)return {name:member.name,role:ROLE_TEMPLATES[member.role]?.label||member.designation||'Staff',initials:initials(member.name)};
@@ -119,7 +121,7 @@ function opsRoute(route){
   return '';
 }
 const opsApi={getState:()=>state,save:()=>saveState(state),render:()=>{renderRoute();renderBell()},toast:m=>toast(m),navigate:r=>{if(readRoute()===r)renderRoute();else navigate(r);renderBell()}};
-function unreadCount(){const ws=state.currentWorkspace,key=ws==='staff'?`staff:${state.selectedStaffId}`:ws;return (state.notifications||[]).filter(n=>(n.to===ws||n.to===key||(n.parties||[]).includes(ws))&&(!n.pickerId||n.pickerId===currentPicker(state,ws)?.id)&&!n.read).length}
+function unreadCount(){const ws=state.currentWorkspace,key=ws==='staff'?`staff:${state.selectedStaffId}`:ws;return (state.notifications||[]).filter(n=>(n.to===ws||n.to===key||(n.parties||[]).includes(ws))&&(!n.pickerId||n.pickerId===currentPicker(state,ws)?.id)&&(!n.managerId||n.managerId===GroceryWorkforce.activeManager(state,ws)?.id)&&!n.read).length}
 function renderBell(){const b=$('notifications-button');if(!b)return;const n=unreadCount();b.querySelector('.bell-count').textContent=n||'';b.querySelector('.bell-count').hidden=!n;b.setAttribute('aria-label',`Notifications${n?`, ${n} unread`:''}`)}
 let aiPending=null;
 function openAssistant(){const d=$('ai-dialog');if(!d)return;d.hidden=false;$('ai-input').value='';$('ai-readback').innerHTML=`<p class="muted">Ask about work, or give a command. Examples: “summarize TRP-501”, “record advance 5000 to Raj Transport UPI ref 88231 for TRP-501”, “reached dharamkata”, “report breakdown”.</p>`;$('ai-confirm').hidden=true;aiPending=null;$('ai-input').focus()}
@@ -253,5 +255,5 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeOverlays()});wi
 function renderAll(){renderWorkspace();renderDesktopNav();renderMobileNav();if(!location.hash)location.hash=state.auth?.status==='authenticated'?'#/home':'#/welcome';renderRoute();app.setAttribute('aria-busy','false')}
 renderAll();
 
-window.addEventListener('storage',e=>{if(!e.key||!e.key.startsWith('moveai')||e.key==='moveai-tab-view'||e.key.startsWith('moveai-workspace-'))return;state=loadState();const r=readRoute();if(document.body.classList.contains('join-mode')||['people','staffDetail','inviteSent','notifications','home','search','cart','orders','orderTracking','shopOrders','shopTeam','shopPickerPay','shopCatalog','shopEarnings','pickTasks','pickEarnings','pickProfile','deliveryJobs','deliveryCash','deliveryEarnings','commerceOps','commerceOrders','commercePartners','commercePayments','commerceIssues'].includes(r)){syncingFromStorage=true;try{renderWorkspace();renderDesktopNav();renderMobileNav();renderRoute()}finally{syncingFromStorage=false}}});
+window.addEventListener('storage',e=>{if(!e.key||!e.key.startsWith('moveai')||e.key==='moveai-tab-view'||e.key.startsWith('moveai-workspace-'))return;state=loadState();const r=readRoute();if(document.body.classList.contains('join-mode')||['people','staffDetail','inviteSent','notifications','home','search','cart','orders','orderTracking','shopOrders','shopTeam','shopSchedule','shopOffboarding','managerTimecards','managerProfile','shopPickerPay','shopCatalog','shopEarnings','pickTasks','pickSchedule','pickEarnings','pickProfile','deliveryJobs','deliveryCash','deliveryEarnings','commerceOps','commerceOrders','commercePartners','commercePayments','commerceIssues'].includes(r)){syncingFromStorage=true;try{renderWorkspace();renderDesktopNav();renderMobileNav();renderRoute()}finally{syncingFromStorage=false}}});
 window.MoveAIVNextTest={state:()=>structuredClone(state),switchWorkspace,product:()=>activeProduct,canOpen,reset:()=>{state=resetState();renderAll()},startSignup:()=>{state=signupDemoState();saveState(state);navigate('welcome')},routes:()=>Object.keys(ROUTES)};

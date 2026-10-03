@@ -1,5 +1,7 @@
 // Grocery staff and assignment rules for the single-browser demo.
 const storeRole=ws=>['grocery','groceryFresh'].includes(ws);
+const managerStore=ws=>ws==='groceryManager'?'grocery':ws==='groceryFreshManager'?'groceryFresh':null;
+const canAssign=(s,ws)=>storeRole(ws)||!!managerStore(ws)&&(s.storeManagers||[]).some(m=>m.id===s.activeStoreManager?.[ws]&&m.store===managerStore(ws)&&m.status==='active');
 const pickerRole=ws=>['picker','pickerFresh'].includes(ws);
 export const pickerWorkspace=store=>store==='grocery'?'picker':store==='groceryFresh'?'pickerFresh':null;
 export const storeWorkspace=picker=>picker==='picker'?'grocery':picker==='pickerFresh'?'groceryFresh':null;
@@ -34,18 +36,20 @@ export function pickerCanSee(s,ws,o){
  return !!p&&p.status==='active'&&s.shopPartners?.[store]?.status==='approved'&&o.party===s.shopPartners[store].party&&o.pickerId===p.id;
 }
 export function assignPicker(s,ws,orderId,pickerId){
- if(!storeRole(ws)||s.shopPartners?.[ws]?.status!=='approved')return 'Approved store access required.';
- const o=s.customerOrders?.find(x=>x.id===orderId&&x.party===s.shopPartners[ws].party);
+ const store=managerStore(ws)||ws;
+ if(!canAssign(s,ws)||s.shopPartners?.[store]?.status!=='approved')return 'Approved store access required.';
+ const o=s.customerOrders?.find(x=>x.id===orderId&&x.party===s.shopPartners[store].party);
  if(!o||o.status!=='accepted'||o.pick?.completedAt)return 'Only an accepted, unfinished store order can be assigned.';
- const p=staffFor(s,ws).find(x=>x.id===pickerId&&x.status==='active');if(!p)return 'Choose an active picker from this store.';
+ const p=staffFor(s,store).find(x=>x.id===pickerId&&x.status==='active'&&(!x.offboarding?.effectiveDate||x.offboarding.effectiveDate>=new Date().toISOString().slice(0,10)));if(!p)return 'Choose an active picker from this store.';
  if(o.pick?.mode==='self')return 'The seller has already started picking this order.';
  if(o.pickerId===p.id)return 'This order is already assigned to that picker.';
- const prior=staffFor(s,ws).find(x=>x.id===o.pickerId);
+ const prior=staffFor(s,store).find(x=>x.id===o.pickerId);
  o.pickerId=p.id;o.pick=null;
  const event=prior?`Pick task reassigned from ${prior.name} to ${p.name}`:`Pick task assigned to ${p.name}`;
- (o.history||=[]).push({at:new Date().toLocaleString('en-IN'),actor:s.shopPartners[ws].name,text:event});audit(s,s.shopPartners[ws].name,`${o.id}: ${event}`);
- alert(s,pickerWorkspace(ws),'pickTasks',`${p.name}: ${event} · ${o.id}`,o.id,p.id);
- if(prior)alert(s,pickerWorkspace(ws),'pickTasks',`${prior.name}: ${o.id} was reassigned`,o.id,prior.id);
+ const actor=storeRole(ws)?s.shopPartners[store].name:(s.storeManagers||[]).find(x=>x.id===s.activeStoreManager?.[ws])?.name||'Store manager';
+ (o.history||=[]).push({at:new Date().toLocaleString('en-IN'),actor,text:event});audit(s,actor,`${o.id}: ${event}`);
+ alert(s,pickerWorkspace(store),'pickTasks',`${p.name}: ${event} · ${o.id}`,o.id,p.id);
+ if(prior)alert(s,pickerWorkspace(store),'pickTasks',`${prior.name}: ${o.id} was reassigned`,o.id,prior.id);
  return '';
 }
 export function removePicker(s,ws,id){

@@ -2,6 +2,8 @@
 import {currentPicker,staffFor,storeWorkspace} from './grocery-staff.js';
 
 const seller=ws=>['grocery','groceryFresh'].includes(ws);
+const managerStore=ws=>ws==='groceryManager'?'grocery':ws==='groceryFreshManager'?'groceryFresh':null;
+const approver=(s,ws)=>seller(ws)||!!managerStore(ws)&&(s.storeManagers||[]).some(m=>m.id===s.activeStoreManager?.[ws]&&m.store===managerStore(ws)&&m.status==='active');
 const picker=ws=>['picker','pickerFresh'].includes(ws);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>`₹${Number(n||0).toLocaleString('en-IN')}`;
@@ -27,9 +29,11 @@ export function startPickerShift(s,ws){
  if(!p||p.status!=='active'||s.shopPartners?.[store]?.status!=='approved')return 'Active picker and approved store required.';
  if(!p.payPlan)return 'Ask the store to set your pay arrangement first.';
  const day=date(),period=payPeriod(p,day);
+ const planned=(s.pickerSchedules||[]).find(x=>x.pickerId===p.id&&x.date===day&&x.status!=='cancelled');
+ if(planned&&planned.status!=='confirmed')return 'Confirm your scheduled shift before starting it.';
  if(payRunFor(s,p.id,period))return 'This pay period is already under review. Ask the store to correct it.';
  if(shiftsFor(s,p.id,day).length)return 'You already have a shift for today.';
- (s.pickerShifts||=[]).push({id:`SHIFT-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,pickerId:p.id,store,date:day,startAt:now(),endAt:null,status:'open',planType:p.payPlan.type,rate:p.payPlan.rate});
+ (s.pickerShifts||=[]).push({id:`SHIFT-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,pickerId:p.id,store,date:day,scheduleId:planned?.id||null,startAt:now(),endAt:null,status:'open',planType:p.payPlan.type,rate:p.payPlan.rate});
  log(s,p.name,`Started picker shift ${day}`);return '';
 }
 export function endPickerShift(s,ws){
@@ -39,11 +43,13 @@ export function endPickerShift(s,ws){
  x.endAt=now();x.status='submitted';log(s,p.name,`Submitted picker shift ${x.date}`);return '';
 }
 export function approvePickerShift(s,ws,id){
- if(!seller(ws)||s.shopPartners?.[ws]?.status!=='approved')return 'Approved store access required.';
- const x=(s.pickerShifts||[]).find(y=>y.id===id&&y.store===ws&&y.status==='submitted');
+ const store=managerStore(ws)||ws;
+ if(!approver(s,ws)||s.shopPartners?.[store]?.status!=='approved')return 'Approved store access required.';
+ const x=(s.pickerShifts||[]).find(y=>y.id===id&&y.store===store&&y.status==='submitted');
  if(!x)return 'Submitted shift for this store not found.';
+ if((s.pickerTimeCorrections||[]).some(c=>c.shiftId===id&&c.status==='pending'))return 'Resolve the time correction before approving this shift.';
  if(payRunFor(s,x.pickerId,x.planType==='daily'?x.date:x.date.slice(0,7)))return 'Pay run already exists; resolve it before changing shifts.';
- x.status='approved';x.approvedAt=now();log(s,s.shopPartners[ws].name,`Approved ${staff(s,ws,x.pickerId)?.name||'picker'} shift ${x.date}`);return '';
+ x.status='approved';x.approvedAt=now();const actor=managerStore(ws)?(s.storeManagers||[]).find(m=>m.id===s.activeStoreManager[ws])?.name:s.shopPartners[ws].name;log(s,actor,`Approved ${staff(s,store,x.pickerId)?.name||'picker'} shift ${x.date}`);return '';
 }
 export function createPickerPayRun(s,ws,id){
  if(!seller(ws)||s.shopPartners?.[ws]?.status!=='approved')return 'Approved store access required.';
@@ -89,4 +95,9 @@ export function pickerPayScreen(s,ws){
  if(!picker(ws))return '';
  const p=currentPicker(s,ws),period=payPeriod(p),shifts=p?shiftsFor(s,p.id,period):[],runs=(s.pickerPayRuns||[]).filter(x=>x.pickerId===p?.id);
  return `<div class="page-header"><div><h1>My shifts and earnings</h1><p>${esc(p?.name||'Select an account')} · ${esc(s.shopPartners?.[p?.store]?.name||'Store')}</p></div></div>${p?.status==='active'?`<section class="panel"><h2>${esc(p.payPlan?.type||'Pay plan pending')} pay · ${p.payPlan?money(p.payPlan.rate):'Ask your store to set a rate'}</h2><p>Current period: ${esc(period)} · ${shifts.filter(x=>x.status==='approved').length} approved shift(s)</p>${shifts.some(x=>x.status==='open')?'<button class="button primary" data-commerce="end-picker-shift">Finish shift</button>':`<button class="button primary" data-commerce="start-picker-shift" ${p.payPlan?'':'disabled'}>Start shift</button>`}<p class="muted">Submit your shift; the store approves it and records any payment. This demo does not transfer money.</p></section>`:'<section class="panel">Accept your store invitation in Profile before recording shifts.</section>'}<section class="panel"><h2>Shift history</h2>${shifts.map(x=>`<p>${esc(x.date)} · ${esc(x.status)} · ${esc(x.planType)} ${money(x.rate)}</p>`).join('')||'<p>No shifts in this period.</p>'}</section><section class="panel"><h2>Pay history</h2>${runs.map(r=>`<p><b>${esc(r.period)} · ${money(r.amount)}</b> · ${esc(r.status)}${r.status==='paid'?` · ${esc(r.method)} ${esc(r.reference)}`:''}${r.adjustment?` · Adjustment ${money(r.adjustment)} (${esc(r.adjustmentReason)})`:''}</p>`).join('')||'<p>No pay run prepared yet.</p>'}</section>`;
+}
+export function managerTimecardsScreen(s,ws){
+ const store=managerStore(ws),m=(s.storeManagers||[]).find(x=>x.id===s.activeStoreManager?.[ws]&&x.store===store&&x.status==='active');
+ if(!m)return '<section class="panel">Manager access required.</section>';
+ return `<div class="page-header"><div><h1>Picker timecards</h1><p>Review submitted shifts at ${esc(s.shopPartners?.[store]?.name||'your store')}</p></div></div><section class="panel"><p>Managers approve shift records. The store owner reviews pay rates, adjustments and payment.</p>${(s.pickerShifts||[]).filter(x=>x.store===store).map(x=>`<div class="market-row"><span><b>${esc(staff(s,store,x.pickerId)?.name||'Picker')} · ${esc(x.date)}</b><small>${esc(x.status)} · ${esc(x.startAt)} → ${esc(x.endAt||'Open')}</small></span>${x.status==='submitted'?`<button class="button primary compact" data-commerce="approve-picker-shift" data-id="${esc(x.id)}">Approve shift</button>`:''}</div>`).join('')||'<p>No time records yet.</p>'}</section>`;
 }
