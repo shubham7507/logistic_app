@@ -52,6 +52,7 @@ export function removePicker(s,ws,id){
  if(!storeRole(ws)||s.shopPartners?.[ws]?.status!=='approved')return 'Approved store access required.';
  const p=staffFor(s,ws).find(x=>x.id===id&&x.status!=='removed');if(!p)return 'Picker is unavailable.';
  p.status='removed';p.removedAt=new Date().toISOString();
+ for(const shift of s.pickerShifts||[])if(shift.pickerId===id&&shift.status==='open'){shift.status='submitted';shift.endAt=p.removedAt;shift.note='Closed when store removed picker access';}
  let released=0;
  for(const o of s.customerOrders||[]){if(o.pickerId!==id||!['accepted','item_review'].includes(o.status)||o.pick?.completedAt)continue;o.pickerId=null;o.pick=null;released++;(o.history||=[]).push({at:new Date().toLocaleString('en-IN'),actor:s.shopPartners[ws].name,text:`${p.name} access removed; assign another picker or pick in store`})}
  audit(s,s.shopPartners[ws].name,`Removed ${p.name} picker access; ${released} open tasks released`);

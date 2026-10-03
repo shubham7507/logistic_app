@@ -20,7 +20,7 @@ for(const [role,route] of [['grocery','commerceOps'],['grocery','deliveryJobs'],
 for(const [product,role,nav,expected] of [
  ['customer','personal',PERSONAL_NAV.customer,['home','search','orders','account']],
  ['seller','grocery',ROLE_CONFIG.grocery.nav,['home','shopOrders','shopCatalog','shopEarnings']],
- ['picker','picker',ROLE_CONFIG.picker.nav,['home','pickTasks','pickProfile']],
+ ['picker','picker',ROLE_CONFIG.picker.nav,['home','pickTasks','pickEarnings','pickProfile']],
  ['delivery','deliveryPartner',ROLE_CONFIG.deliveryPartner.nav,['home','deliveryJobs','deliveryEarnings','deliveryProfile']],
  ['admin','admin',ROLE_CONFIG.admin.nav,['home','commerceOrders','commercePartners','commercePayments']]
 ]){

@@ -5,7 +5,7 @@ import {MOBILE_PRIMARY} from './config.js';
 const PRIMARY={
   customer:['home','search','orders','account'],
   seller:['home','shopOrders','shopCatalog','shopEarnings'],
-  picker:['home','pickTasks','pickProfile'],
+  picker:['home','pickTasks','pickEarnings','pickProfile'],
   delivery:['home','deliveryJobs','deliveryEarnings','deliveryProfile'],
   admin:['home','commerceOrders','commercePartners','commercePayments'],
 };
