@@ -1,3 +1,4 @@
+import {MANAGER_BY_STORE} from './seller-roles.js';
 // Shared local-demo catalogue and inventory for online and counter sales.
 import {operatorStore,canOperate,manager} from './grocery-workforce.js';
 import {record} from './pay.js';
@@ -16,7 +17,7 @@ export const published=p=>p?.status!=='draft'&&p?.status!=='paused'&&p?.stock===
 export const low=p=>p?.stock==='In stock'&&p?.status!=='draft'&&available(p)<=Number(p?.lowStockAt??5);
 export const label=p=>p?.status==='draft'?'Draft':p?.status==='paused'?'Paused':p?.stock!=='In stock'||available(p)===0?'Sold out':low(p)?`Only ${available(p)} left`:'In stock';
 export const forStore=(s,ws)=>s.products.filter(p=>p.fulfilmentPartner===storeName(s,ws));
-const alertIfLow=(s,p,before)=>{if(before<=Number(p.lowStockAt??5)||!low(p))return;const store=Object.keys(s.shopPartners||{}).find(k=>s.shopPartners[k].name===p.fulfilmentPartner);if(!store)return;const payload={ref:p.id,route:'shopCatalog',text:`${p.name} ${p.size}: only ${available(p)} available. Reorder or update stock.`,priority:'action',at:new Date().toLocaleString('en-IN'),read:false};(s.notifications||=[]).unshift({id:`NT-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,to:store,...payload});const managerWs=store==='grocery'?'groceryManager':'groceryFreshManager',managerId=s.activeStoreManager?.[managerWs];if((s.storeManagers||[]).some(m=>m.id===managerId&&m.status==='active'))s.notifications.unshift({id:`NT-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,to:managerWs,managerId,...payload})};
+const alertIfLow=(s,p,before)=>{if(before<=Number(p.lowStockAt??5)||!low(p))return;const store=Object.keys(s.shopPartners||{}).find(k=>s.shopPartners[k].name===p.fulfilmentPartner);if(!store)return;const payload={ref:p.id,route:'shopCatalog',text:`${p.name} ${p.size}: only ${available(p)} available. Reorder or update stock.`,priority:'action',at:new Date().toLocaleString('en-IN'),read:false};(s.notifications||=[]).unshift({id:`NT-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,to:store,...payload});const managerWs=MANAGER_BY_STORE[store],managerId=s.activeStoreManager?.[managerWs];if((s.storeManagers||[]).some(m=>m.id===managerId&&m.status==='active'))s.notifications.unshift({id:`NT-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,to:managerWs,managerId,...payload})};
 export const canCatalog=(s,ws)=>owner(ws)&&s.shopPartners?.[ws]?.status==='approved';
 export const canStock=(s,ws)=>canOperate(s,ws)&&s.shopPartners?.[operatorStore(ws)]?.status==='approved';
 export function saveProduct(s,ws,id,v){

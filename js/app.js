@@ -2,6 +2,7 @@ import {ROLE_CONFIG,ROUTES,ICONS,PUBLIC_ROUTES,routeTitle} from './config.js';
 import {mobileNavigation} from './navigation.js';
 import {loadState as storeLoad,saveState as storeSave,resetState as storeReset,signupDemoState} from './store.js';
 import {currentPicker} from './grocery-staff.js';
+import {STORE_BY_WORKER} from './seller-roles.js';
 // Tab-scoped view: an invited staff member's session in one tab does not change who is signed in elsewhere.
 let tabView=null;try{tabView=JSON.parse(sessionStorage.getItem('moveai-tab-view')||'null')}catch{tabView=null}
 const TAB_KEYS=['currentWorkspace','staffSession','selectedStaffId'];
@@ -62,7 +63,7 @@ function activePersona(key=state.currentWorkspace){
     if(member)return {name:member.name,role:ROLE_TEMPLATES[member.role]?.label||member.designation||'Staff',initials:initials(member.name)};
   }
   const seeded=state.mockUsers?.[key];
-  if(['picker','pickerFresh'].includes(key)){const p=currentPicker(state,key);if(p)return {name:p.name,role:`${state.shopPartners?.[p.store]?.name||'Store'} picker`,initials:initials(p.name)};}
+  if(STORE_BY_WORKER[key]){const p=currentPicker(state,key);if(p)return {name:p.name,role:`${state.shopPartners?.[p.store]?.name||'Store'} ${p.role||'picker'}`,initials:initials(p.name)};}
   if(key==='personal'&&state.person?.name)return {...seeded,name:state.person.name,initials:initials(state.person.name),role:activeProduct==='customer'?(seeded?.role||'Customer'):PERSONAL_LABEL[activeProduct]?.subtitle||seeded?.role};
   return seeded||{name:'Mock User',role:roleForWorkspace(key).subtitle,initials:'MU'};
 }

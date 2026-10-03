@@ -1,10 +1,11 @@
 // Store manager, roster and staff exit rules for the grocery prototype.
 import {currentPicker,staffFor,storeWorkspace,removePicker} from './grocery-staff.js';
 import {payPeriod,payRunFor,shiftsFor} from './grocery-picker-pay.js';
+import {SELLER_WORKSPACES,STORE_BY_MANAGER,WORKER_BY_STORE} from './seller-roles.js';
 
-const owner=ws=>['grocery','groceryFresh','electrical','fashion'].includes(ws);
-export const manager=ws=>['groceryManager','groceryFreshManager'].includes(ws);
-export const managerStore=ws=>ws==='groceryManager'?'grocery':ws==='groceryFreshManager'?'groceryFresh':null;
+const owner=ws=>SELLER_WORKSPACES.includes(ws);
+export const manager=ws=>!!STORE_BY_MANAGER[ws];
+export const managerStore=ws=>STORE_BY_MANAGER[ws]||null;
 export const activeManager=(s,ws)=>manager(ws)?(s.storeManagers||[]).find(m=>m.id===s.activeStoreManager?.[ws]&&m.store===managerStore(ws)):null;
 export const operatorStore=ws=>owner(ws)?ws:managerStore(ws);
 export const canOperate=(s,ws)=>owner(ws)||manager(ws)&&activeManager(s,ws)?.status==='active';
@@ -13,7 +14,7 @@ const stamp=()=>new Date().toISOString();
 const today=()=>stamp().slice(0,10);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const audit=(s,ws,event)=>{(s.audit||=[]).unshift({id:`AUD-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,event,actor:who(s,ws)||ws,workspace:ws,at:new Date().toLocaleString('en-IN')})};
-const pickerWorkspace=store=>store==='grocery'?'picker':'pickerFresh';
+const pickerWorkspace=store=>WORKER_BY_STORE[store];
 const notify=(s,store,pickerId,route,text,ref)=>{(s.notifications||=[]).unshift({id:`NT-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,to:pickerWorkspace(store),pickerId,route,ref,priority:'action',text,at:new Date().toLocaleString('en-IN'),read:false})};
 const person=(s,store,id)=>staffFor(s,store).find(p=>p.id===id);
 

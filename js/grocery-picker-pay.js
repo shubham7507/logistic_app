@@ -1,11 +1,12 @@
+import {SELLER_WORKSPACES,STORE_BY_MANAGER,STORE_BY_WORKER} from './seller-roles.js';
 // Store-funded picker pay: mock tracking and recorded offline payment only.
 import {currentPicker,staffFor,storeWorkspace} from './grocery-staff.js';
 import {record} from './pay.js';
 
-const seller=ws=>['grocery','groceryFresh'].includes(ws);
-const managerStore=ws=>ws==='groceryManager'?'grocery':ws==='groceryFreshManager'?'groceryFresh':null;
+const seller=ws=>SELLER_WORKSPACES.includes(ws);
+const managerStore=ws=>STORE_BY_MANAGER[ws]||null;
 const approver=(s,ws)=>seller(ws)||!!managerStore(ws)&&(s.storeManagers||[]).some(m=>m.id===s.activeStoreManager?.[ws]&&m.store===managerStore(ws)&&m.status==='active');
-const picker=ws=>['picker','pickerFresh'].includes(ws);
+const picker=ws=>!!STORE_BY_WORKER[ws];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>`₹${Number(n||0).toLocaleString('en-IN')}`;
 const date=()=>new Date().toISOString().slice(0,10);

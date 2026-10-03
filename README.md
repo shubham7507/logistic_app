@@ -220,3 +220,7 @@ Seller → Money → Picker Pay + Manager Pay: the store owner approves picker s
 ### Walk-in counter checkout and shift cash
 
 Seller/manager → In-store sale now supports editing/removing cart lines, up to two different tenders (cash, UPI, card), applied total and cash-change preview, a manual payment review/confirm or void step, item-quantity partial returns, and cash drawer shift reconciliation with counted/expected variance. The review step reserves stock; confirmation consumes stock and writes per-tender ledger entries, while void releases reservations. A later-day refund belongs to the shift in which it was recorded. UPI/card references and cash counts are unverified mock inputs. See `GROCERY-COUNTER-CHECKOUT-E2E-REPORT.md`; run `npm run test:commerce`.
+
+### All seller teams demo
+
+Sharma Electricals and City Fashion now have the same Team, Schedule, Offboarding, manager and store-staff workspaces as grocery. Switch seller workspaces in `seller.html`; select the matching store-staff workspace in `picker.html`. The seller owner invites staff and managers in Team, the worker accepts in Profile, the manager publishes a shift, and accepted orders offer preparation to available staff. Seller Staff pay records mock wages. See `SELLER-TEAM-ALL-ROLES-REPORT.md` for the role walkthrough, tested journey and limits. Run `npm run test:commerce` for the new electrical/fashion end-to-end model test.

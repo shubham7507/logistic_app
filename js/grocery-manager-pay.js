@@ -1,7 +1,8 @@
+import {SELLER_WORKSPACES,STORE_BY_MANAGER} from './seller-roles.js';
 // Store-owned manager compensation records. This mock never sends funds.
 import {record} from './pay.js';
-const owner=ws=>['grocery','groceryFresh'].includes(ws);
-const storeOf=ws=>ws==='groceryManager'?'grocery':ws==='groceryFreshManager'?'groceryFresh':null;
+const owner=ws=>SELLER_WORKSPACES.includes(ws);
+const storeOf=ws=>STORE_BY_MANAGER[ws]||null;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>`₹${Number(n||0).toLocaleString('en-IN')}`;
 const month=()=>new Date().toISOString().slice(0,7);

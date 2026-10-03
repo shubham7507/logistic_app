@@ -10,7 +10,7 @@ import {bindOps} from '../js/ops-actions.js';
 const s=structuredClone(SEED);
 assert.equal(canOpen('grocery','shopTeam'),true);
 assert.equal(canOpen('picker','shopTeam'),false);
-assert.match(C.screen(s,'shopTeam','grocery'),/Invite a picker/);
+assert.match(C.screen(s,'shopTeam','grocery'),/Invite a fulfilment worker/);
 assert.match(Staff.invitePicker(s,'grocery','Priya Sharma','bad'),/10-digit/);
 assert.equal(Staff.invitePicker(s,'grocery','Priya Sharma','9876501555'),'');
 const priya=s.pickerStaff.at(-1);

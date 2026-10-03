@@ -1,10 +1,11 @@
-// Grocery staff and assignment rules for the single-browser demo.
-const storeRole=ws=>['grocery','groceryFresh'].includes(ws);
-const managerStore=ws=>ws==='groceryManager'?'grocery':ws==='groceryFreshManager'?'groceryFresh':null;
+// Seller staff and assignment rules for the single-browser demo.
+import {SELLER_WORKSPACES,MANAGER_BY_STORE,WORKER_BY_STORE,STORE_BY_MANAGER,STORE_BY_WORKER} from './seller-roles.js';
+const storeRole=ws=>SELLER_WORKSPACES.includes(ws);
+const managerStore=ws=>STORE_BY_MANAGER[ws]||null;
 const canAssign=(s,ws)=>storeRole(ws)||!!managerStore(ws)&&(s.storeManagers||[]).some(m=>m.id===s.activeStoreManager?.[ws]&&m.store===managerStore(ws)&&m.status==='active');
-const pickerRole=ws=>['picker','pickerFresh'].includes(ws);
-export const pickerWorkspace=store=>store==='grocery'?'picker':store==='groceryFresh'?'pickerFresh':null;
-export const storeWorkspace=picker=>picker==='picker'?'grocery':picker==='pickerFresh'?'groceryFresh':null;
+const pickerRole=ws=>!!STORE_BY_WORKER[ws];
+export const pickerWorkspace=store=>WORKER_BY_STORE[store]||null;
+export const storeWorkspace=picker=>STORE_BY_WORKER[picker]||null;
 export const staffFor=(s,store)=>s.pickerStaff?.filter(p=>p.store===store)||[];
 export const currentPicker=(s,ws)=>pickerRole(ws)?staffFor(s,storeWorkspace(ws)).find(p=>p.id===s.activePicker?.[ws]):null;
 const audit=(s,actor,event)=>{(s.audit||=[]).unshift({id:`AUD-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,event,actor,workspace:actor,at:new Date().toLocaleString('en-IN')})};
@@ -14,9 +15,9 @@ export function invitePicker(s,ws,name,mobile){
  name=String(name||'').trim();mobile=String(mobile||'').trim();
  if(name.length<2)return 'Enter the picker name.';
  if(!/^\d{10}$/.test(mobile))return 'Enter a 10-digit mobile number.';
- if((s.pickerStaff||[]).some(p=>p.mobile===mobile&&p.status!=='removed'))return 'This mobile already has an active or pending grocery invitation.';
- const p={id:`PICK-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,store:ws,name,mobile,status:'invited',invitedBy:s.shopPartners[ws].name,invitedAt:new Date().toISOString()};
- (s.pickerStaff||=[]).push(p);audit(s,s.shopPartners[ws].name,`Invited ${name} as picker for ${s.shopPartners[ws].name}`);
+ if((s.pickerStaff||[]).some(p=>p.mobile===mobile&&p.status!=='removed'))return 'This mobile already has an active or pending store invitation.';
+ const p={id:`PICK-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,store:ws,name,mobile,role:ws==='electrical'||ws==='fashion'?'fulfilment':'picker',status:'invited',invitedBy:s.shopPartners[ws].name,invitedAt:new Date().toISOString()};
+ (s.pickerStaff||=[]).push(p);audit(s,s.shopPartners[ws].name,`Invited ${name} as store worker for ${s.shopPartners[ws].name}`);
  alert(s,pickerWorkspace(ws),'pickProfile',`${name}: invitation to join ${s.shopPartners[ws].name}`,p.id,p.id);
  return '';
 }
@@ -27,8 +28,8 @@ export function selectPicker(s,ws,id){
 export function acceptPickerInvite(s,ws){
  const p=currentPicker(s,ws);if(!p||p.status!=='invited')return 'No pending invitation for this picker.';
  if(s.shopPartners?.[p.store]?.status!=='approved')return 'Store is not approved.';
- p.status='active';p.joinedAt=new Date().toISOString();audit(s,p.name,`Joined ${s.shopPartners[p.store].name} as picker`);
- alert(s,p.store,'shopTeam',`${p.name} accepted the store picker invitation`,p.id);
+ p.status='active';p.joinedAt=new Date().toISOString();audit(s,p.name,`Joined ${s.shopPartners[p.store].name} as store worker`);
+ alert(s,p.store,'shopTeam',`${p.name} accepted the store staff invitation`,p.id);
  return '';
 }
 export function pickerCanSee(s,ws,o){
@@ -76,7 +77,7 @@ export function autoAssignPicker(s,store,orderId,excluded=[]){
   const load=p=>(s.customerOrders||[]).filter(x=>x.pickerId===p.id&&['accepted','item_review'].includes(x.status)&&!x.pick?.completedAt).length;
   return load(a)-load(b)||String(a.joinedAt||'').localeCompare(String(b.joinedAt||''))||a.id.localeCompare(b.id);
  });
- const p=eligible[0];if(!p){o.pickerId=null;o.pickerOffer=null;alert(s,store,'shopOrders',`${o.id}: no on-shift picker available; assign manually or pick in store`,o.id);return 'No on-shift picker available.';}
+ const p=eligible[0];if(!p){o.pickerId=null;o.pickerOffer=null;alert(s,store,'shopOrders',`${o.id}: no on-shift worker available; assign manually or prepare in store`,o.id);return 'No on-shift picker available.';}
  const old=o.pickerId;o.pickerId=p.id;o.pick=null;o.pickerOffer={pickerId:p.id,status:'offered',offeredAt:Date.now(),expiresAt:Date.now()+2*60000};
  (o.history||=[]).push({at:new Date().toLocaleString('en-IN'),actor:'MoveAI',text:`Pick task offered to ${p.name}`});
  alert(s,pickerWorkspace(store),'pickTasks',`${p.name}: accept pick task ${o.id}`,o.id,p.id);

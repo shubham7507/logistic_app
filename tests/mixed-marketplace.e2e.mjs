@@ -34,7 +34,7 @@ for(const method of ['upi','cod']){
  for(const ws of ['grocery','electrical','fashion']){
   const o=Commerce.visibleOrders(s,ws)[0];
   assert.equal(Commerce.sellerAction(s,ws,o.id,'accept'),'');
-  if(ws!=='grocery')assert.equal(o.pickerId,undefined);
+  if(ws!=='grocery')assert.ok(!o.pickerId);
   // The grocery seller can pick in store; the other sellers check their own packages.
   assert.equal(Commerce.pickerAction(s,ws,o.id,'start'),'');
   for(const item of o.items)assert.equal(Commerce.pickerAction(s,ws,o.id,'check',item.productId),'');
