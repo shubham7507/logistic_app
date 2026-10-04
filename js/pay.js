@@ -126,6 +126,7 @@ export function payBalance(state, r, pm) {
   if (pm.method === 'cash') {
     const e = record(state, {owner: 'personal', serviceId: r.id, sourceType: 'service', sourceId: r.id, type: 'customer_payment', purpose: 'balance', payer: 'personal', payee: payeeOf(state, r), responsible: 'personal', amount: s.due, method: 'cash', channel: 'cash', reference: `CASH-${r.id}`, status: 'confirmed', note: `Balance paid in cash ${r.id}`}, 'Customer');
     cashCommission(state, r, e.amount);
+    if (round(r.quote?.fee)) { const party = payeeOf(state, r); record(state, {owner: party, serviceId: r.id, sourceType: 'service', sourceId: r.id, type: 'cash_commission', payer: party, payee: 'moveai', responsible: party, amount: round(r.quote.fee), method: 'wallet', reference: `FEE-CASH-${r.id}`, status: 'confirmed', note: `MoveAI booking fee collected in cash by the partner · recovered from wallet · ${r.id}`}); }
     r.paid = true; return {ok: true, amount: s.due, cash: true};
   }
   const g = gateway.collect({...pm, amount: s.due}); if (!g.ok) return {error: g.reason};

@@ -116,16 +116,9 @@ export function advanceOrder(state, o) {
   if (o.status === 'delivered') {
     o.deliveredAt = clock();
     issueInvoice(state, {kind: 'order', o, party: o.party});
-    const rate = PRODUCT_POLICY.commission, commission = Math.round(o.total * rate);
-    if (o.cod) {
-      record(state, {owner: 'personal', orderId: o.id, sourceType: 'order', sourceId: o.id, type: 'customer_payment', purpose: 'order', payer: 'personal', payee: o.party, responsible: 'personal', amount: o.total, method: 'cash', channel: 'cash', reference: `COD-${o.id}`, status: 'confirmed', note: `Cash collected on delivery · ${o.id}`}, 'Delivery partner');
-      record(state, {owner: o.party, orderId: o.id, sourceType: 'order', sourceId: o.id, type: 'cash_commission', payer: o.party, payee: 'moveai', responsible: o.party, amount: commission, method: 'wallet', reference: `COMM-${o.id}`, status: 'confirmed', note: `8% commission on cash order ${o.id}`});
-    } else {
-      const held = orderPayments(state, o).filter(e => e.type === 'customer_payment' && e.status === 'held');
-      held.forEach(e => { e.status = 'released'; });
-      record(state, {owner: o.party, orderId: o.id, sourceType: 'order', sourceId: o.id, type: 'wallet_credit', payer: 'moveai', payee: o.party, responsible: 'moveai', amount: o.total - commission, method: 'wallet', reference: `REL-${o.id}`, status: 'confirmed', gross: o.total, commission, note: `${o.id} delivered: ${inr(o.total)} − 8% commission`});
-      record(state, {owner: 'moveai', orderId: o.id, sourceType: 'order', sourceId: o.id, type: 'commission', payer: o.party, payee: 'moveai', responsible: o.party, amount: commission, method: 'wallet', reference: `COM-${o.id}`, status: 'confirmed', note: `Commission ${o.id}`});
-    }
+    // Money for product orders follows the seller settlement in commerce.js (held, then paid after the
+    // category's payout hold). This old prototype step no longer releases money to a wallet.
+    o.settlementNote = 'Paid to the store through seller settlement after the payout hold';
   }
   return '';
 }
@@ -221,7 +214,7 @@ export function ordersScreen(state) {
     ${refunds.map(x => `<p class="muted">Refund ${inr(x.amount)} · ${x.status === 'refunded' ? 'reached your account' : x.status === 'refund_recorded' ? 'external refund recorded · verify with your bank' : x.status === 'refund_due' ? 'Refund due · admin will record the UPI transfer' : x.expectedBy ? `expected by ${new Date(x.expectedBy).toLocaleDateString('en-IN', {day: '2-digit', month: 'short'})}` : esc(x.status.replaceAll('_',' '))}</p>`).join('')}
     ${o.status==='out_for_delivery'?`<p class="info-banner">Delivery code: <b>${esc(o.deliveryCode)}</b> · share it only when the package reaches you.</p>`:''}
     ${o.status==='item_review'?`<div class="info-banner"><b>Item unavailable: ${esc(o.items.find(i=>i.productId===o.pendingItemId)?.name||'Product')}</b><span>${o.suggestedProductId?`Store suggests ${esc(state.products.find(p=>p.id===o.suggestedProductId)?.name||'another item')} · ${inr(state.products.find(p=>p.id===o.suggestedProductId)?.price||0)} each. Total after approval: ${inr(o.total-(o.items.find(i=>i.productId===o.pendingItemId)?.unitPrice-(state.products.find(p=>p.id===o.suggestedProductId)?.price||0))*(o.items.find(i=>i.productId===o.pendingItemId)?.quantity||1))}.`:'Wait for a replacement suggestion, remove the item, or cancel this store order.'}</span>${o.suggestedProductId?`<button class="button primary compact" data-po="approve-replacement" data-id="${esc(o.id)}">Approve replacement</button>`:''}<button class="button secondary compact" data-po="remove-unavailable" data-id="${esc(o.id)}">Remove item and continue</button></div>`:''}
-    <div class="row-actions"><button class="button primary compact" data-po-track="${esc(o.id)}">Track order</button>${['paid', 'confirmed', 'accepted', 'item_review', 'ready_for_pickup'].includes(o.status) ? `<button class="button secondary compact" data-po="cancel" data-id="${o.id}">Cancel order</button>` : ''}${Plus.orderHelp(state,o)}</div>
+    <div class="row-actions"><button class="button primary compact" data-po-track="${esc(o.id)}">Track order</button>${['paid', 'confirmed', 'accepted', 'item_review', 'ready_for_pickup'].includes(o.status) ? `<button class="button secondary compact" data-po="cancel" data-id="${o.id}">Cancel order</button>` : ''}${Plus.cancelItemsHtml(state,o)}${Plus.orderHelp(state,o)}</div>
     <p class="muted">Payment: ${esc(o.paymentStatus||'legacy')} · ${o.fulfilment==='pickup'?'Pickup':`Delivery: ${esc(o.deliveryAssignment?.partnerName||'Not assigned')}`} · Seller payout: ${esc(o.settlementStatus||'legacy')}</p>
     <div class="row-actions">${state.ledger.filter(x => x.orderId === o.id && x.receiptNo).map(x => `<button class="button text compact" data-bill-doc="receipt" data-id="${x.id}">Receipt ${esc(x.receiptNo.split('/').pop())}</button>`).join('')}${(state.customerInvoices || []).filter(i => i.ref === o.id).map(i => `<button class="button text compact" data-bill-doc="invoice" data-id="${i.id}">${esc(i.docType)}</button>`).join('')}${refunds.map(x => `<button class="button text compact" data-bill-doc="credit" data-id="${x.id}">Credit note</button>`).join('')}</div>
     <details><summary class="muted">History</summary>${(o.history || []).map(h => `<small class="block">${esc(h.at)} · ${esc(h.text)}</small>`).join('')}</details></section>`; }).join('') || '<div class="empty-inline"><b>No orders yet</b></div>'}`;

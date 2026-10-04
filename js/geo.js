@@ -15,6 +15,7 @@ export function ensureGeo(s) {
   for (const p of Object.values(s.shopPartners || {})) { p.coords ||= STORE_COORDS[p.name] || [28.6315, 77.2167]; p.radiusKm ??= 12; }
   Object.values(s.deliveryPartners || {}).forEach((d, i) => { d.coords ||= [[28.6470, 77.1850], [28.5750, 77.2380], [28.6300, 77.2200]][i % 3]; });
   s.customerPin ||= {label: 'Rajendra Place, Delhi', lat: AREAS['Rajendra Place, Delhi'][0], lng: AREAS['Rajendra Place, Delhi'][1]};
+  for (const o of s.customerOrders || []) if (!o.dest && o.fulfilment !== 'pickup' && !['cancelled'].includes(o.status)) { const st = storeOf(s, o.fulfilmentPartner); if (st) { o.origin = st.coords; o.dest = [s.customerPin.lat, s.customerPin.lng]; o.destLabel = s.customerPin.label; o.deliveryKm ??= Math.round(roadKm(o.origin, o.dest) * 10) / 10; o.geo ||= {phase: o.status === 'delivered' ? 'delivered' : 'waiting', live: false}; } }
   return s;
 }
 const storeOf = (s, name) => Object.values(s.shopPartners || {}).find(p => p.name === name);
@@ -24,9 +25,10 @@ export function pinFrom(s, v = {}) {
   if (v.geoArea && AREAS[v.geoArea]) return {label: v.geoArea, lat: AREAS[v.geoArea][0], lng: AREAS[v.geoArea][1]};
   return s.customerPin;
 }
-export function serviceable(s, storeName, pin) { const p = storeOf(s, storeName), d = km(p?.coords, [pin.lat, pin.lng]); return {ok: !p || d <= p.radiusKm, km: d, radius: p?.radiusKm || 12}; }
+export function inPolygon(pt, poly) { let inside = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [yi, xi] = poly[i], [yj, xj] = poly[j]; if (((yi > pt[0]) !== (yj > pt[0])) && (pt[1] < (xj - xi) * (pt[0] - yi) / (yj - yi) + xi)) inside = !inside; } return inside; }
+export function serviceable(s, storeName, pin) { const p = storeOf(s, storeName), d = km(p?.coords, [pin.lat, pin.lng]); if (p?.area?.length >= 3) return {ok: inPolygon([pin.lat, pin.lng], p.area), km: d, radius: p.radiusKm || 12, shape: true}; return {ok: !p || d <= p.radiusKm, km: d, radius: p?.radiusKm || 12}; }
 export function checkServiceable(s, stores, pin) {
-  for (const n of stores) { const r = serviceable(s, n, pin); if (!r.ok) return `${n} delivers up to ${r.radius} km; your pin is ${r.km.toFixed(1)} km away. Choose another location or remove its items.`; }
+  for (const n of stores) { const r = serviceable(s, n, pin); if (!r.ok) return r.shape ? `${n} does not deliver to this location (outside its delivery area). Choose another location or remove its items.` : `${n} delivers up to ${r.radius} km; your pin is ${r.km.toFixed(1)} km away. Choose another location or remove its items.`; }
   return '';
 }
 export function applyOrder(s, o, pin) {
@@ -72,9 +74,61 @@ export function issueCheck(s, o) { const t = o.track || []; if (!t.length || !o.
 export function onDelivered(s, o) { o.deliveredLocation = current(s, o); if (o.geo) { o.geo.live = false; o.geo.phase = 'delivered'; } o.actualKm = Math.round(travelledKm(o) * 10) / 10; }
 export function stopTracking(o) { if (o.geo) o.geo.live = false; }
 
+// ---------- gate / entrance notes (last 200 m) ----------
+export const pinKey = p => p ? `${Number(p[0]).toFixed(3)},${Number(p[1]).toFixed(3)}` : '';
+export const gateNote = (s, p) => (s.addressNotes || {})[pinKey(p)]?.text || '';
+export function saveGateNote(s, o, text) { const t = String(text || '').trim(); if (!t) return 'Write the note (e.g. "Gate 2, Tower B lift").'; if (!o.dest) return 'This order has no map pin.'; (s.addressNotes ||= {})[pinKey(o.dest)] = {text: t.slice(0, 120), by: courierOf(s, o)?.name || 'Courier', at: new Date().toLocaleDateString('en-IN')}; return ''; }
+
+// ---------- late / stuck alerts ----------
+export function alerts(s) {
+  const now = Date.now();
+  for (const o of (s.customerOrders || []).filter(o => o.deliveryAssignment && ['accepted', 'picked_up'].includes(o.deliveryAssignment.status) && o.geo)) {
+    if (o.etaMinutes && o.createdAt && now - o.createdAt > (o.etaMinutes + 10) * 60000 && !o.geo.lateAlerted) { o.geo.lateAlerted = true; note(s, o, `Running late (promised ~${o.etaMinutes} min)`, 'admin'); }
+    if (o.geo.live && o.geo.lastAt && now - o.geo.lastAt > 10 * 60000 && !o.geo.stuckAlerted) { o.geo.stuckAlerted = true; note(s, o, 'No location update for 10 minutes', 'admin'); }
+  }
+}
+
+// ---------- truck trips and moving jobs ----------
+const TRIP_COORDS = {'TRP-501': [[25.5941, 85.1376], [28.5355, 77.2639]], 'TRP-502': [[25.5541, 84.6630], [25.5596, 84.8686]], 'TRP-503': [[26.9124, 75.7873], [28.6139, 77.2090]], 'TRP-504': [[25.5941, 85.1376], [28.5355, 77.2639]]};
+export function ensureJobGeo(s) {
+  for (const t of s.trips || []) if (!t.route) { const c = TRIP_COORDS[t.id] || [[28.6139, 77.2090], [28.4595, 77.0266]]; t.route = {from: c[0], to: c[1]}; }
+  for (const j of s.movingJobs || []) if (!j.route) j.route = {from: [28.6270, 77.3727], to: [28.4595, 77.0266]};
+}
+const jobHere = j => j.gtrack?.length ? [j.gtrack.at(-1).lat, j.gtrack.at(-1).lng] : j.route.from;
+const offRoute = (p, a, b) => { const d = km(a, b), t = Math.max(0, Math.min(1, ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / (((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2) || 1))); return km(p, [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); };
+export function jobPosition(s, j, kind, lat, lng, src = 'gps') {
+  ensureJobGeo(s); if (['closed', 'cancelled', 'delivered'].includes(j.status)) return 'Tracking is only on during an active job.';
+  (j.gtrack ||= []).push({lat, lng, at: Date.now(), src}); j.geo ||= {}; j.geo.live = true; j.geo.lastAt = Date.now();
+  const here = [lat, lng], owner = j.owner;
+  const loadedDone = kind === 'trip' ? (j.milestones || []).some(m => m.key === 'loaded' && m.status === 'done') : ['loaded', 'in_transit', 'unloaded', 'otp_verified', 'paid', 'closed'].includes(j.status);
+  if (!loadedDone && km(here, j.route.from) <= 0.5 && !j.geo.atPickupAt) { j.geo.atPickupAt = Date.now(); jobNote(s, j, 'Reached pickup (GPS)', owner); if (kind === 'trip') { const m = (j.milestones || []).find(x => x.key === 'pickup_reached'); if (m && m.status !== 'done') { m.status = 'done'; m.at = new Date().toLocaleString('en-IN'); m.by = 'GPS'; } } }
+  if (loadedDone && j.geo.atPickupAt && !j.geo.loadingWaitMin) j.geo.loadingWaitMin = Math.round((Date.now() - j.geo.atPickupAt) / 60000);
+  if (loadedDone && km(here, j.route.to) <= 0.5 && !j.geo.atDropAt) { j.geo.atDropAt = Date.now(); jobNote(s, j, 'Reached drop location (GPS) — complete the delivery steps', owner); }
+  const dev = offRoute(here, j.route.from, j.route.to); if (dev > (kind === 'trip' ? 25 : 5) && !j.geo.deviationAlerted) { j.geo.deviationAlerted = true; jobNote(s, j, `Off the expected route by ${dev.toFixed(0)} km`, owner); }
+  return '';
+}
+function jobNote(s, j, text, to) { (j.history ||= []).push({at: new Date().toLocaleString('en-IN'), by: 'GPS', status: text}); (s.notifications ||= []).unshift({id: `NT-${Date.now()}${Math.random().toString(36).slice(2, 4)}`, to, text: `${j.id}: ${text}`, ref: j.id, at: new Date().toLocaleString('en-IN'), read: false}); }
+export function jobDemoStep(s, j, kind) {
+  ensureJobGeo(s); const loadedDone = kind === 'trip' ? (j.milestones || []).some(m => m.key === 'loaded' && m.status === 'done') : ['loaded', 'in_transit', 'unloaded'].includes(j.status);
+  const here = jobHere(j), target = loadedDone ? j.route.to : j.route.from, d = km(here, target), step = kind === 'trip' ? 40 : 3;
+  if (d < 0.05) { if (!j.gtrack?.length) return jobPosition(s, j, kind, here[0], here[1], 'demo'); return 'Already there.'; }
+  const f = Math.min(1, step / d); return jobPosition(s, j, kind, here[0] + (target[0] - here[0]) * f, here[1] + (target[1] - here[1]) * f, 'demo');
+}
+export function jobPanel(s, j, kind) {
+  ensureJobGeo(s); const here = jobHere(j), loadedDone = kind === 'trip' ? (j.milestones || []).some(m => m.key === 'loaded' && m.status === 'done') : ['loaded', 'in_transit', 'unloaded'].includes(j.status), target = loadedDone ? j.route.to : j.route.from;
+  return `<section class="panel geo-track"><h2>GPS · ${loadedDone ? 'to drop' : 'to pickup'} · ${roadKm(here, target).toFixed(0)} km · about ${Math.max(1, Math.round(roadKm(here, target) / (kind === 'trip' ? 45 : 25) * 60))} min</h2>
+  ${mapSvg([{at: j.route.from, icon: '📦', label: 'Pickup'}, {at: j.route.to, icon: '🏁', label: 'Drop'}, {at: here, icon: kind === 'trip' ? '🚚' : '🚛', label: 'Vehicle', fill: '#0b6655'}], {path: (j.gtrack || []).map(p => [p.lat, p.lng]), plan: [j.route.from, j.route.to], label: 'Vehicle route'})}
+  <small class="block muted">${j.geo?.live ? 'Live location' : 'Not sharing yet'}${j.geo?.atPickupAt ? ' · reached pickup' : ''}${j.geo?.loadingWaitMin != null ? ` · waited ${j.geo.loadingWaitMin} min at loading` : ''}${j.geo?.atDropAt ? ' · reached drop' : ''}${j.geo?.deviationAlerted ? ' · <b>route deviation flagged</b>' : ''}</small>
+  <div class="row-actions"><a class="button secondary compact" target="_blank" rel="noopener" href="${gmaps(target[0], target[1])}">Navigate</a><button class="button secondary compact" data-geo-job="${esc(j.id)}" data-kind="${kind}" data-mode="live">Share live location</button><button class="button text compact" data-geo-job="${esc(j.id)}" data-kind="${kind}" data-mode="step">Demo: move ${kind === 'trip' ? '40' : '3'} km</button></div></section>`;
+}
+
 // ---------- maps ----------
 export function mapSvg(points, opts = {}) {
   const pts = points.filter(p => p && p.at); if (!pts.length) return '';
+  const data = esc(JSON.stringify({pts: pts.map(p => ({at: p.at, icon: p.icon, label: p.label || ''})), path: opts.path || [], plan: opts.plan || null, drag: Boolean(opts.drag), poly: opts.poly || null}));
+  return `<div class="geo-map-wrap" data-geo-map="${data}">${sketch(pts, opts)}</div>`;
+}
+function sketch(pts, opts) {
   const lats = pts.map(p => p.at[0]), lngs = pts.map(p => p.at[1]), pad = 0.006;
   const minLa = Math.min(...lats) - pad, maxLa = Math.max(...lats) + pad, minLo = Math.min(...lngs) - pad, maxLo = Math.max(...lngs) + pad, W = 360, H = 220;
   const X = lo => ((lo - minLo) / (maxLo - minLo || 1)) * W, Y = la => H - ((la - minLa) / (maxLa - minLa || 1)) * H;
@@ -90,8 +144,8 @@ export function pinHtml(s, lines) {
   const checks = stores.map(n => ({n, ...serviceable(s, n, pin)}));
   return `<fieldset class="wide geo-pin"><legend>Delivery location (map pin)</legend><div class="form-grid two"><label><span>Area</span><select name="geoArea" data-geo-area>${Object.keys(AREAS).map(a => `<option ${pin.label === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}${pin.label === 'My current location' ? '<option selected>My current location</option>' : ''}</select></label><span class="row-actions"><button type="button" class="button secondary compact" data-geo="locate">📍 Use my current location</button></span></div>
   <input type="hidden" name="geoLat" value="${pin.label === 'My current location' ? pin.lat : ''}"><input type="hidden" name="geoLng" value="${pin.label === 'My current location' ? pin.lng : ''}"><input type="hidden" name="geoLabel" value="${esc(pin.label)}">
-  ${mapSvg([{at: [pin.lat, pin.lng], icon: '🏠', label: 'You'}, ...checks.map(c => ({at: storeOf(s, c.n)?.coords, icon: '🏪', label: c.n, stroke: c.ok ? '#0b6655' : '#a63838'}))], {label: 'Your pin and the stores'})}
-  ${checks.map(c => `<small class="block ${c.ok ? 'muted' : 'field-error'}">${esc(c.n)}: ${c.km.toFixed(1)} km away · ${c.ok ? `delivers here (up to ${c.radius} km)` : `outside its ${c.radius} km delivery area`}</small>`).join('')}<p class="geo-msg muted" hidden></p></fieldset>`;
+  ${mapSvg([{at: [pin.lat, pin.lng], icon: '🏠', label: 'You'}, ...checks.map(c => ({at: storeOf(s, c.n)?.coords, icon: '🏪', label: c.n, stroke: c.ok ? '#0b6655' : '#a63838'}))], {label: 'Your pin and the stores', drag: true, poly: storeOf(s, stores[0])?.area || null})}<small class="block muted">On street maps you can drag 🏠 to your exact gate.</small>
+  ${checks.map(c => `<small class="block ${c.ok ? 'muted' : 'field-error'}">${esc(c.n)}: ${c.km.toFixed(1)} km away · ${c.ok ? (c.shape ? 'inside its delivery area' : `delivers here (up to ${c.radius} km)`) : (c.shape ? 'outside its delivery area' : `outside its ${c.radius} km delivery area`)}</small>`).join('')}${gateNote(s, [pin.lat, pin.lng]) ? `<small class="block">Couriers noted at this location: <b>${esc(gateNote(s, [pin.lat, pin.lng]))}</b></small>` : ''}<p class="geo-msg muted" hidden></p></fieldset>`;
 }
 const PHASE = {waiting: 'Waiting for a courier', to_store: 'Courier going to the store', at_store: 'Courier at the store', to_customer: 'On the way to you', arriving: 'Arriving now', at_door: 'Courier has arrived', delivered: 'Delivered'};
 export function trackPanel(s, o) {
@@ -108,7 +162,7 @@ export function courierPanel(s, o) {
   const toStore = toStorePhase(o), target = toStore ? o.origin : o.dest, here = current(s, o);
   return `<div class="geo-courier">${mapSvg([{at: o.origin, icon: '🏪', label: 'Store'}, {at: o.dest, icon: '🏠', label: 'Customer'}, {at: here, icon: '🛵', label: 'You', fill: '#0b6655'}], {path: (o.track || []).map(p => [p.lat, p.lng]), plan: [o.origin, o.dest], label: 'Your route'})}
   <small class="block"><b>${esc(PHASE[o.geo?.phase || (toStore ? 'to_store' : 'to_customer')] || '')}</b> · ${roadKm(here, target).toFixed(1)} km to ${toStore ? 'the store' : 'the customer'} · about ${etaMin(s, o)} min ${o.geo?.live ? '· <b class="live-dot">● Location on</b>' : ''}</small>
-  <div class="row-actions"><a class="button secondary compact" target="_blank" rel="noopener" href="${gmaps(target[0], target[1])}">Navigate</a><button class="button ${o.geo?.live ? 'secondary' : 'primary'} compact" data-geo-live="${esc(o.id)}">${o.geo?.live ? 'Stop sharing' : 'Share live location'}</button><button class="button text compact" data-geo-step="${esc(o.id)}">Demo: move 400 m</button><button class="button text compact" data-geo-auto="${esc(o.id)}">Demo: auto-drive</button></div></div>`;
+  <div class="row-actions"><a class="button secondary compact" target="_blank" rel="noopener" href="${gmaps(target[0], target[1])}">Navigate</a><button class="button ${o.geo?.live ? 'secondary' : 'primary'} compact" data-geo-live="${esc(o.id)}">${o.geo?.live ? 'Stop sharing' : 'Share live location'}</button><button class="button text compact" data-geo-step="${esc(o.id)}">Demo: move 400 m</button><button class="button text compact" data-geo-auto="${esc(o.id)}">Demo: auto-drive</button></div>${gateNote(s, o.dest) ? `<small class="block">📍 Entrance note: <b>${esc(gateNote(s, o.dest))}</b></small>` : ''}<form class="inline-form" data-geo-gate="${esc(o.id)}"><input name="note" placeholder="Entrance note for next time (e.g. Gate 2, Tower B lift)"><button class="button secondary compact">Save note</button></form></div>`;
 }
 export function adminLive(s) {
   ensureGeo(s);
@@ -119,7 +173,30 @@ export function adminLive(s) {
 
 // ---------- bindings ----------
 let watchId = null, autoTimer = null;
+let leafletState = 'none';
+function loadLeaflet(cb) {
+  if (window.L) return cb(); if (leafletState === 'failed') return; if (leafletState === 'loading') return setTimeout(() => loadLeaflet(cb), 300);
+  leafletState = 'loading'; const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'; document.head.appendChild(css);
+  const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'; sc.onload = () => { leafletState = 'ready'; cb(); }; sc.onerror = () => { leafletState = 'failed'; }; document.head.appendChild(sc);
+}
+function hydrate(root, api) {
+  const wraps = root.querySelectorAll('.geo-map-wrap'); if (!wraps.length || api.getState().mapMode === 'sketch') return;
+  loadLeaflet(() => wraps.forEach(w => { if (w.dataset.live) return; let d; try { d = JSON.parse(w.dataset.geoMap); } catch { return; }
+    const L = window.L, div = document.createElement('div'); div.className = 'leaflet-host'; w.innerHTML = ''; w.appendChild(div); w.dataset.live = '1';
+    const map = L.map(div, {scrollWheelZoom: false}); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap contributors'}).addTo(map);
+    const icon = (e) => L.divIcon({className: 'geo-pin-icon', html: `<span>${e}</span>`, iconSize: [30, 30]});
+    const all = []; d.pts.forEach(p => { const m = L.marker(p.at, {icon: icon(p.icon), draggable: d.drag && p.icon === '🏠'}).addTo(map); if (p.label) m.bindTooltip(p.label); all.push(p.at);
+      if (d.drag && p.icon === '🏠') m.on('dragend', () => { const ll = m.getLatLng(), s = api.getState(); s.checkoutPin = {label: 'Pinned on map', lat: ll.lat, lng: ll.lng}; api.save(); api.render(); }); });
+    if (d.plan) L.polyline(d.plan, {dashArray: '6 6', color: '#9aa8a3'}).addTo(map); if (d.path?.length) L.polyline(d.path, {color: '#0b6655', weight: 4}).addTo(map); if (d.poly) L.polygon(d.poly, {color: '#3d3f94', weight: 1, fillOpacity: .08}).addTo(map);
+    map.fitBounds(L.latLngBounds(all).pad(0.3)); }));
+}
 export function bind(root, api) {
+  hydrate(root, api);
+  root.querySelectorAll('form[data-geo-gate]').forEach(f => f.onsubmit = e => { e.preventDefault(); const s = api.getState(), o = (s.customerOrders || []).find(x => x.id === f.dataset.geoGate); const err = saveGateNote(s, o, new FormData(f).get('note')); if (err) return api.toast(err); api.save(); api.render(); api.toast('Entrance note saved for the next delivery here'); });
+  root.querySelectorAll('[data-geo-job]').forEach(b => b.onclick = () => { const s = api.getState(), kind = b.dataset.kind, j = (kind === 'trip' ? s.trips : s.movingJobs).find(x => x.id === b.dataset.geoJob);
+    if (b.dataset.mode === 'step') { const e = jobDemoStep(s, j, kind); api.save(); api.render(); if (e) api.toast(e); return; }
+    if (!navigator.geolocation) return api.toast('This browser cannot share location. Use the demo button.');
+    navigator.geolocation.watchPosition(p => { jobPosition(api.getState(), j, kind, p.coords.latitude, p.coords.longitude, 'gps'); api.save(); api.render(); }, err => api.toast(`Location permission needed (${err.message})`), {enableHighAccuracy: true, maximumAge: 10000}); api.toast('Sharing live location for this job'); });
   const S = () => api.getState(), find = id => (S().customerOrders || []).find(o => o.id === id);
   root.querySelector('[data-geo-area]')?.addEventListener('change', e => { const a = e.target.value; if (!AREAS[a]) return; S().checkoutPin = {label: a, lat: AREAS[a][0], lng: AREAS[a][1]}; api.save(); api.render(); });
   root.querySelector('[data-geo="locate"]')?.addEventListener('click', () => { const msg = root.querySelector('.geo-msg'); if (!navigator.geolocation) { msg.hidden = false; msg.textContent = 'This browser cannot share location. Choose an area.'; return; } msg.hidden = false; msg.textContent = 'Asking for location permission…'; navigator.geolocation.getCurrentPosition(p => { S().checkoutPin = {label: 'My current location', lat: p.coords.latitude, lng: p.coords.longitude}; api.save(); api.render(); }, err => { msg.textContent = `Location not available (${err.message}). Choose an area instead.`; }, {enableHighAccuracy: true, timeout: 10000}); });

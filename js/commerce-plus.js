@@ -8,6 +8,7 @@
 // store disputes. Money: commission & payout hold by category, seller- vs platform-funded discounts, TCS/TDS settings,
 // HSN/MRP on invoices. Admin: approvals, claims centre, settings, reports, fraud flags, notification outbox.
 import {esc, pill, inr} from './ops.js';
+import * as NC from './notify-center.js';
 import * as Geo from './geo.js';
 import {gateway, record, clock} from './pay.js';
 import * as Commerce from './commerce.js';
@@ -37,7 +38,7 @@ export function groupOf(p) {
   if (/personal care|laundry|cleaning|dish|paper|garbage|pest|kitchen|storage|bath|bed|baby|pet|tools/.test(c)) return 'household';
   return 'food';
 }
-export const settings = s => (s.plusSettings ||= {commission: {}, holdDays: {}, tcsPct: 0, tdsPct: 0, claimAutoLimit: 200, claimMax30d: 3, codRefusalLimit: 2, newSellerExtraHoldDays: 0, capacityPerCourier: 2});
+export const settings = s => (s.plusSettings ||= {commission: {}, holdDays: {}, tcsPct: 0, tdsPct: 0, claimAutoLimit: 200, claimMax30d: 3, codRefusalLimit: 2, newSellerExtraHoldDays: 0, capacityPerCourier: 2, peakStart: '18:00', peakEnd: '22:00', peakBonus: 10, dailyTarget: 10, dailyBonus: 100});
 export const RECOMMENDED = {commission: {fresh: 6, food: 7, household: 8, electrical: 8, fashion: 18}, holdDays: {fresh: 3, food: 9, household: 9, electrical: 12, fashion: 17}, tcsPct: 0.5, tdsPct: 0.1};
 export const commissionRate = (s, o) => { const g = orderGroup(s, o), st = settings(s); return st.commission[g] ?? GROUPS[g].commission; };
 export const holdDays = (s, o) => { const g = orderGroup(s, o), st = settings(s), base = st.holdDays[g] ?? GROUPS[g].holdDays, partner = Object.values(s.shopPartners || {}).find(p => p.party === o.party); return base + ((partner?.completedOrders || 0) < 5 ? st.newSellerExtraHoldDays : 0); };
@@ -148,6 +149,10 @@ const firstOrder = s => !(s.customerOrders || []).some(o => !['cancelled'].inclu
 export function couponDiscount(s, code, lines, method) {
   const c = (s.coupons || []).find(x => x.active && x.code === String(code || '').trim().toUpperCase()); if (!code) return {discount: 0};
   if (!c) return {error: 'That coupon code is not valid.'};
+  if (c.expires && c.expires < today()) return {error: `${c.code} expired on ${c.expires}.`};
+  const used = (s.couponUses || []).filter(u => u.code === c.code);
+  if (c.budget && used.reduce((a, u) => a + (u.discount || 0), 0) >= c.budget) return {error: `${c.code} has reached its offer budget.`};
+  if (c.perCustomer && used.length >= c.perCustomer) return {error: `You have already used ${c.code} ${c.perCustomer === 1 ? 'once' : `${c.perCustomer} times`}.`};
   const base = lines.filter(l => !c.store || l.product.fulfilmentPartner === c.store).reduce((a, l) => a + l.product.price * l.quantity, 0);
   if (c.firstOrderOnly && !firstOrder(s)) return {error: `${c.code} is only for your first order.`};
   if (c.method && c.method !== method) return {error: `${c.code} needs payment by ${c.method}.`};
@@ -184,6 +189,7 @@ export function checkoutAdjust(s, v, lines, q) {
   return {discount: r.discount || 0, coupon: r.coupon || null, tip, slot: v.plusSlot || 'express', repeat: v.plusRepeat || '', itemsAll: q.items, weightExtra, pin};
 }
 export function applyToOrder(s, o, adj, index, count, ordersSoFar = []) {
+  o.createdAt ??= clock();
   if (!adj) return;
   let share = 0;
   if (adj.discount) { if (adj.coupon?.store) share = o.fulfilmentPartner === adj.coupon.store ? adj.discount : 0; else share = index === count - 1 ? adj.discount - ordersSoFar.reduce((a, x) => a + (x.discount || 0), 0) : Math.round(adj.discount * o.itemTotal / adj.itemsAll); }
@@ -209,7 +215,9 @@ export function afterPlace(s, orders, adj, v, lines) {
   if (adj.repeat) s.schedules.push({id: uid('SCH'), frequency: adj.repeat, items: lines.map(l => ({productId: l.productId || l.product.id, quantity: l.quantity})), nextDue: addDays(today(), adj.repeat === 'daily' ? 1 : 7), active: true, address: v.address});
   s.checkoutPlus = {};
 }
-export const deliveryPay = (s, o) => Math.max(30, Math.round(20 + 8 * (o.deliveryKm || distanceKm(o.pickupAddress || '', o.address || '')))) + (o.tip || 0);
+export const istTime = t => new Date(t ?? clock()).toLocaleTimeString('en-GB', {timeZone: 'Asia/Kolkata', hour12: false}).slice(0, 5);
+export const isPeak = (s, t) => { const st = settings(s), x = istTime(t); return st.peakStart <= st.peakEnd ? x >= st.peakStart && x < st.peakEnd : x >= st.peakStart || x < st.peakEnd; };
+export const deliveryPay = (s, o) => Math.max(30, Math.round(20 + 8 * (o.deliveryKm || distanceKm(o.pickupAddress || '', o.address || '')))) + (o.tip || 0) + (isPeak(s, o.createdAt) ? (settings(s).peakBonus || 0) : 0);
 
 // ---------- picking ----------
 export const aisleSort = (s, items) => [...items].sort((a, b) => String(s.products.find(p => p.id === a.productId)?.aisle).localeCompare(String(s.products.find(p => p.id === b.productId)?.aisle)));
@@ -319,6 +327,7 @@ const QC = {fashion: ['Tags intact', 'Unused and unwashed', 'Same item and size'
 function restock(s, c) { for (const x of c.items) { const p = s.products.find(y => y.id === x.productId); if (p) { p.quantity += x.qty; (p.stockLog ||= []).push({at: stamp(), text: `+${x.qty} returned (${c.id})`}); } } }
 export function storeDispute(s, c, note) { if (!['refunded', 'picked_up'].includes(c.status)) return 'Only refunded returns can be disputed.'; if (!String(note || '').trim()) return 'Explain what is wrong with the returned item.'; c.dispute = {note: note.trim(), at: stamp(), status: 'open'}; c.history.push({at: stamp(), text: 'Store disputed the return'}); return ''; }
 export function adminDecide(s, c, decision) {
+  if (c.service) return decideService(s, c, decision);
   const o = (s.customerOrders || []).find(x => x.id === c.orderId);
   if (c.status === 'review') { if (decision === 'approve') refundClaim(s, c, o, 'Approved after review'); else { c.status = 'rejected'; c.history.push({at: stamp(), text: 'Not approved after review'}); } return ''; }
   if (c.dispute?.status === 'open') { c.dispute.status = decision === 'approve' ? 'store_upheld' : 'store_rejected'; if (decision === 'approve') { record(s, {owner: o.party, orderId: o.id, sourceType: 'claim', sourceId: c.id, type: 'claim_compensation', payer: 'moveai', payee: o.party, responsible: 'moveai', amount: Math.round(c.amount * (1 - commissionRate(s, o))), method: 'next_payout', reference: `CC-${c.id}`, status: 'due', note: `MoveAI covers ${c.id} after the store's dispute was upheld`}, 'Admin'); } c.history.push({at: stamp(), text: decision === 'approve' ? 'Dispute upheld: MoveAI compensates the store' : 'Dispute rejected: refund stands'}); return ''; }
@@ -332,7 +341,7 @@ function reviewForm(s, o) {
 
 // ---------- notifications outbox (simulated SMS / WhatsApp / push) ----------
 export function notify(s, to, text, ref) { (s.notifications ||= []).unshift({id: uid('NT'), to, text, ref, at: stamp(), read: false}); channelLog(s, to, text); }
-export function channelLog(s, to, text) { (s.outbox ||= []).unshift({to, text, channels: to === 'personal' ? ['Push', 'WhatsApp', 'SMS'] : ['Push'], at: stamp()}); s.outbox.length = Math.min(s.outbox.length, 200); }
+export function channelLog(s, to, text) { (s.outbox ||= []).unshift({to, text, channels: NC.channelsFor(s, to, text), at: stamp()}); s.outbox.length = Math.min(s.outbox.length, 200); }
 
 // ---------- seller tools ----------
 const REQUIRED = {fresh: ['Best before'], food: ['Ingredients', 'Best before', 'FSSAI licence'], household: ['Manufacturer'], electrical: ['Brand', 'Model', 'Warranty (months)'], fashion: ['Fabric', 'Size chart']};
@@ -384,6 +393,7 @@ export function screen(s, route, ws) {
   ensurePlus(s);
   if (route === 'wishlist' && ws === 'personal') return wishlistScreen(s);
   if (route === 'moveaiWallet' && ws === 'personal') return walletScreen(s);
+  if (route === 'monthlyStatement' && ws === 'personal') return customerStatementScreen(s);
   const sw = storeWs(ws);
   if (sw && route === 'plusListings') return listingsScreen(s, sw);
   if (sw && route === 'plusStore') return storeScreen(s, sw);
@@ -431,7 +441,7 @@ function storeScreen(s, ws) {
 function analyticsScreen(s, ws) {
   const p = s.shopPartners[ws], a = analytics(s, p.name);
   return `${head('Analytics', `${p.name} · sales, quality and payouts`)}<div class="metrics"><div class="metric"><span>Delivered sales</span><b>${inr(a.sales)}</b><small>${a.delivered} orders · AOV ${inr(a.aov)}</small></div><div class="metric"><span>Cancellation rate</span><b>${a.cancelRate}%</b></div><div class="metric"><span>Return / claim rate</span><b>${a.returnRate}%</b></div><div class="metric"><span>Store rating</span><b>${a.rating ?? '—'}</b></div></div>
-  <div class="grid two"><section class="panel"><h2>Top products</h2>${a.top.map(([n, q]) => `<div class="ledger-row static"><span><b>${esc(n)}</b></span><span>${q} sold</span></div>`).join('') || '<p class="muted">No delivered orders yet.</p>'}</section><section class="panel"><h2>Payouts</h2><table class="price-table"><tbody><tr><td>Waiting (return window / hold)</td><td>${inr(a.pendingPayout)}</td></tr><tr><td>Paid</td><td>${inr(a.paidPayout)}</td></tr><tr><td>TCS collected (GST, ${settings(s).tcsPct}%)</td><td>${inr(a.tcs)}</td></tr><tr><td>TDS (194-O, ${settings(s).tdsPct}%)</td><td>${inr(a.tds)}</td></tr></tbody></table><p class="muted">Tax rates are settings to confirm with a CA. Certificates are issued quarterly in a real launch.</p></section></div>`;
+  <div class="grid two"><section class="panel"><h2>Top products</h2>${a.top.map(([n, q]) => `<div class="ledger-row static"><span><b>${esc(n)}</b></span><span>${q} sold</span></div>`).join('') || '<p class="muted">No delivered orders yet.</p>'}</section><section class="panel"><h2>Payouts</h2><table class="price-table"><tbody><tr><td>Waiting (return window / hold)</td><td>${inr(a.pendingPayout)}</td></tr><tr><td>Paid</td><td>${inr(a.paidPayout)}</td></tr><tr><td>TCS collected (GST, ${settings(s).tcsPct}%)</td><td>${inr(a.tcs)}</td></tr><tr><td>TDS (194-O, ${settings(s).tdsPct}%)</td><td>${inr(a.tds)}</td></tr></tbody></table><p class="muted">Tax rates are settings to confirm with a CA. Certificates are issued quarterly in a real launch.</p></section></div>${sellerStatementHtml(s, p.name)}`;
 }
 function sellerReturnsScreen(s, ws) {
   const p = s.shopPartners[ws], list = (s.claims || []).filter(c => c.store === p.name);
@@ -453,15 +463,16 @@ function settingsScreen(s) {
   const st = settings(s);
   return `${head('Commerce settings', 'Commission and payout hold by category, tax rates, limits and coupons.')}
   <section class="panel"><form class="form-grid" data-plus-form="settings"><div class="table-scroll"><table class="data-table"><thead><tr><th>Category</th><th>Commission %</th><th>Payout after (days)</th><th>Returns</th></tr></thead><tbody>${Object.entries(GROUPS).map(([g, x]) => `<tr><td>${x.label}</td><td><input name="c:${g}" type="number" step="0.5" value="${Math.round((st.commission[g] ?? x.commission) * 1000) / 10}"></td><td><input name="h:${g}" type="number" value="${st.holdDays[g] ?? x.holdDays}"></td><td><small>${esc(x.policy)} Recommended: ${RECOMMENDED.commission[g]}% · ${RECOMMENDED.holdDays[g]} days.</small></td></tr>`).join('')}</tbody></table></div>
-  <div class="form-grid two"><label><span>TCS on sales % (GST) — commonly 0.5%; confirm with a CA</span><input name="tcsPct" type="number" step="0.1" value="${st.tcsPct}"></label><label><span>TDS on payouts % (194-O) — commonly 0.1%; confirm with a CA</span><input name="tdsPct" type="number" step="0.1" value="${st.tdsPct}"></label><label><span>Auto-refund small claims up to ₹</span><input name="claimAutoLimit" type="number" value="${st.claimAutoLimit}"></label><label><span>Max claims per customer in 30 days</span><input name="claimMax30d" type="number" value="${st.claimMax30d}"></label><label><span>Block COD after refusals</span><input name="codRefusalLimit" type="number" value="${st.codRefusalLimit}"></label><label><span>Extra payout hold for new sellers (days)</span><input name="newSellerExtraHoldDays" type="number" value="${st.newSellerExtraHoldDays}"></label><label><span>Orders per courier at once</span><input name="capacityPerCourier" type="number" value="${st.capacityPerCourier}"></label></div><button class="button primary">Save settings</button><p class="mock-hint">Tax rates are placeholders to confirm with a CA.</p></form></section>
-  <section class="panel"><h2>Coupons</h2>${s.coupons.map((c, i) => `<div class="ledger-row static"><span><b>${esc(c.code)}</b><small>${esc(c.label)} · funded by ${esc(c.fundedBy)} · used ${s.couponUses.filter(u => u.code === c.code).length}×</small></span><button class="button secondary compact" data-plus="coupon-toggle" data-id="${i}">${c.active ? 'Turn off' : 'Turn on'}</button></div>`).join('')}<form class="inline-form" data-plus-form="coupon"><input name="code" placeholder="CODE"><select name="type"><option value="flat">₹ off</option><option value="pct">% off</option></select><input name="value" type="number" placeholder="Value"><input name="min" type="number" placeholder="Min order ₹"><select name="fundedBy"><option value="platform">MoveAI pays</option><option value="seller">Seller pays</option></select><input name="store" placeholder="Store name (seller-funded)"><button class="button secondary compact">Add coupon</button></form></section><p class="plus-error field-error" hidden></p>`;
+  <div class="form-grid two"><label><span>TCS on sales % (GST) — commonly 0.5%; confirm with a CA</span><input name="tcsPct" type="number" step="0.1" value="${st.tcsPct}"></label><label><span>TDS on payouts % (194-O) — commonly 0.1%; confirm with a CA</span><input name="tdsPct" type="number" step="0.1" value="${st.tdsPct}"></label><label><span>Auto-refund small claims up to ₹</span><input name="claimAutoLimit" type="number" value="${st.claimAutoLimit}"></label><label><span>Max claims per customer in 30 days</span><input name="claimMax30d" type="number" value="${st.claimMax30d}"></label><label><span>Block COD after refusals</span><input name="codRefusalLimit" type="number" value="${st.codRefusalLimit}"></label><label><span>Extra payout hold for new sellers (days)</span><input name="newSellerExtraHoldDays" type="number" value="${st.newSellerExtraHoldDays}"></label><label><span>Orders per courier at once</span><input name="capacityPerCourier" type="number" value="${st.capacityPerCourier}"></label><label><span>Peak bonus per delivery ₹ (${esc(st.peakStart)}–${esc(st.peakEnd)} IST)</span><input name="peakBonus" type="number" value="${st.peakBonus}"></label><label><span>Daily target (deliveries)</span><input name="dailyTarget" type="number" value="${st.dailyTarget}"></label><label><span>Daily target bonus ₹</span><input name="dailyBonus" type="number" value="${st.dailyBonus}"></label></div><button class="button primary">Save settings</button><p class="mock-hint">Tax rates are placeholders to confirm with a CA.</p></form></section>
+  <section class="panel"><h2>Maps and delivery areas</h2><form class="form-grid" data-plus-form="areas"><label class="consent-row"><input type="checkbox" name="streets" ${s.mapMode === 'sketch' ? '' : 'checked'}> Show real street maps (OpenStreetMap; needs internet — falls back to a sketch)</label>${Object.entries(s.shopPartners || {}).map(([k, p]) => `<div class="claim-row"><b>${esc(p.name)}</b><label>Delivery radius km <input type="number" name="r:${k}" value="${p.radiusKm ?? 12}" min="1"></label><label>Delivery area shape (optional: one "lat,lng" per line, at least 3 points; replaces the radius)<textarea name="a:${k}" rows="3" placeholder="28.66,77.17&#10;28.66,77.23&#10;28.61,77.23&#10;28.61,77.17">${esc((p.area || []).map(x => x.join(',')).join('\n'))}</textarea></label></div>`).join('')}<button class="button primary">Save areas</button><p class="mock-hint">Google Maps or Mappls can replace OpenStreetMap once you have an API key (production).</p></form></section>
+  <section class="panel"><h2>Coupons</h2>${s.coupons.map((c, i) => `<div class="ledger-row static"><span><b>${esc(c.code)}</b><small>${esc(c.label)} · funded by ${esc(c.fundedBy)} · used ${s.couponUses.filter(u => u.code === c.code).length}×${c.expires ? ` · expires ${esc(c.expires)}` : ''}${c.budget ? ` · budget ${inr(c.budget)} (${inr(Math.max(0, c.budget - s.couponUses.filter(u => u.code === c.code).reduce((a, u) => a + (u.discount || 0), 0)))} left)` : ''}${c.perCustomer ? ` · ${c.perCustomer} per customer` : ''}</small></span><button class="button secondary compact" data-plus="coupon-toggle" data-id="${i}">${c.active ? 'Turn off' : 'Turn on'}</button></div>`).join('')}<form class="inline-form" data-plus-form="coupon"><input name="code" placeholder="CODE"><select name="type"><option value="flat">₹ off</option><option value="pct">% off</option></select><input name="value" type="number" placeholder="Value"><input name="min" type="number" placeholder="Min order ₹"><select name="fundedBy"><option value="platform">MoveAI pays</option><option value="seller">Seller pays</option></select><input name="store" placeholder="Store name (seller-funded)"><input name="expires" type="date" title="Expires"><input name="budget" type="number" placeholder="Total budget ₹"><input name="perCustomer" type="number" placeholder="Uses per customer"><button class="button secondary compact">Add coupon</button></form></section><p class="plus-error field-error" hidden></p>`;
 }
 function reportsScreen(s) {
   const os = s.customerOrders || [], done = os.filter(o => ['delivered', 'collected'].includes(o.status)), by = {};
   for (const o of done) { const k = o.fulfilmentPartner; by[k] ||= {gmv: 0, commission: 0, orders: 0}; by[k].gmv += o.itemTotal; by[k].commission += o.feeBreakdown?.productCommission || 0; by[k].orders += 1; }
   const late = done.filter(o => o.etaMinutes && o.deliveredAt && o.createdAt && (o.deliveredAt - o.createdAt) / 60000 > o.etaMinutes).length;
   const claimsBy = {}; for (const c of s.claims || []) claimsBy[c.orderId] = 1;
-  const flags = [...Object.entries(s.codRefusals || {}).filter(([, n]) => n >= 2).map(([k, n]) => `Customer ${k}: ${n} refused COD deliveries`), ...((s.claims || []).filter(c => clock() - c.createdAt < 30 * DAY).length >= settings(s).claimMax30d ? [`${(s.claims || []).filter(c => clock() - c.createdAt < 30 * DAY).length} claims in 30 days from one customer`] : []), ...Object.values(s.shopPartners || {}).filter(p => (p.completedOrders || 0) < 5).map(p => `${p.name}: new seller — payouts held ${settings(s).newSellerExtraHoldDays} extra days`)];
+  const flags = [...Object.entries(s.codRefusals || {}).filter(([, n]) => n >= 2).map(([k, n]) => `Customer ${k}: ${n} refused COD deliveries`), ...((s.claims || []).filter(c => clock() - c.createdAt < 30 * DAY).length >= settings(s).claimMax30d ? [`${(s.claims || []).filter(c => clock() - c.createdAt < 30 * DAY).length} claims in 30 days from one customer`] : []), ...Object.values(s.shopPartners || {}).filter(p => (p.stockouts || []).length >= 3).map(p => `${p.name}: ${(p.stockouts || []).length} items unavailable after ordering in 30 days`), ...Object.values(s.shopPartners || {}).filter(p => (p.completedOrders || 0) < 5).map(p => `${p.name}: new seller — payouts held ${settings(s).newSellerExtraHoldDays} extra days`)];
   return `${head('Commerce reports', 'Sales, commission, returns, delivery performance, fraud flags and outgoing notifications.')}${Geo.adminLive(s)}<div class="metrics"><div class="metric"><span>GMV (delivered)</span><b>${inr(done.reduce((a, o) => a + o.itemTotal, 0))}</b></div><div class="metric"><span>Commission</span><b>${inr(done.reduce((a, o) => a + (o.feeBreakdown?.productCommission || 0), 0))}</b></div><div class="metric"><span>Orders with claims</span><b>${Object.keys(claimsBy).length}</b></div><div class="metric"><span>Late vs promise</span><b>${late}/${done.filter(o => o.etaMinutes).length}</b></div></div>
   <div class="grid two"><section class="panel"><h2>By store</h2>${Object.entries(by).map(([k, x]) => `<div class="ledger-row static"><span><b>${esc(k)}</b><small>${x.orders} orders</small></span><span>${inr(x.gmv)} · ${inr(x.commission)}</span></div>`).join('') || '<p class="muted">No delivered orders yet.</p>'}</section><section class="panel"><h2>Fraud and risk flags</h2>${flags.map(f => `<p class="action-warning">${esc(f)}</p>`).join('') || '<p class="muted">No flags.</p>'}</section></div>
   <section class="panel"><h2>Notification outbox (simulated SMS / WhatsApp / push)</h2>${(s.outbox || []).slice(0, 15).map(m => `<small class="block">${esc(m.at)} · ${esc(m.channels.join(' + '))} → ${esc(m.to)}: ${esc(m.text)}</small>`).join('') || '<p class="muted">Nothing sent yet.</p>'}</section>`;
@@ -470,7 +481,7 @@ export function deliveryExtras(s, ws) {
   ensurePlus(s); const me = s.deliveryPartners?.[ws]; if (!me) return '';
   const jobs = (s.customerOrders || []).filter(o => o.deliveryAssignment?.partnerId === me.id && ['accepted', 'picked_up'].includes(o.deliveryAssignment.status));
   const pickups = (s.claims || []).filter(c => c.pickup?.partnerId === me.id && c.status === 'pickup_assigned');
-  return `<section class="panel"><h2>Delivery details</h2>${jobs.map(o => `<div class="claim-row">${Geo.courierPanel(s, o)}<b>${esc(o.id)}</b> · ${(o.deliveryKm || distanceKm(o.pickupAddress || '', o.address)).toFixed(1)} km · you earn ${inr(o.feeBreakdown?.deliveryPartnerEarning ?? deliveryPay(s, o))}${o.tip ? ` (incl. ${inr(o.tip)} tip)` : ''}<small class="block muted">Call customer: masked number +91 80 4${String(hash(o.id)).slice(0, 3)} XX${String(hash(o.id)).slice(-2)} · attempts ${o.attempts || 0}/2</small><form class="inline-form" data-plus-form="pod" data-id="${esc(o.id)}"><select name="mode"><option value="customer" ${o.podMode === 'customer' ? 'selected' : ''}>Handed to customer (code)</option><option value="door" ${o.podMode === 'door' ? 'selected' : ''}>Left at door</option><option value="guard" ${o.podMode === 'guard' ? 'selected' : ''}>With guard / reception</option></select><input type="file" name="photo" accept="image/*" capture="environment"><button class="button secondary compact">Save proof</button>${o.podPhoto ? `<small>Photo ✓ ${esc(o.podPhoto)}</small>` : ''}</form></div>`).join('') || '<p class="muted">No active deliveries.</p>'}</section>
+  return `${courierIncentiveHtml(s, ws)}<section class="panel"><h2>Delivery details</h2>${jobs.map(o => `<div class="claim-row">${Geo.courierPanel(s, o)}<b>${esc(o.id)}</b> · ${(o.deliveryKm || distanceKm(o.pickupAddress || '', o.address)).toFixed(1)} km · you earn ${inr(o.feeBreakdown?.deliveryPartnerEarning ?? deliveryPay(s, o))}${o.tip ? ` (incl. ${inr(o.tip)} tip)` : ''}<small class="block muted">Call customer: masked number +91 80 4${String(hash(o.id)).slice(0, 3)} XX${String(hash(o.id)).slice(-2)} · attempts ${o.attempts || 0}/2</small><form class="inline-form" data-plus-form="pod" data-id="${esc(o.id)}"><select name="mode"><option value="customer" ${o.podMode === 'customer' ? 'selected' : ''}>Handed to customer (code)</option><option value="door" ${o.podMode === 'door' ? 'selected' : ''}>Left at door</option><option value="guard" ${o.podMode === 'guard' ? 'selected' : ''}>With guard / reception</option></select><input type="file" name="photo" accept="image/*" capture="environment"><button class="button secondary compact">Save proof</button>${o.podPhoto ? `<small>Photo ✓ ${esc(o.podPhoto)}</small>` : ''}</form></div>`).join('') || '<p class="muted">No active deliveries.</p>'}</section>
   <section class="panel"><h2>Return pickups</h2>${pickups.map(c => `<form class="claim-row" data-plus-form="pickup" data-id="${esc(c.id)}"><b>${esc(c.id)}</b> · ${esc(KIND_LABEL[c.kind])} · ${c.items.map(x => `${x.qty} × ${esc(s.products.find(p => p.id === x.productId)?.name || '')}`).join(', ')}<div class="chip-row">${(QC[c.group] || QC.food).map((q, i) => `<label><input type="checkbox" name="qc${i}"> ${esc(q)}</label>`).join('')}</div><input name="code" placeholder="Customer's return code"><button class="button primary compact">Collect</button></form>`).join('') || '<p class="muted">No return pickups.</p>'}</section><p class="plus-error field-error" hidden></p>`;
 }
 
@@ -481,6 +492,7 @@ export function bind(root, api) {
   const done = (e, ok) => { if (e) return err(e); api.save(); api.render(); if (ok) api.toast(ok); };
   const ws = () => S().currentWorkspace, sw = () => storeWs(ws());
   root.querySelectorAll('[data-plus-demo-scan]').forEach(b => b.onclick = () => { const i = root.querySelector(`[data-scan="${b.dataset.plusDemoScan}"]`); if (i) { i.value = b.dataset.code; i.focus(); } });
+  root.querySelectorAll('[data-plus-month]').forEach(i => i.onchange = () => { S().statementMonth = i.value; done('', ''); });
   root.querySelectorAll('[data-plus-variant]').forEach(b => b.onclick = () => { S().selectedProductId = b.dataset.plusVariant; done('', ''); });
   root.querySelectorAll('[data-plus-file]').forEach(f => f.onchange = () => { const o = S().customerOrders.find(x => x.id === f.dataset.id); if (o && f.files[0]) { o.packPhoto = f.files[0].name; done('', 'Packing photo saved'); } });
   root.querySelectorAll('[data-plus]').forEach(b => b.onclick = () => { const s = S(), a = b.dataset.plus, id = b.dataset.id;
@@ -501,11 +513,14 @@ export function bind(root, api) {
     if (a === 'group-approve') { const [k, g] = id.split('|'), p = s.shopPartners[k]; p.approvedGroups.push(g); p.categoryRequests = p.categoryRequests.filter(x => x !== g); return done('', 'Category approved'); }
     if (a === 'onboard-approve') { s.shopPartners[id].onboarding.status = 'approved'; return done('', 'Seller verified'); }
     if (a === 'claim-approve' || a === 'claim-reject') { const c = s.claims.find(x => x.id === id); return done(adminDecide(s, c, a === 'claim-approve' ? 'approve' : 'reject'), 'Decision recorded'); }
+    if (a === 'cancel-item') { const o = s.customerOrders.find(x => x.id === id); return done(cancelItem(s, o, b.dataset.product), 'Item cancelled'); }
+    if (a === 'print') return window.print();
     if (a === 'coupon-toggle') { const c = s.coupons[Number(id)]; c.active = !c.active; return done(''); }
   });
   root.querySelectorAll('form[data-plus-form]').forEach(f => f.onsubmit = e => { e.preventDefault(); const s = S(), fd = new FormData(f), v = Object.fromEntries(fd), k = f.dataset.plusForm;
     if (k === 'filters') { s.shopFilters = {sort: v.sort, brand: v.brand, maxPrice: v.maxPrice, minRating: v.minRating, veg: Boolean(v.veg), discount: Boolean(v.discount)}; return done(''); }
     if (k === 'claim') { const o = s.customerOrders.find(x => x.id === f.dataset.id); return done(raiseClaim(s, o, f.dataset.product, {...v, photo: fd.get('photo')?.name, tags: Boolean(v.tags)}), 'Request submitted'); }
+    if (k === 'svc-claim') { const r = s.serviceRequests.find(x => x.id === f.dataset.id); return done(raiseServiceClaim(s, r, {...v, photo: fd.get('photo')?.name}), 'Claim submitted'); }
     if (k === 'review') { const o = s.customerOrders.find(x => x.id === f.dataset.id); s.reviews.push({id: uid('RV'), orderId: o.id, productId: v.productId, rating: Number(v.rating), text: String(v.text || '').trim() || 'No comment', by: s.person?.name?.split(' ')[0] || 'Customer', at: stamp(), store: o.fulfilmentPartner, storeRating: Number(v.storeRating) || null, deliveryRating: Number(v.deliveryRating) || null}); return done('', 'Thanks for your review'); }
     if (k === 'save-list') { if (!s.productCart?.length) return err('Your cart is empty.'); s.savedLists.push({name: String(v.name || 'My list').trim(), items: s.productCart.map(c => ({productId: c.productId, quantity: c.quantity}))}); return done('', 'List saved'); }
     if (k === 'listing') { const p = s.products.find(x => x.id === f.dataset.id); const m = saveListing(s, p, v); if (m && !/^Saved/.test(m)) return err(m); return done('', m || (p.approval === 'pending' ? 'Saved · waiting for MoveAI review' : 'Listing updated')); }
@@ -515,8 +530,91 @@ export function bind(root, api) {
     if (k === 'hours') { s.shopPartners[sw()].hours = {open: v.open, close: v.close}; return done('', 'Hours saved'); }
     if (k === 'dispute') { const c = s.claims.find(x => x.id === f.dataset.id); return done(storeDispute(s, c, v.note), 'Dispute sent to MoveAI'); }
     if (k === 'settings') { const st = settings(s); for (const [kk, val] of Object.entries(v)) { if (kk.startsWith('c:')) st.commission[kk.slice(2)] = Number(val) / 100; else if (kk.startsWith('h:')) st.holdDays[kk.slice(2)] = Number(val); else st[kk] = Number(val); } return done('', 'Settings saved · applies to new orders'); }
-    if (k === 'coupon') { const code = String(v.code || '').trim().toUpperCase(); if (!/^[A-Z0-9]{4,12}$/.test(code) || !(Number(v.value) > 0)) return err('Enter a 4–12 character code and a value.'); s.coupons.push({code, label: `${v.type === 'flat' ? `₹${v.value}` : `${v.value}%`} off above ₹${Number(v.min) || 0}${v.store ? ` at ${v.store}` : ''}`, type: v.type, value: Number(v.value), max: v.type === 'pct' ? 200 : undefined, min: Number(v.min) || 0, fundedBy: v.fundedBy, store: v.store || undefined, active: true}); return done('', 'Coupon added'); }
+    if (k === 'areas') { s.mapMode = v.streets ? 'streets' : 'sketch'; for (const [key, p] of Object.entries(s.shopPartners || {})) { p.radiusKm = Number(v[`r:${key}`]) || p.radiusKm; const pts = String(v[`a:${key}`] || '').split(/\n+/).map(l => l.split(',').map(Number)).filter(x => x.length === 2 && x.every(Number.isFinite)); if (pts.length && pts.length < 3) return err(`${p.name}: a shape needs at least 3 points.`); p.area = pts.length >= 3 ? pts : undefined; } return done('', 'Maps and delivery areas saved'); }
+    if (k === 'coupon') { const code = String(v.code || '').trim().toUpperCase(); if (!/^[A-Z0-9]{4,12}$/.test(code) || !(Number(v.value) > 0)) return err('Enter a 4–12 character code and a value.'); s.coupons.push({code, label: `${v.type === 'flat' ? `₹${v.value}` : `${v.value}%`} off above ₹${Number(v.min) || 0}${v.store ? ` at ${v.store}` : ''}`, type: v.type, value: Number(v.value), max: v.type === 'pct' ? 200 : undefined, min: Number(v.min) || 0, fundedBy: v.fundedBy, store: v.store || undefined, expires: v.expires || undefined, budget: Number(v.budget) || undefined, perCustomer: Number(v.perCustomer) || undefined, active: true}); return done('', 'Coupon added'); }
     if (k === 'pod') { const o = s.customerOrders.find(x => x.id === f.dataset.id); o.podMode = v.mode; if (fd.get('photo')?.name) o.podPhoto = fd.get('photo').name; return done(podRequired(o) ? 'Add a photo when leaving the order at the door or with a guard.' : '', 'Proof saved'); }
     if (k === 'pickup') { const c = s.claims.find(x => x.id === f.dataset.id); return done(pickupAction(s, c, 'collect', v), c.status === 'qc_failed' ? 'Pickup refused — condition check failed' : 'Return collected'); }
   });
+}
+
+// ---------- phase 2: item cancellation, stock-outs, courier incentives, statements ----------
+export function cancelItem(s, o, pid) {
+  if (!['paid', 'confirmed', 'accepted'].includes(o.status)) return 'Items can be cancelled only before the order is packed.';
+  const item = o.items.find(i => i.productId === pid); if (!item) return 'Item not found.';
+  if (o.pick?.checked?.[pid]) return 'This item is already picked. Return it after delivery instead.';
+  if (o.items.length === 1) return 'This is the only item — cancel the whole order instead.';
+  const amount = Math.round((item.finalAmount ?? item.unitPrice * item.quantity));
+  o.items = o.items.filter(i => i.productId !== pid);
+  const p = s.products.find(x => x.id === pid); if (p) p.reserved = Math.max(0, (p.reserved || 0) - item.quantity);
+  o.itemTotal -= amount; o.total -= amount; if (o.feeBreakdown) afterInitialize(s, o);
+  if (!o.cod && !o.payAtStore && amount > 0) { const src = s.ledger.find(x => x.orderId === o.id && x.type === 'customer_payment'); record(s, {owner: 'personal', orderId: o.id, sourceType: 'order', sourceId: o.id, type: 'refund', payer: 'moveai', payee: 'personal', responsible: o.party, amount, method: src?.method || 'upi', reference: gateway.refund(o.id, amount).ref, status: 'refund_initiated', expectedBy: clock() + 5 * DAY, gatewayFinal: 'refunded', note: `Cancelled item: ${item.name} · ${o.id}`}, 'Customer'); }
+  (o.history ||= []).push({at: stamp(), actor: 'Customer', text: `Cancelled ${item.quantity} × ${item.name}${o.cod ? '' : ` · ${inr(amount)} refund started`}`});
+  notify(s, Object.keys(s.shopPartners || {}).find(k => s.shopPartners[k].name === o.fulfilmentPartner), `${o.id}: customer removed ${item.name}`, o.id);
+  return '';
+}
+export function cancelItemsHtml(s, o) {
+  if (!['paid', 'confirmed', 'accepted'].includes(o.status) || o.items.length < 2) return '';
+  return `<details class="order-help"><summary class="button text compact">Cancel an item</summary>${o.items.filter(i => !o.pick?.checked?.[i.productId]).map(i => `<div class="ledger-row static"><span><b>${i.quantity} × ${esc(i.name)}</b><small>${inr(i.finalAmount ?? i.unitPrice * i.quantity)}${o.cod ? '' : ' refunded to your payment method'}</small></span><button class="button secondary compact" data-plus="cancel-item" data-id="${esc(o.id)}" data-product="${esc(i.productId)}">Cancel item</button></div>`).join('')}</details>`;
+}
+export function noteStockout(s, o) {
+  const p = Object.values(s.shopPartners || {}).find(x => x.name === o.fulfilmentPartner); if (!p) return;
+  (p.stockouts ||= []).push(clock()); p.stockouts = p.stockouts.filter(t => clock() - t < 30 * DAY);
+  if (p.stockouts.length === 3) notify(s, 'admin', `${p.name}: 3 items unavailable after ordering in 30 days — check stock accuracy`, o.id);
+}
+export function onDelivered(s, o) {
+  const partner = Object.entries(s.deliveryPartners || {}).find(([, d]) => d.id === o.deliveryAssignment?.partnerId); if (!partner) return;
+  const [ws, d] = partner, day = today(), st = settings(s);
+  const count = (s.customerOrders || []).filter(x => x.deliveryAssignment?.partnerId === d.id && x.status === 'delivered' && x.deliveredAt && new Date(x.deliveredAt).toISOString().slice(0, 10) === day).length;
+  d.deliveredToday = {day, count};
+  if (st.dailyBonus && count === st.dailyTarget) { record(s, {owner: ws, orderId: o.id, sourceType: 'incentive', sourceId: day, type: 'delivery_incentive', payer: 'moveai', payee: ws, responsible: 'moveai', amount: st.dailyBonus, method: 'next_payout', reference: `INC-${d.id}-${day}`, status: 'due', note: `Daily target ${st.dailyTarget} deliveries reached`}, 'MoveAI'); notify(s, ws, `Bonus ${inr(st.dailyBonus)}: you completed ${count} deliveries today`, o.id); }
+}
+export function courierIncentiveHtml(s, ws) {
+  const d = s.deliveryPartners?.[ws]; if (!d) return ''; const st = settings(s), c = d.deliveredToday?.day === today() ? d.deliveredToday.count : 0;
+  return `<section class="panel"><h2>Incentives</h2><p>Deliveries today: <b>${c}/${st.dailyTarget}</b> · bonus ${inr(st.dailyBonus)} at ${st.dailyTarget}</p><span class="progress"><i style="width:${Math.min(100, c / st.dailyTarget * 100)}%"></i></span><p class="muted">Peak hours ${esc(st.peakStart)}–${esc(st.peakEnd)}: +${inr(st.peakBonus)} per delivery${isPeak(s) ? ' · <b>peak now</b>' : ''}</p></section>`;
+}
+const monthKey = t => new Date(t ?? clock()).toISOString().slice(0, 7);
+const quarterOf = t => { const d = new Date(t), m = d.getMonth(), y = m < 3 ? d.getFullYear() - 1 : d.getFullYear(); return `FY${y % 100}-${(y + 1) % 100} Q${m < 3 ? 4 : Math.floor((m - 3) / 3) + 1}`; };
+export function sellerStatementHtml(s, name) {
+  const m = s.statementMonth || monthKey(), os = (s.customerOrders || []).filter(o => o.fulfilmentPartner === name && o.createdAt && monthKey(o.createdAt) === m && o.feeBreakdown);
+  const sum = k => os.reduce((a, o) => a + (k(o) || 0), 0), q = {};
+  for (const o of (s.customerOrders || []).filter(o => o.fulfilmentPartner === name && o.feeBreakdown && o.createdAt)) { const k = quarterOf(o.createdAt); q[k] ||= {tcs: 0, tds: 0, gross: 0}; q[k].tcs += o.feeBreakdown.tcs || 0; q[k].tds += o.feeBreakdown.tds || 0; q[k].gross += o.itemTotal; }
+  return `<section class="panel statement"><div class="panel-header"><div><h2>Payout statement · ${esc(m)}</h2><p>${esc(name)}</p></div><span class="row-actions"><input type="month" value="${esc(m)}" data-plus-month><button class="button secondary compact" data-plus="print">Print / PDF</button></span></div>
+  <div class="table-scroll"><table class="data-table"><thead><tr><th>Order</th><th>Items</th><th>Commission</th><th>Seller discount</th><th>TCS</th><th>TDS</th><th>Payout</th><th>Status</th></tr></thead><tbody>${os.map(o => `<tr><td>${esc(o.id)}</td><td>${inr(o.itemTotal)}</td><td>−${inr(o.feeBreakdown.productCommission || 0)}</td><td>${o.feeBreakdown.sellerDiscount ? `−${inr(o.feeBreakdown.sellerDiscount)}` : '—'}</td><td>${o.feeBreakdown.tcs ? `−${inr(o.feeBreakdown.tcs)}` : '—'}</td><td>${o.feeBreakdown.tds ? `−${inr(o.feeBreakdown.tds)}` : '—'}</td><td><b>${inr(o.sellerDue || 0)}</b></td><td>${esc(o.settlementStatus || '')}</td></tr>`).join('') || '<tr><td colspan="8">No orders this month.</td></tr>'}</tbody><tfoot><tr><td><b>Total</b></td><td>${inr(sum(o => o.itemTotal))}</td><td>−${inr(sum(o => o.feeBreakdown.productCommission))}</td><td>−${inr(sum(o => o.feeBreakdown.sellerDiscount))}</td><td>−${inr(sum(o => o.feeBreakdown.tcs))}</td><td>−${inr(sum(o => o.feeBreakdown.tds))}</td><td><b>${inr(sum(o => o.sellerDue))}</b></td><td></td></tr></tfoot></table></div>
+  <h3>TCS / TDS certificates</h3>${Object.entries(q).map(([k, x]) => `<div class="ledger-row static"><span><b>${esc(k)}</b><small>Sales ${inr(x.gross)} · TCS ${inr(x.tcs)} (GSTR-8 by MoveAI) · TDS ${inr(x.tds)} (Form 16A)</small></span>${pill(x.tcs || x.tds ? 'issued_after_quarter' : 'not_applicable')}</div>`).join('') || '<p class="muted">No tax collected yet.</p>'}<p class="mock-hint">Certificates are generated after each quarter's filing in a real launch; rates are admin settings to confirm with a CA.</p></section>`;
+}
+export function customerStatementScreen(s) {
+  const m = s.statementMonth || monthKey(), inM = t => t && monthKey(typeof t === 'number' ? t : Date.parse(t) || clock()) === m;
+  const os = (s.customerOrders || []).filter(o => inM(o.createdAt)), rs = (s.serviceRequests || []).filter(r => r.customer === 'personal' && inM(r.createdAt || Date.parse(r.date)));
+  const pays = (s.ledger || []).filter(x => x.payer === 'personal' && ['customer_payment'].includes(x.type) && !['failed', 'pending'].includes(x.status) && inM(x.createdAt)), refs = (s.ledger || []).filter(x => x.payee === 'personal' && x.type === 'refund' && inM(x.createdAt));
+  const tot = l => l.reduce((a, x) => a + Number(x.amount), 0);
+  return `${head('Monthly statement', `${s.person?.name || 'Customer'} · ${m}`, `<span class="row-actions"><input type="month" value="${esc(m)}" data-plus-month><button class="button secondary" data-plus="print">Print / PDF</button></span>`)}
+  <div class="metrics"><div class="metric"><span>Paid</span><b>${inr(tot(pays))}</b><small>${pays.length} payments</small></div><div class="metric"><span>Refunded</span><b>${inr(tot(refs))}</b><small>${refs.length} refunds</small></div><div class="metric"><span>Net spend</span><b>${inr(tot(pays) - tot(refs))}</b></div><div class="metric"><span>Orders & bookings</span><b>${os.length + rs.length}</b></div></div>
+  <section class="panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>Date</th><th>For</th><th>Type</th><th>Amount</th><th>Reference</th></tr></thead><tbody>${[...pays.map(x => ({x, sign: 1})), ...refs.map(x => ({x, sign: -1}))].sort((a, b) => (b.x.createdAt || 0) - (a.x.createdAt || 0)).map(({x, sign}) => `<tr><td>${esc(new Date(x.createdAt || clock()).toLocaleDateString('en-IN'))}</td><td>${esc(x.orderId || x.serviceId || '')}</td><td>${sign > 0 ? 'Payment' : 'Refund'}</td><td>${sign > 0 ? '' : '−'}${inr(x.amount)}</td><td>${esc(x.receiptNo || x.creditNoteNo || x.reference || '')}</td></tr>`).join('') || '<tr><td colspan="5">Nothing this month.</td></tr>'}</tbody></table></div><p class="mock-hint">Companies can use this as one monthly document; individual receipts and invoices stay on each bill.</p></section>`;
+}
+
+// ---------- claims for movers, drivers and home services ----------
+const SVC_KINDS = {damage: 'Damaged or missing item', overcharge: 'Charged more than agreed', incomplete: 'Work not completed', behaviour: 'Partner behaviour / safety'};
+export function serviceClaimHtml(s, r) {
+  if (!r || !(r.paid || ['closed', 'rated', 'paid'].includes(r.status))) return '';
+  const mine = (s.claims || []).filter(c => c.orderId === r.id);
+  return `<section class="panel"><h2>Report a problem with this ${r.type === 'moving' ? 'move' : r.type === 'driver' ? 'driver booking' : 'service'}</h2>${mine.map(c => `<div class="claim-row">${pill(c.status)} <b>${esc(c.id)}</b> · ${esc(SVC_KINDS[c.kind])} · ${inr(c.amount)}<small class="block muted">${esc(c.history.at(-1).text)}</small></div>`).join('')}
+  ${mine.some(c => ['review'].includes(c.status)) ? '' : `<form class="form-grid two" data-plus-form="svc-claim" data-id="${esc(r.id)}"><label><span>Problem</span><select name="kind">${Object.entries(SVC_KINDS).filter(([k]) => r.type === 'moving' || k !== 'damage').map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></label><label><span>Amount you are claiming (₹)</span><input name="amount" type="number" min="1"></label><label class="wide"><span>What happened</span><input name="reason" placeholder="e.g. TV screen cracked; photo of the item at pickup and at delivery"></label><label><span>Photo</span><input name="photo" type="file" accept="image/*"></label><label><span>Refund to</span><select name="refundTo"><option value="wallet">MoveAI wallet (instant once approved)</option><option value="source">Original payment method</option></select></label><button class="button secondary">Submit claim</button></form><p class="plus-error field-error" hidden></p>`}</section>`;
+}
+export function raiseServiceClaim(s, r, v) {
+  const paid = (s.ledger || []).filter(x => x.serviceId === r.id && x.payer === 'personal' && x.type === 'customer_payment' && !['failed', 'refunded'].includes(x.status)).reduce((a, x) => a + x.amount, 0) || Number(r.quote?.total || 0);
+  const amount = Math.round(Number(v.amount)); if (!(amount > 0)) return 'Enter the amount you are claiming.'; if (amount > paid) return `You can claim up to what you paid (${inr(paid)}).`;
+  if (!String(v.reason || '').trim()) return 'Describe what happened.'; if (v.kind === 'damage' && !v.photo) return 'Add a photo of the damage.';
+  const party = r.type === 'moving' ? 'movers' : r.provider || 'external:service-partner';
+  s.claims.unshift({id: uid('CLM'), service: true, orderId: r.id, store: r.type === 'moving' ? 'SafeMove Packers' : r.type === 'driver' ? 'Anil Kumar' : 'Service partner', party, kind: v.kind, group: 'service', items: [], reason: String(v.reason).trim(), photo: v.photo || '', refundTo: v.refundTo || 'wallet', amount, createdAt: clock(), status: 'review', history: [{at: stamp(), text: 'Claim sent to MoveAI; the partner can respond'}]});
+  notify(s, party, `${r.id}: customer raised a claim of ${inr(amount)} — respond in Returns & claims`, r.id); notify(s, 'admin', `${r.id}: service claim ${inr(amount)} to review`, r.id);
+  return '';
+}
+function decideService(s, c, decision) {
+  if (c.status !== 'review') return 'Nothing to decide.';
+  if (decision !== 'approve') { c.status = 'rejected'; c.history.push({at: stamp(), text: 'Not approved after review'}); return ''; }
+  if (c.refundTo === 'wallet') walletCredit(s, c.amount, `Claim ${c.id} · ${c.orderId}`);
+  record(s, {owner: 'personal', serviceId: c.orderId, sourceType: 'claim', sourceId: c.id, type: 'refund', payer: 'moveai', payee: 'personal', responsible: c.party, amount: c.amount, method: c.refundTo === 'wallet' ? 'moveai_wallet' : 'upi', reference: gateway.refund(c.id, c.amount).ref, status: c.refundTo === 'wallet' ? 'refunded' : 'refund_initiated', expectedBy: clock() + 5 * DAY, gatewayFinal: 'refunded', note: `Claim ${c.id}`}, 'MoveAI');
+  record(s, {owner: c.party, serviceId: c.orderId, sourceType: 'claim', sourceId: c.id, type: 'penalty', payer: c.party, payee: 'moveai', responsible: c.party, amount: c.amount, method: 'wallet', reference: `CLR-${c.id}`, status: 'confirmed', note: `Claim ${c.id} recovered from partner wallet`}, 'MoveAI');
+  c.status = 'refunded'; c.history.push({at: stamp(), text: `Approved · ${inr(c.amount)} ${c.refundTo === 'wallet' ? 'added to the MoveAI wallet' : 'refund started'} · recovered from the partner`});
+  return '';
 }

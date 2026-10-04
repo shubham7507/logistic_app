@@ -1,5 +1,6 @@
 // MoveAI One — operations screens (draw.io pages 02, 03–11, 13, 15–20).
 import {ROLE_TEMPLATES} from './people-rules.js';
+import * as Geo from './geo.js';
 import * as Pay from './pay.js';
 import * as Freight from './freight.js';
 import * as Gst from './gst-portal.js';
@@ -153,7 +154,7 @@ export function servicesScreen(state) {
 
 export function serviceDetailScreen(state) {
   const __r = state.serviceRequests.find(x => x.id === state.selectedServiceId && x.customer === 'personal') || state.serviceRequests.find(x => x.customer === 'personal');
-  return serviceDetailBase(state) + (__r ? Bill.billPanel(state, __r, Pay.paySummary(state, __r)) + Pay.surveyPanel(state, __r) + Pay.servicePayPanel(state, __r) : '');
+  return serviceDetailBase(state) + (__r ? Bill.billPanel(state, __r, Pay.paySummary(state, __r)) + Pay.surveyPanel(state, __r) + Pay.servicePayPanel(state, __r) + (globalThis.__moveaiPlus?.serviceClaimHtml?.(state, __r) || '') : '');
 }
 function serviceDetailBase(state) {
   const r = state.serviceRequests.find(x => x.id === state.selectedServiceId && x.customer === 'personal') || state.serviceRequests.find(x => x.customer === 'personal');
@@ -242,7 +243,7 @@ export function tripDetailScreen(state) {
         <p class="muted">Status: ${pill(t.gps.status)} ${t.gps.consent ? '· Driver consented for this trip only' : '· Driver consent pending'}</p>
         ${isDriver ? (!t.gps.consent ? `<label class="consent-row"><input type="checkbox" id="gps-consent"> I allow location sharing for ${esc(t.id)} only, until the trip closes.</label><button class="button secondary full" data-op="gps-consent" data-id="${t.id}">Save consent</button>` : gpsBlock ? `<p class="mock-hint">${esc(gpsBlock)}</p>` : `<button class="button secondary full" data-op="gps-ping" data-id="${t.id}">Send location update</button>`) : ''}
       </section>
-      <section class="panel"><h2>${ws === 'commercialDriver' || ws === 'helper' ? 'Your pay' : 'Money'}</h2>${facts(tripTermsFor(state, t))}${can(state, 'trip.settle', t) || (ws === 'staff' && opsCtx(state).perms.includes('money.prepare') && opsCtx(state).ownerWs === t.owner) ? '<button class="button primary full" data-route="tripSettlement">Crew settlement: bata, advances, receipts</button>' : ''}${['goods', 'transporter', 'vehicle', 'staff'].includes(ws) ? Freight.tripInvoiceBanner(state, t) : ''}<button class="button secondary full" data-route="money">Open Money</button></section>${Gst.tripEwbPanel(state, t)}
+      <section class="panel"><h2>${ws === 'commercialDriver' || ws === 'helper' ? 'Your pay' : 'Money'}</h2>${facts(tripTermsFor(state, t))}${can(state, 'trip.settle', t) || (ws === 'staff' && opsCtx(state).perms.includes('money.prepare') && opsCtx(state).ownerWs === t.owner) ? '<button class="button primary full" data-route="tripSettlement">Crew settlement: bata, advances, receipts</button>' : ''}${['goods', 'transporter', 'vehicle', 'staff'].includes(ws) ? Freight.tripInvoiceBanner(state, t) : ''}<button class="button secondary full" data-route="money">Open Money</button></section>${Gst.tripEwbPanel(state, t)}${['personal', 'admin'].includes(ws) ? '' : Geo.jobPanel(state, t, 'trip')}
       ${next.length ? `<section class="panel"><h2>Next load near ${esc(t.to.split(',')[0])}</h2>${next.map(l => `<article class="market-row"><span class="market-icon">🧭</span><span><b>${esc(l.route || `${l.pickup} → ${l.drop}`)}</b><small>${esc(l.goods || '')} · ${esc(l.capacity)} t · ${esc(l.date)}</small></span><span></span><button class="button secondary" data-op="offer-next-load" data-id="${t.id}" data-load="${l.id}">${ws === 'vehicle' ? 'Request' : 'Offer to truck'}</button></article>`).join('')}</section>` : ''}
       ${ws === 'goods' && t.milestones.find(m => m.key === 'received')?.status === 'done' ? closeOutPanel(state, t) : ''}
       <button class="button secondary full" data-op="report-exception" data-ref="${t.id}">Report a problem on this trip</button>
@@ -353,7 +354,7 @@ export function movingQueueScreen(state) {
 export function movingJobScreen(state) {
   const base = movingJobBase(state), j = selectedJob(state), ws = opsCtx(state).ownerWs;
   const r = j && state.serviceRequests.find(x => x.id === j.serviceRequestId);
-  return base + (r && ['movers', 'staff'].includes(opsCtx(state).ws) && ws === j.owner ? Pay.surveyQuoteForm(state, r) + Bill.partnerEarnings(state, r, 'mover') : '');
+  return base + (j ? Geo.jobPanel(state, j, 'move') : '') + (r && ['movers', 'staff'].includes(opsCtx(state).ws) && ws === j.owner ? Pay.surveyQuoteForm(state, r) + Bill.partnerEarnings(state, r, 'mover') : '');
 }
 function movingJobBase(state) {
   const j = selectedJob(state);

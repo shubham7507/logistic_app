@@ -4,7 +4,7 @@
 // credit limits / overdue rules, e-way bill check and a Tally-friendly export.
 // Tax defaults are placeholders the business must confirm with its CA; every rate is a setting.
 import {esc, pill, inr, opsCtx} from './ops.js';
-import {record} from './pay.js';
+import {record, gateway} from './pay.js';
 import * as Gst from './gst-portal.js';
 
 const DAY = 86400000;
@@ -19,6 +19,7 @@ const head = (title, text, action = '') => `<div class="page-header"><div><h1>${
 export const CHARGE_KINDS = {detention: 'Detention / waiting', extra_drop: 'Extra drop point', loading: 'Loading / unloading', toll: 'Toll (if billed)', other: 'Other'};
 export const GST_MODES = {rcm: 'GST paid by the recipient (reverse charge)', forward: 'GST charged on this invoice (forward charge)', exempt: 'No GST on this invoice (exempt / unregistered)'};
 
+let syncing = false;
 // ---------- setup ----------
 export function ensureFreight(state) {
   state.freightSettings ||= {
@@ -39,6 +40,7 @@ export function ensureFreight(state) {
     if (t501) createInvoice(state, {issuer: 'transporter', tripId: 'TRP-501', billTo: 'goods', freight: t501.terms?.freight || 62000, terms: {type: 'advance_balance', advance: t501.terms?.advance || 12000, creditDays: 0}, issueDate: '2026-09-27', gstMode: 'rcm'}, true);
     if (t501) createInvoice(state, {issuer: 'vehicle', tripId: 'TRP-501', billTo: 'transporter', freight: t501.terms?.truckOwnerPayout || 54000, terms: {type: 'advance_balance', advance: 10000, creditDays: 7}, issueDate: '2026-09-27', gstMode: 'exempt'}, true);
   }
+  if (!syncing) { syncing = true; try { for (const inv of state.freightInvoices) if (inv.protected) protectSync(state, inv); } finally { syncing = false; } }
   return state;
 }
 const S = (state, ws) => ensureFreight(state).freightSettings[ws] || {};
@@ -131,7 +133,6 @@ export function proposeCharge(state, inv, v) {
   if (!CHARGE_KINDS[v.kind]) return 'Choose the charge type.';
   if (!(Number(v.amount) > 0)) return 'Enter the amount.';
   if (!String(v.evidence || '').trim()) return 'Attach evidence (gate-in slip, photo or message).';
-  if (inv.locked) return 'This invoice is registered as an e-invoice (IRN) and cannot change. Raise a debit note for extra charges.';
   if (dueState(state, inv).status === 'paid') return 'This invoice is already paid. Raise a new invoice for extra charges.';
   inv.charges.push({id: `CHG-${Date.now().toString().slice(-5)}`, kind: v.kind, amount: round(v.amount), note: String(v.note || '').trim(), evidence: v.evidence, status: 'proposed', at: stamp()});
   inv.history.push({at: stamp(), text: `${CHARGE_KINDS[v.kind]} ${inr(v.amount)} proposed`});
@@ -139,20 +140,19 @@ export function proposeCharge(state, inv, v) {
 }
 export function decideCharge(state, inv, id, decision, actorWs) {
   const c = inv.charges.find(x => x.id === id); if (!c || c.status !== 'proposed') return 'Nothing to decide.';
-  if (inv.locked && decision === 'approve') return 'The invoice has an IRN and is locked. Approve this as a debit note instead (next phase).';
   if (actorWs !== inv.billTo) return 'Only the party being billed can approve a charge.';
-  c.status = decision === 'approve' ? 'approved' : 'rejected'; inv.revision += decision === 'approve' ? 1 : 0;
+  c.status = decision === 'approve' ? 'approved' : 'rejected';
+  if (decision === 'approve' && inv.locked) { addNote(state, inv, 'debit', c.amount, `${CHARGE_KINDS[c.kind]}${c.note ? ` · ${c.note}` : ''}`); } else inv.revision += decision === 'approve' ? 1 : 0;
   inv.history.push({at: stamp(), text: `${CHARGE_KINDS[c.kind]} ${inr(c.amount)} ${c.status}${decision === 'approve' ? ` · invoice revised to v${inv.revision}` : ''}`});
   return '';
 }
 export function decideAdjustment(state, inv, id, decision, actorWs) {
   const a = inv.adjustments.find(x => x.id === id); if (!a) return 'Not found.';
-  if (inv.locked && ['accept', 'settle'].includes(decision)) return 'The invoice has an IRN and is locked. Issue a credit note for this deduction instead (next phase).';
   if (decision === 'accept' || decision === 'dispute') { if (actorWs !== inv.issuer) return 'Only the invoice issuer can accept or dispute a deduction.'; a.status = decision === 'accept' ? 'accepted' : 'disputed'; }
   else if (decision === 'withdraw') { if (actorWs !== inv.billTo) return 'Only the party that proposed it can withdraw.'; a.status = 'withdrawn'; }
   else if (decision === 'settle') { a.status = 'accepted'; a.note += ' · settled after review'; }
   inv.history.push({at: stamp(), text: `Shortage deduction ${inr(a.amount)} ${a.status}`});
-  if (a.status === 'accepted') inv.revision += 1;
+  if (a.status === 'accepted') { if (inv.locked) addNote(state, inv, 'credit', a.amount, a.note); else inv.revision += 1; }
   return '';
 }
 export function recordPayment(state, inv, v, actor) {
@@ -255,6 +255,7 @@ export function invoiceDetailScreen(state) {
   </section>
   <div class="stack">
     ${isPayer && a.outstanding ? `<section class="panel"><h2>Record a payment</h2><form data-fr-form="pay" class="form-grid two"><label><span>Amount paid (₹)</span><input type="number" name="amount" value="${Math.max(0, (d.dueNow || a.outstanding) - a.tdsPending)}"></label><label><span>TDS deducted (₹)</span><input type="number" name="tds" value="${a.tdsPending}"></label><label><span>Method</span><select name="method"><option value="neft">NEFT</option><option value="rtgs">RTGS</option><option value="imps">IMPS</option><option value="upi">UPI</option><option value="cheque">Cheque</option><option value="cash">Cash</option></select></label><label><span>UTR / cheque no.</span><input name="reference"></label><label><span>Paid on</span><input type="date" name="date" value="${today()}"></label><label><span>Against</span><select name="kind"><option value="advance">Advance</option><option value="balance" ${loaded(state, inv) ? 'selected' : ''}>Balance</option><option value="part payment">Part payment</option></select></label><p id="fr-error" class="field-error wide" hidden></p><button class="button primary wide" type="submit">Record payment</button></form><p class="mock-hint">Pay from your bank as usual, then record it here with the UTR. ${esc(nameOf(state, inv.issuer))} confirms when it arrives.</p></section>` : ''}
+    ${protectHtml(state, inv)}${earlyHtml(state, inv)}${notesHtml(inv)}
     <section class="panel"><h2>Payments</h2>${pays.map(p => `<div class="ledger-row static"><span><b>${p.type === 'tds' ? 'TDS deducted' : `${esc(String(p.method).toUpperCase())} ${esc(p.reference)}`}</b><small>${esc(p.paidOn ? fmt(p.paidOn) : p.history?.[0]?.at || '')}${p.type === 'tds' ? ` · certificate ${esc(p.certificate || 'pending')}` : ''}</small></span><span class="amount">${inr(p.amount)}</span>${pill(p.status)}${isIssuer && p.type === 'freight' && p.status === 'paid' ? `<button class="button secondary compact" data-fr-confirm="${p.id}">Confirm received</button>` : ''}${p.type === 'tds' && ((isPayer && p.certificate === 'pending') || (isIssuer && p.certificate === 'issued')) ? `<button class="button secondary compact" data-fr-cert="${p.id}">${isPayer ? 'Mark certificate issued' : 'Mark certificate received'}</button>` : ''}</div>`).join('') || '<p class="muted">No payments recorded yet.</p>'}</section>
     <section class="panel"><h2>Extra charges</h2>${inv.charges.map(c => `<div class="ledger-row static"><span><b>${esc(CHARGE_KINDS[c.kind])} · ${inr(c.amount)}</b><small>${esc(c.note)} · evidence ${esc(c.evidence)}</small></span>${pill(c.status)}${isPayer && c.status === 'proposed' ? `<span class="row-actions"><button class="button secondary compact" data-fr-charge="${c.id}" data-decision="approve">Approve</button><button class="button secondary compact" data-fr-charge="${c.id}" data-decision="reject">Reject</button></span>` : ''}</div>`).join('') || '<p class="muted">None</p>'}
       ${isIssuer ? `<form class="inline-form" data-fr-form="charge"><select name="kind">${Object.entries(CHARGE_KINDS).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select><input type="number" name="amount" placeholder="₹"><input name="note" placeholder="e.g. 9 hours at Okhla gate"><input type="file" name="evidence" accept="image/*,application/pdf"><button class="button secondary compact">Propose</button></form><p id="fr-charge-error" class="field-error" hidden></p>` : ''}</section>
@@ -276,6 +277,10 @@ export function tripInvoiceBanner(state, t) {
 // ---------- bindings ----------
 function err(root, id, msg) { const e = root.querySelector(`#${id}`); if (e) { e.textContent = msg; e.hidden = !msg; } }
 export function bindFreight(root, api) {
+  { const S0 = () => api.getState(), w0 = () => opsCtx(S0()).ownerWs, find0 = id => S0().freightInvoices.find(i => i.id === id), d0 = (e, ok) => { if (e) return api.toast(e); api.save(); api.render(); api.toast(ok); };
+    root.querySelectorAll('[data-fr-protect]').forEach(b => b.onclick = () => d0(protectFund(S0(), find0(b.dataset.frProtect), w0()), 'Funded into the protected account'));
+    root.querySelectorAll('[data-fr-early]').forEach(b => b.onclick = () => d0(earlyPay(S0(), find0(b.dataset.frEarly), w0()), 'Early payment received'));
+    root.querySelectorAll('form[data-fr-fuel]').forEach(f => f.onsubmit = e => { e.preventDefault(); d0(fuelAction(S0(), f.dataset.frFuel, Object.fromEntries(new FormData(f))), f.dataset.frFuel === 'load' ? 'Fuel card loaded' : 'Fuel spend recorded'); }); }
   const Sx = () => api.getState(); const ws = () => opsCtx(Sx()).ownerWs; const inv = () => Sx().freightInvoices.find(i => i.id === Sx().selectedInvoiceId); const actor = () => opsCtx(Sx()).persona.name;
   const done = (msg) => { api.save(); api.render(); if (msg) api.toast(msg); };
   root.querySelectorAll('[data-fr-tab]').forEach(b => b.onclick = () => { Sx().invoiceTab = b.dataset.frTab; done(); });
@@ -298,4 +303,82 @@ export function bindFreight(root, api) {
     if (kind === 'charge') { const x = proposeCharge(s, inv(), {kind: fd.get('kind'), amount: fd.get('amount'), note: fd.get('note'), evidence: fd.get('evidence')?.name}); if (x) return err(root, 'fr-charge-error', x); return done('Charge sent for approval'); }
     if (kind === 'ewb') { const v = String(fd.get('ewb') || '').replace(/\D/g, ''); if (!/^\d{12}$/.test(v)) return api.toast('E-way bill numbers have 12 digits.'); s.ewayBills[inv().tripId] = v; return done('E-way bill saved'); }
   });
+}
+
+// ---------- debit / credit notes after an e-invoice ----------
+function addNote(state, inv, type, amount, reason) {
+  const n = (inv.notes ||= []).filter(x => x.type === type).length + 1;
+  const note = {type, number: `${inv.number}/${type === 'debit' ? 'DN' : 'CN'}-${n}`, amount, reason, at: new Date().toLocaleDateString('en-IN'), irn: Array.from({length: 64}, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('')};
+  inv.notes.push(note); inv.history.push({at: new Date().toLocaleString('en-IN'), text: `${type === 'debit' ? 'Debit' : 'Credit'} note ${note.number} for ${inr(amount)} registered (simulated IRN)`});
+}
+export function notesHtml(inv) {
+  if (!inv.notes?.length) return inv.locked ? '<p class="muted">Invoice has an IRN: approved extra charges become debit notes and accepted deductions become credit notes.</p>' : '';
+  return `<section class="panel"><h2>Debit / credit notes</h2>${inv.notes.map(n => `<div class="ledger-row static"><span><b>${esc(n.number)}</b><small>${n.type === 'debit' ? 'Debit' : 'Credit'} note · ${esc(n.reason)} · ${esc(n.at)} · IRN ${esc(n.irn.slice(0, 10))}…</small></span><span class="amount">${n.type === 'debit' ? '+' : '−'}${inr(n.amount)}</span></div>`).join('')}</section>`;
+}
+
+// ---------- protected payment (escrow-style, simulated) ----------
+const tripDone = (state, inv, key) => (state.trips.find(t => t.id === inv.tripId)?.milestones || []).some(m => m.key === key && m.status === 'done');
+export function protectFund(state, inv, actorWs) {
+  if (actorWs !== inv.billTo) return 'Only the party being billed can fund the protected payment.';
+  if (inv.protected) return 'Already funded.';
+  const a = amounts(state, inv); if (!(a.outstanding > 0)) return 'Nothing outstanding.';
+  const fund = a.outstanding - a.tdsPending, g = gateway.collect({method: 'netbanking', amount: fund}); if (!g.ok) return g.reason;
+  inv.protected = {funded: fund, at: new Date().toLocaleString('en-IN'), advanceReleased: 0, balanceReleased: 0, refunded: 0};
+  record(state, {owner: inv.billTo, invoiceId: inv.id, sourceType: 'invoice', sourceId: inv.id, type: 'escrow_in', payer: inv.billTo, payee: 'escrow', responsible: inv.billTo, amount: fund, method: 'netbanking', reference: g.ref, channel: 'moveai_pay', status: 'held', note: `Protected payment for ${inv.number}`});
+  inv.history.push({at: new Date().toLocaleString('en-IN'), text: `${nameOf(state, inv.billTo)} funded ${inr(fund)} into the protected account`});
+  protectSync(state, inv); return '';
+}
+function releaseEsc(state, inv, amount, label) {
+  if (amount <= 0) return; record(state, {owner: inv.billTo, invoiceId: inv.id, sourceType: 'invoice', sourceId: inv.tripId || inv.id, type: 'freight', direction: 'payable', payer: inv.billTo, payee: inv.issuer, responsible: inv.billTo, amount, method: 'escrow', reference: `ESC-${label}-${inv.number}`, channel: 'moveai_pay', status: 'confirmed', paidOn: new Date().toISOString().slice(0, 10), note: `${label === 'ADV' ? 'Advance at loading' : label === 'BAL' ? 'Balance after delivery proof' : 'Released after dispute'} · protected payment`});
+  inv.history.push({at: new Date().toLocaleString('en-IN'), text: `${inr(amount)} released from the protected account to ${nameOf(state, inv.issuer)}`});
+}
+export function protectSync(state, inv) {
+  const p = inv.protected; if (!p) return; p.released ||= 0;
+  const avail = () => p.funded - p.released - p.refunded, owed = () => { const a = amounts(state, inv); return Math.max(0, a.outstanding - a.tdsPending); };
+  if (!p.advDone && (tripDone(state, inv, 'loaded') || !inv.tripId)) { p.advDone = true; const adv = Math.min(inv.terms?.advance || 0, avail(), owed()); if (adv > 0) { p.released += adv; p.advanceReleased = adv; releaseEsc(state, inv, adv, 'ADV'); } }
+  if (!p.balDone && (tripDone(state, inv, 'delivered') || tripDone(state, inv, 'received'))) { p.balDone = true; const pay = Math.min(avail(), owed()); if (pay > 0) { p.released += pay; p.balanceReleased = pay; releaseEsc(state, inv, pay, 'BAL'); } }
+  if (p.balDone && !amounts(state, inv).held && avail() > 0) {
+    const pay = Math.min(avail(), owed()); if (pay > 0) { p.released += pay; p.disputeReleased = (p.disputeReleased || 0) + pay; releaseEsc(state, inv, pay, 'DIS'); }
+    const back = avail(); if (back > 0) { p.refunded += back; record(state, {owner: inv.billTo, invoiceId: inv.id, sourceType: 'invoice', sourceId: inv.id, type: 'escrow_refund', payer: 'escrow', payee: inv.billTo, responsible: inv.issuer, amount: back, method: 'netbanking', reference: `ESC-RF-${inv.number}`, channel: 'moveai_pay', status: 'refunded', note: 'Deduction accepted — returned to the payer'}); inv.history.push({at: new Date().toLocaleString('en-IN'), text: `${inr(back)} returned to ${nameOf(state, inv.billTo)} after the deduction`}); }
+  }
+  p.held = avail();
+}
+
+export function protectHtml(state, inv) {
+  const ws = opsCtx(state).ownerWs, p = inv.protected, a = amounts(state, inv);
+  if (!p) return ws === inv.billTo && a.outstanding > 0 && !inv.factored ? `<section class="panel"><h2>Protected payment</h2><p class="muted">Pay the full amount into a protected account now. The advance is released when the truck is loaded and the balance after delivery proof; any disputed amount stays held until settled.</p><button class="button primary" data-fr-protect="${esc(inv.id)}">Fund ${inr(a.outstanding - a.tdsPending)} (net banking)</button></section>` : '';
+  return `<section class="panel"><h2>Protected payment ${pill(p.held ? 'held' : 'settled')}</h2><table class="price-table"><tbody><tr><td>Funded by ${esc(nameOf(state, inv.billTo))} · ${esc(p.at)}</td><td>${inr(p.funded)}</td></tr><tr><td>Advance released at loading</td><td>${inr(p.advanceReleased || 0)}</td></tr><tr><td>Balance released after delivery proof</td><td>${inr(p.balanceReleased || 0)}</td></tr>${p.disputeReleased ? `<tr><td>Released after dispute</td><td>${inr(p.disputeReleased)}</td></tr>` : ''}${p.refunded ? `<tr><td>Returned to payer</td><td>${inr(p.refunded)}</td></tr>` : ''}<tr class="total"><td>Still held</td><td>${inr(p.held || 0)}</td></tr></tbody></table></section>`;
+}
+
+// ---------- early payment against delivery proof (simulated lending partner) ----------
+export const EARLY_FEE = 0.015;
+export function earlyPay(state, inv, actorWs) {
+  if (actorWs !== inv.issuer) return 'Only the invoice issuer can take early payment.';
+  if (inv.protected) return 'This invoice already has protected payment.'; if (inv.factored) return 'Already paid early.';
+  if (inv.tripId && !tripDone(state, inv, 'delivered')) return 'Early payment needs the delivery proof (POD) first.';
+  const a = amounts(state, inv), base = a.outstanding - a.tdsPending; if (!(base > 0)) return 'Nothing outstanding.';
+  const fee = Math.round(base * EARLY_FEE); inv.factored = {lender: 'MoveAI Capital partner (simulated)', advanced: base - fee, fee, at: new Date().toLocaleString('en-IN')};
+  record(state, {owner: inv.issuer, invoiceId: inv.id, sourceType: 'invoice', sourceId: inv.id, type: 'early_payment', payer: 'lender', payee: inv.issuer, responsible: 'lender', amount: base - fee, method: 'bank', reference: `EP-${inv.number}`, status: 'confirmed', note: `Early payment for ${inv.number} · fee ${inr(fee)} (${EARLY_FEE * 100}%) · ${nameOf(state, inv.billTo)} now pays the lending partner`});
+  inv.history.push({at: new Date().toLocaleString('en-IN'), text: `Early payment ${inr(base - fee)} received from the lending partner (fee ${inr(fee)}). ${nameOf(state, inv.billTo)} pays the partner on the due date.`});
+  return '';
+}
+export function earlyHtml(state, inv) {
+  const ws = opsCtx(state).ownerWs, a = amounts(state, inv);
+  if (inv.factored) return `<section class="panel"><h2>Early payment</h2><p>${inr(inv.factored.advanced)} received ${esc(inv.factored.at)} · fee ${inr(inv.factored.fee)} · ${esc(inv.factored.lender)}. ${ws === inv.billTo ? 'Pay this invoice to the lending partner on the due date.' : 'The payer now pays the lending partner.'}</p></section>`;
+  if (ws !== inv.issuer || inv.protected || !(a.outstanding > 0)) return '';
+  return `<section class="panel"><h2>Get paid now</h2><p class="muted">After delivery proof, a lending partner pays you today: ${inr(Math.round((a.outstanding - a.tdsPending) * (1 - EARLY_FEE)))} (fee ${EARLY_FEE * 100}%). ${esc(nameOf(state, inv.billTo))} pays the partner on the due date.</p><button class="button secondary" data-fr-early="${esc(inv.id)}">Get paid early</button></section>`;
+}
+
+// ---------- fuel card for a trip (simulated) ----------
+export function fuelCardHtml(state) {
+  const t = state.trips.find(x => x.id === state.selectedTripId); if (!t) return '';
+  const f = t.fuelCard || {loaded: 0, spends: []}, spent = f.spends.reduce((a, x) => a + x.amount, 0);
+  return `<section class="panel"><h2>Fuel card · ${esc(t.id)}</h2><p>Loaded ${inr(f.loaded)} · spent ${inr(spent)} · balance <b>${inr(f.loaded - spent)}</b></p><p class="muted">Fuel paid by card is a business expense — it is not added to or deducted from the driver's khata.</p><div class="row-actions"><form class="inline-form" data-fr-fuel="load"><input name="amount" type="number" placeholder="Load ₹"><button class="button secondary compact">Load card</button></form><form class="inline-form" data-fr-fuel="spend"><input name="amount" type="number" placeholder="Spent ₹"><input name="place" placeholder="Pump / place"><button class="button secondary compact">Record fuel</button></form></div>${f.spends.map(x => `<small class="block muted">${esc(x.at)} · ${inr(x.amount)} · ${esc(x.place)}</small>`).join('')}</section>`;
+}
+export function fuelAction(state, kind, v) {
+  const t = state.trips.find(x => x.id === state.selectedTripId), f = (t.fuelCard ||= {loaded: 0, spends: []}), amt = Math.round(Number(v.amount));
+  if (!(amt > 0)) return 'Enter an amount.';
+  if (kind === 'load') { f.loaded += amt; record(state, {owner: t.owner, sourceType: 'trip', sourceId: t.id, type: 'fuel_card_load', payer: t.owner, payee: 'fuel_card', responsible: t.owner, amount: amt, method: 'fuel_card', reference: `FC-${t.id}-${Date.now().toString().slice(-5)}`, status: 'confirmed', note: `Fuel card loaded for ${t.id}`}); return ''; }
+  const spent = f.spends.reduce((a, x) => a + x.amount, 0); if (amt > f.loaded - spent) return 'Not enough balance on the fuel card.';
+  f.spends.push({amount: amt, place: String(v.place || 'Fuel pump').trim(), at: new Date().toLocaleString('en-IN')}); return '';
 }

@@ -30,6 +30,6 @@ assert.ok(G.consolidate(s,[r.ewb.no,r2.ewb.no],'transporter').ok);
 // e-invoice: exempt as GTA by default; when not exempt → IRN, locked, cancel within 24h
 const inv=s.freightInvoices.find(i=>i.tripId==='TRP-503')||F.createInvoice(s,{issuer:'transporter',tripId:'TRP-503',billTo:'goods',freight:38000}).inv;
 assert.equal(G.einvoiceRequired(s,inv).required,false);s.freightSettings.transporter.gtaExempt=false;assert.equal(G.einvoiceRequired(s,inv).required,true);
-assert.ok(G.registerIrn(s,inv,F.amounts).ok);assert.equal(inv.irn.length,64);assert.match(F.proposeCharge(s,inv,{kind:'detention',amount:100,evidence:'x'}),/IRN/);
+assert.ok(G.registerIrn(s,inv,F.amounts).ok);assert.equal(inv.irn.length,64);assert.equal(F.proposeCharge(s,inv,{kind:'detention',amount:100,evidence:'x'}),'');assert.equal(F.decideCharge(s,inv,inv.charges.at(-1).id,'approve','goods'),'');assert.equal(inv.notes[0].type,'debit','approved charge after IRN becomes a debit note');
 assert.ok(G.cancelIrn(s,inv,'Wrong amount').ok);assert.equal(inv.status,'cancelled');
 console.log(JSON.stringify({status:'PASS',suite:'E-way bill + e-invoice (simulated GSP)'},null,2));

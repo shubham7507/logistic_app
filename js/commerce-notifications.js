@@ -5,7 +5,7 @@ export function notifyOrder(s,o,text){
  const store=Object.keys(s.shopPartners||{}).find(ws=>s.shopPartners[ws].party===o.party);
  const courier=Object.keys(s.deliveryPartners||{}).find(ws=>s.deliveryPartners[ws].id===o.deliveryAssignment?.partnerId);
  const alerts=[];
- const send=(to,message,route,priority='update')=>{if(to){alerts.push({to,text:`${o.id}: ${message}`,route,priority});(s.outbox||=[]).unshift({to,text:`${o.id}: ${message}`,channels:to==='personal'?['Push','WhatsApp','SMS']:['Push'],at:new Date().toLocaleString('en-IN')});}};
+ const send=(to,message,route,priority='update')=>{if(to){alerts.push({to,text:`${o.id}: ${message}`,route,priority});(s.outbox||=[]).unshift({to,text:`${o.id}: ${message}`,channels:globalThis.__moveaiNC?.channelsFor?.(s,to,message)||(to==='personal'?['Push','WhatsApp','SMS']:['Push']),at:new Date().toLocaleString('en-IN')});}};
  if(text==='Order sent to store')send(store,'New order to accept','shopOrders','action');
  else if(text==='Store accepted order'){send('personal','Store confirmed your order','orderTracking');send(store,'Assign a worker or prepare items in store','shopOrders','action');}
  else if(text==='All items picked; awaiting store packing')send(store,'Items checked; pack this order','shopOrders','action');
