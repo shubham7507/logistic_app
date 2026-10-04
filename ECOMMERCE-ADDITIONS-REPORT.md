@@ -63,3 +63,30 @@ Tests: `tests/geo-notify.unit.mjs` (in `npm run test:commerce`), `tests/geo-noti
 Tests: `tests/phase2.unit.mjs`, `tests/phase345.unit.mjs` (in `npm run test:commerce`), `tests/phases.smoke.py`. Changed assertions: `product-orders.unit.mjs` (no wallet release for products), `gst.unit.mjs` (charge after IRN becomes a debit note), `p0-foundation.e2e.cjs` (menus).
 
 **Still needs the backend / real services:** shared database and logins, real payments, maps provider keys for production volume (Google or Mappls), phone apps for background GPS, real SMS/WhatsApp/push, government and bank services, CA and legal reviews.
+
+## Store people & pay (sellers)
+`js/store-hr.js` · Seller app → **People & pay** (owners and branch managers) · Store Staff app → **My pay**.
+
+- **Branches (home + cover, managers per branch):** invite with name, mobile, role (picker / packer / cashier / branch manager), **home branch**, pay type (monthly / per shift / per order), rate, frequency (monthly / weekly / daily), start date, meal allowance and cover branches. Team grouped by branch with headcount and manager; **Change branches** (managers can set cover; only the owner transfers, with history). Managers see and act only on their branch. The old Team screen links here.
+- **Staff onboarding:** accept by OTP (existing flow) → staff verify Aadhaar (OTP), date of birth (18+), live selfie and emergency contact → add UPI, bank (₹1 check) or cash. Same person at another seller: one account, separate employment (noted at invite). Rehire keeps history.
+- **Attendance by branch** → payroll shows days per branch, base pay, meal allowance, cover allowance (days at a non-home branch) and advance recovery. Managers post earnings; the owner pays each person by **UPI, bank, MoveAI wallet or cash** — cash waits until the staff member taps **I received it** (or "Not received").
+- **Money in between, kept separate:** salary advances (limit ≈ one month's pay, monthly instalments, owner approves manager/staff requests), meal allowance (not recovered), reimbursements (receipt; managers approve up to ₹500), deductions (reason + evidence, cap ₹5,000 for managers, staff can dispute, owner decides).
+- **Ledgers:** staff khata with balance and advance remaining, payslip (print/PDF) split by branch, advances register, **petty cash book per branch** (owner gives float; expenses need a receipt; day-end count records short/extra), **staff cost by branch**.
+- **Seller onboarding:** level 1 Draft → 2 Verified to sell → 3 Payout-ready on Store setup, with **branch documents**: GSTIN must match the branch's state (one per state), FSSAI number and expiry per food branch, storefront photo. A daily check pauses a seller whose GSTIN is no longer active and a branch whose FSSAI expired, and warns 30 days before expiry.
+
+Tests: `tests/store-hr.unit.mjs` (in `npm run test:commerce`), `tests/store-hr.smoke.py`.
+
+## Unified people — step 1: one profile, employments, branches and teams everywhere
+`js/people-core.js` · every business app → **Branches & teams** (transporter, goods owner, truck owner, movers, store owners and store managers).
+
+- **One person per mobile:** a shared profile (ID status, payout verified) built from all existing staff records — business staff, store pickers and store managers. Demo data fixed so no mobile belongs to two different people (Asha Picker now 9876505101; pickers PICK-002/003/004 moved to 98765051xx; demo revision 8).
+- **Employment per person per business:** role, designation, type (permanent / temporary / one trip or job / through a contractor), status, home branch, cover branches, teams and dated history. Changes sync back to the existing People and People & pay screens. Invites in People & pay say whether the person already has a MoveAI profile (no new ID check or UPI) and where else they work.
+- **Branches for every business type**, listed with staff by home branch, who can cover, and the approver (branch manager, or **"No manager — owner approves"**). Closing a business branch is blocked while staff have it as home.
+- **Teams under branches:** shift, department/desk, crew, temporary (with an end date); add/remove members, set the lead (★). Members must belong to the branch (home or cover) unless the team is temporary.
+- **Transfers** (owner only): new home branch from a date with a reason; teams at the old branch are left automatically; history shown per person. Managers can only change cover for their own branch.
+- **Cover requests:** branch asks for a person on a date → approved by the home branch's manager or the owner (owners' requests are approved straight away) → person gets the cover branch and joins a dated temporary "Cover" team; cleaned up after the date.
+- **Work belongs to a team:** trips and moving jobs can be assigned to a team of the branch that owns them (or a temporary team).
+
+Tests: `tests/people-core.unit.mjs` (in `npm run test:commerce`), `tests/people-core.smoke.py`.
+
+**Next steps (not yet built):** one ledger and payroll for all business types (merge `workforce.js` and `store-hr.js`), approval chain by team lead → branch manager → owner everywhere, the worker's "My work & pay" across employers with past work and yearly statement, simple mode / Hindi / voice.

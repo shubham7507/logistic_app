@@ -183,3 +183,7 @@ td.duty.free{background:#eef8f3}td.duty.on_trip,td.duty.on_job{background:var(--
 .nc-card{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.nc-card .progress{max-width:260px}
 .nc-actions{border:1px solid #f1d58f;background:#fffaf0}.nc-group{padding:8px 0;border-bottom:1px solid var(--line)}.nc-group summary{cursor:pointer}.nc-group.unread summary b::before{content:"● ";color:var(--brand)}
 .geo-map-wrap{max-width:560px}.leaflet-host{height:260px;border-radius:12px;margin:8px 0;z-index:0}.geo-pin-icon span{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#fff;border:2px solid #0b6655;font-size:16px}
+/* store people & pay */
+.hr-person small .status-pill,.hr-person .status-pill{display:inline-flex;width:auto;margin:2px 6px 2px 0}.hr-person small.block{display:block}
+.hr-cover{display:flex;gap:14px;flex-wrap:wrap;align-items:center}.hr-cover label{display:inline-flex;gap:6px;align-items:center;font-weight:600}.hr-cover input{width:auto;min-height:auto}
+.hr-person form.inline-form label{display:inline-flex;gap:4px;align-items:center}.hr-person form.inline-form input[type=checkbox]{width:auto;min-height:auto}

@@ -1,0 +1,344 @@
+// MoveAI One — store people & pay for sellers (prototype, no backend).
+// Branches: every staff member has a home branch and optional cover branches; managers manage one branch.
+// Onboarding: invite with role, home branch, pay type/rate, frequency and cover → staff accepts (existing flow) →
+// staff verifies ID + selfie + age 18+ + emergency contact → adds UPI/bank (₹1 check) before the first payout.
+// Money: attendance by branch → earnings, meal and cover allowances → reimbursements (receipt), advances (instalments),
+// deductions (capped, disputable) → payroll paid by UPI/bank/MoveAI wallet or cash (staff acknowledges).
+// Ledgers: staff khata, payroll register, advances register, petty cash book per branch, branch staff cost.
+// Sellers: three onboarding levels (Draft → Verified to sell → Payout-ready), documents per business and per branch.
+import {esc, pill, inr} from './ops.js';
+import {gateway, record, clock} from './pay.js';
+import {STORE_BY_MANAGER, STORE_BY_WORKER, SELLER_WORKSPACES} from './seller-roles.js';
+import {gstLookup, pennyDrop, aadhaarEkyc} from './verify-sim.js';
+
+const DAY = 86400000;
+const today = () => new Date(clock()).toISOString().slice(0, 10);
+const month = () => today().slice(0, 7);
+const stamp = () => new Date(clock()).toLocaleString('en-IN', {day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit'});
+const uid = p => `${p}-${Date.now().toString().slice(-5)}${Math.random().toString(36).slice(2, 4).toUpperCase()}`;
+const head = (t, x, a = '') => `<div class="page-header"><div><h1>${esc(t)}</h1><p>${esc(x)}</p></div>${a}</div>`;
+export const ROLES = {picker: 'Picker', packer: 'Packer', cashier: 'Cashier', manager: 'Branch manager'};
+export const LIMITS = {managerExpense: 500, managerAdvance: 0, deductionCap: 5000, advanceMaxMonths: 1, cashApproval: 5000};
+const STATE_CODE = {Delhi: '07', Noida: '09', Gurugram: '06', Mumbai: '27', Bengaluru: '29'};
+
+// ---------- who is who ----------
+export function storeOf(ws) { return SELLER_WORKSPACES?.includes?.(ws) ? ws : STORE_BY_MANAGER[ws] || STORE_BY_WORKER[ws] || null; }
+export const branchesOf = (s, store) => (s.sellerBranches?.[store] || []);
+const branchName = (s, store, id) => branchesOf(s, store).find(b => b.id === id)?.name?.split(' · ').pop() || id || '—';
+export function people(s, store) {
+  const pk = (s.pickerStaff || []).filter(p => p.store === store).map(p => ({...p, kind: 'staff'})), mg = (s.storeManagers || []).filter(m => m.store === store).map(m => ({...m, kind: 'manager'}));
+  return [...pk, ...mg].map(p => ({...p, hr: hr(s, p)}));
+}
+export function hr(s, p) {
+  s.staffHR ||= {}; const b0 = (p.branchIds || [])[0] || branchesOf(s, p.store)[0]?.id;
+  return (s.staffHR[p.id] ||= {role: p.kind === 'manager' || /^MGR/.test(p.id) ? 'manager' : 'picker', homeBranch: b0, cover: (p.branchIds || []).slice(1), payType: p.payPlan?.type || 'monthly', rate: p.payPlan?.rate || 12000, freq: p.payPlan?.type === 'per_shift' ? 'weekly' : 'monthly', mealPerShift: 60, coverAllowance: 100, kyc: {status: p.status === 'active' ? 'verified' : 'pending'}, payout: p.status === 'active' ? {method: 'upi', upi: `${String(p.name || 'staff').split(' ')[0].toLowerCase()}@okaxis`, verified: true} : {method: '', verified: false}, transfers: []});
+}
+export function actor(s, ws) {
+  if (SELLER_WORKSPACES.includes(ws)) return {kind: 'owner', store: ws, branch: null, name: s.shopPartners?.[ws]?.name || 'Owner'};
+  if (STORE_BY_MANAGER[ws]) { const store = STORE_BY_MANAGER[ws], m = (s.storeManagers || []).find(x => x.id === s.activeStoreManager?.[ws] && x.store === store) || (s.storeManagers || []).find(x => x.store === store && x.status === 'active'); return {kind: 'manager', store, branch: m ? hr(s, {...m, kind: 'manager'}).homeBranch : null, name: m?.name || 'Manager', id: m?.id}; }
+  if (STORE_BY_WORKER[ws]) { const store = STORE_BY_WORKER[ws], p = (s.pickerStaff || []).find(x => x.id === s.activePicker?.[ws] && x.store === store) || (s.pickerStaff || []).find(x => x.store === store && x.status === 'active'); return {kind: 'staff', store, person: p, name: p?.name}; }
+  return null;
+}
+const inScope = (a, p) => a.kind === 'owner' || (a.kind === 'manager' && (p.hr.homeBranch === a.branch || p.hr.cover.includes(a.branch)));
+
+// ---------- invite, branches, transfer ----------
+export function invite(s, ws, v, inviteFn) {
+  const a = actor(s, ws), store = a.store, name = String(v.name || '').trim(), mobile = String(v.mobile || '').replace(/\D/g, '');
+  if (!name || !/^[6-9]\d{9}$/.test(mobile)) return {error: 'Enter a name and a valid 10-digit mobile.'};
+  if (!ROLES[v.role]) return {error: 'Choose a role.'};
+  if (!branchesOf(s, store).some(b => b.id === v.homeBranch)) return {error: 'Choose the home branch.'};
+  if (a.kind === 'manager' && v.homeBranch !== a.branch) return {error: 'Managers can invite staff only for their own branch.'};
+  if (!(Number(v.rate) > 0)) return {error: 'Enter the pay rate.'};
+  const same = (s.pickerStaff || []).find(p => p.store === store && p.mobile === mobile);
+  if (same && ['active', 'invited'].includes(same.status)) return {error: `${same.name} is already ${same.status === 'active' ? 'on your team' : 'invited'}. Use Change branches instead.`};
+  const elsewhere = (s.pickerStaff || []).filter(p => p.store !== store && p.mobile === mobile && p.status === 'active').map(p => s.shopPartners?.[p.store]?.name || p.store);
+  let p;
+  if (same) { same.status = 'invited'; same.rehiredAt = today(); (same.history ||= []).push({at: stamp(), text: 'Rehired'}); p = same; }
+  else { const e = inviteFn ? inviteFn(s, store, name, mobile) : ''; if (e && !(elsewhere.length && /already has an active/.test(e))) return {error: e}; p = (s.pickerStaff || []).filter(x => x.store === store && x.mobile === mobile).at(-1); if (!p) { p = {id: uid('PICK'), store, name, mobile, status: 'invited', invitedBy: a.name, branchIds: []}; (s.pickerStaff ||= []).push(p); } }
+  const cover = [].concat(v.cover || []).filter(id => id && id !== v.homeBranch);
+  p.branchIds = [v.homeBranch, ...cover]; p.payPlan = {type: v.payType, rate: Number(v.rate), effectiveFrom: v.start || today()};
+  s.staffHR ||= {}; s.staffHR[p.id] = {...hr(s, {...p, status: 'invited'}), role: v.role, homeBranch: v.homeBranch, cover, payType: v.payType, rate: Number(v.rate), freq: v.freq || 'monthly', mealPerShift: Number(v.meal ?? 60), coverAllowance: Number(v.coverAllowance ?? 100), start: v.start || today(), kyc: {status: 'pending'}, payout: {method: '', verified: false}};
+  return {ok: true, person: p, note: globalThis.__moveaiPC?.inviteNote?.(s, mobile, store) || (elsewhere.length ? `${name} also works at ${elsewhere.join(', ')} — one MoveAI account, separate employment.` : '')};
+}
+export function setBranches(s, ws, pid, home, cover, reason = '') {
+  const a = actor(s, ws), p = people(s, a.store).find(x => x.id === pid); if (!p) return 'Not found.';
+  if (a.kind !== 'owner' && !inScope(a, p)) return 'You can change only your branch staff.';
+  if (!branchesOf(s, a.store).some(b => b.id === home)) return 'Choose a home branch.';
+  const h = s.staffHR[pid], was = h.homeBranch;
+  if (was !== home) { if (a.kind === 'manager') return 'Only the owner can transfer staff to another branch.'; h.transfers.push({from: was, to: home, date: today(), reason}); }
+  h.homeBranch = home; h.cover = [].concat(cover || []).filter(x => x && x !== home);
+  const rec = (s.pickerStaff || []).find(x => x.id === pid) || (s.storeManagers || []).find(x => x.id === pid); if (rec) rec.branchIds = [home, ...h.cover];
+  return '';
+}
+export function canDisableBranch(s, store, branchId) { const n = people(s, store).filter(p => p.status === 'active' && p.hr.homeBranch === branchId).length; return n ? `${n} staff have this as their home branch. Transfer them first.` : ''; }
+
+// ---------- staff verification and payout details ----------
+export function verifyStaff(s, pid, v) {
+  const h = s.staffHR[pid]; if (!h) return 'Not found.';
+  const dob = new Date(v.dob); if (isNaN(dob)) return 'Enter your date of birth.';
+  if ((clock() - dob.getTime()) / (365.25 * DAY) < 18) return 'You must be 18 or older to work at a store.';
+  const k = aadhaarEkyc({aadhaar: v.aadhaar, otp: v.otp, consent: true}); if (!k.ok) return k.reason;
+  if (!v.selfie) return 'Take a live selfie.'; if (!/^[6-9]\d{9}$/.test(String(v.emergencyMobile || ''))) return 'Add an emergency contact mobile.';
+  h.kyc = {status: 'verified', idLast4: String(v.aadhaar).slice(-4), dob: v.dob, selfie: v.selfie, emergency: {name: v.emergencyName, mobile: v.emergencyMobile}, at: stamp()};
+  return '';
+}
+export function setPayout(s, pid, v) {
+  const h = s.staffHR[pid]; if (!h) return 'Not found.';
+  if (v.method === 'upi') { if (!/^[\w.-]+@[a-z]{2,}$/i.test(String(v.upi || ''))) return 'Enter a valid UPI ID.'; h.payout = {method: 'upi', upi: v.upi, verified: true, at: stamp()}; return ''; }
+  if (v.method === 'bank') { const r = pennyDrop({account: v.account, ifsc: v.ifsc, name: v.name}); if (!r.ok) return r.reason; h.payout = {method: 'bank', account: `••••${String(v.account).slice(-4)}`, ifsc: v.ifsc, verified: true, at: stamp()}; return ''; }
+  if (v.method === 'cash') { h.payout = {method: 'cash', verified: true, at: stamp()}; return ''; }
+  return 'Choose UPI, bank or cash.';
+}
+
+// ---------- attendance by branch ----------
+export function markDay(s, ws, pid, date, branchId) {
+  const a = actor(s, ws), p = people(s, a.store).find(x => x.id === pid); if (!p) return 'Not found.';
+  if (!inScope(a, p)) return 'Not your branch staff.';
+  if (![p.hr.homeBranch, ...p.hr.cover].includes(branchId)) return 'That branch is not assigned to this person. Add it as a cover branch first.';
+  if (a.kind === 'manager' && branchId !== a.branch) return 'Managers mark attendance only at their branch.';
+  s.staffDays ||= []; if (s.staffDays.some(d => d.personId === pid && d.date === date)) return 'Attendance already marked for that day.';
+  s.staffDays.push({id: uid('DAY'), store: a.store, personId: pid, date, branchId, cover: branchId !== p.hr.homeBranch, by: a.name}); return '';
+}
+const days = (s, pid, m = month()) => (s.staffDays || []).filter(d => d.personId === pid && d.date.startsWith(m));
+
+// ---------- ledger ----------
+const L = s => (s.staffLedger ||= []);
+const SIGN = {earning: 1, allowance: 1, reimbursement: 1, deduction: -1, payment: -1, advance_recovery: -1, cash_return: 1};
+export function post(s, e) { const x = {id: uid('SL'), at: stamp(), ts: clock(), status: 'posted', ...e}; L(s).push(x); return x; }
+const counts = e => !['disputed', 'rejected', 'pending_approval', 'pending_ack_failed', 'failed'].includes(e.status) && !(e.type === 'reimbursement' && e.status !== 'approved');
+export function balance(s, pid) { return L(s).filter(e => e.personId === pid && SIGN[e.type] && counts(e)).reduce((a, e) => a + SIGN[e.type] * e.amount, 0); }
+export const advanceLeft = (s, pid) => (s.staffAdvances || []).filter(a => a.personId === pid && a.status === 'active').reduce((x, a) => x + a.balance, 0);
+export function addReimbursement(s, pid, v, byStaff) {
+  const amount = Math.round(Number(v.amount)); if (!(amount > 0)) return 'Enter the amount.'; if (!v.receipt) return 'Attach a photo of the receipt.';
+  const p = (s.pickerStaff || []).find(x => x.id === pid) || (s.storeManagers || []).find(x => x.id === pid);
+  post(s, {store: p.store, personId: pid, branchId: v.branchId || s.staffHR[pid].homeBranch, type: 'reimbursement', amount, note: String(v.note || 'Store purchase').trim(), receipt: v.receipt, status: 'submitted', by: byStaff ? p.name : 'Store'}); return '';
+}
+export function decideEntry(s, ws, id, decision) {
+  const a = actor(s, ws), e = L(s).find(x => x.id === id); if (!e) return 'Not found.';
+  if (e.type === 'reimbursement' && e.status === 'submitted') { if (a.kind === 'manager' && e.amount > LIMITS.managerExpense) return `Managers can approve up to ${inr(LIMITS.managerExpense)}; the owner must approve this.`; e.status = decision === 'approve' ? 'approved' : 'rejected'; e.decidedBy = a.name; return ''; }
+  if (e.type === 'deduction' && e.status === 'disputed') { if (a.kind !== 'owner') return 'Only the owner decides disputes.'; e.status = decision === 'approve' ? 'posted' : 'rejected'; e.decidedBy = a.name; return ''; }
+  return 'Nothing to decide.';
+}
+export function addDeduction(s, ws, pid, v) {
+  const a = actor(s, ws), amount = Math.round(Number(v.amount));
+  if (!(amount > 0) || !String(v.reason || '').trim() || !v.evidence) return 'A deduction needs an amount, reason and evidence.';
+  if (amount > LIMITS.deductionCap && a.kind !== 'owner') return `Deductions above ${inr(LIMITS.deductionCap)} need the owner.`;
+  post(s, {store: a.store, personId: pid, branchId: s.staffHR[pid].homeBranch, type: 'deduction', amount, note: v.reason.trim(), evidence: v.evidence, by: a.name}); return '';
+}
+export function dispute(s, pid, id, reason) { const e = L(s).find(x => x.id === id && x.personId === pid); if (!e || e.type !== 'deduction') return 'Only deductions can be disputed here.'; if (!String(reason || '').trim()) return 'Say why you disagree.'; e.status = 'disputed'; e.disputeReason = reason.trim(); return ''; }
+export function giveAdvance(s, ws, pid, v) {
+  const a = actor(s, ws), h = s.staffHR[pid], amount = Math.round(Number(v.amount)), inst = Math.round(Number(v.instalment));
+  if (!(amount > 0) || !(inst > 0)) return 'Enter the advance and the monthly instalment.';
+  const cap = h.payType === 'monthly' ? h.rate * LIMITS.advanceMaxMonths : h.rate * 26;
+  if (amount + advanceLeft(s, pid) > cap) return `Advances are limited to about one month's pay (${inr(cap)}).`;
+  if (!String(v.reason || '').trim()) return 'Add a reason.';
+  const status = a.kind === 'owner' ? 'active' : 'pending_approval';
+  (s.staffAdvances ||= []).push({id: uid('ADV'), store: a.store, personId: pid, amount, balance: amount, instalment: inst, reason: v.reason.trim(), method: v.method || 'upi', status, at: stamp(), by: a.name});
+  if (status === 'active') payOut(s, a.store, pid, amount, v.method || 'upi', `Salary advance · ${v.reason.trim()}`, 'advance');
+  return status === 'active' ? '' : 'sent';
+}
+export function approveAdvance(s, ws, id) { const a = actor(s, ws), x = (s.staffAdvances || []).find(y => y.id === id); if (a.kind !== 'owner') return 'Only the owner approves advances.'; if (!x || x.status !== 'pending_approval') return 'Nothing to approve.'; x.status = 'active'; x.approvedBy = a.name; payOut(s, x.store, x.personId, x.amount, x.method, `Salary advance · ${x.reason}`, 'advance'); return ''; }
+// one payout routine for salary and advances: UPI/bank via the payment company, wallet, or cash needing acknowledgement
+function payOut(s, store, pid, amount, method, note, kind = 'salary') {
+  const h = s.staffHR[pid], m = method || h.payout?.method || 'cash', partyName = (s.pickerStaff || []).concat(s.storeManagers || []).find(x => x.id === pid)?.name;
+  if (['upi', 'bank'].includes(m) && !h.payout?.verified) return {error: `${partyName} has not added a verified UPI/bank account. Pay in cash or ask them to add it.`};
+  let status = 'paid', ref = `CASH-${Date.now().toString().slice(-6)}`;
+  if (['upi', 'bank'].includes(m)) { const g = gateway.payout(h.payout.method === 'upi' ? {method: 'upi', vpa: h.payout.upi} : {method: 'bank', accountNumber: h.payout.account}, amount); if (!g.ok) return {error: g.reason}; ref = g.ref; }
+  if (m === 'wallet') record(s, {owner: `staff:${pid}`, sourceType: 'store_pay', sourceId: pid, type: 'wallet_credit', payer: store, payee: `staff:${pid}`, responsible: store, amount, method: 'wallet', reference: `WAL-${Date.now().toString().slice(-6)}`, status: 'confirmed', note});
+  if (m === 'cash') status = 'pending_ack';
+  const e = kind === 'advance' ? post(s, {store, personId: pid, branchId: h.homeBranch, type: 'advance_paid', amount, note, method: m, reference: ref, status}) : post(s, {store, personId: pid, branchId: h.homeBranch, type: 'payment', amount, note, method: m, reference: ref, status});
+  return {ok: true, entry: e};
+}
+export function acknowledge(s, pid, id, ok) { const e = L(s).find(x => x.id === id && x.personId === pid && x.status === 'pending_ack'); if (!e) return 'Nothing to confirm.'; e.status = ok ? 'acknowledged' : 'not_received'; e.ackAt = stamp(); return ''; }
+
+// ---------- payroll ----------
+export function payrollLines(s, store, scopeBranch = null) {
+  return people(s, store).filter(p => p.status === 'active' && (!scopeBranch || p.hr.homeBranch === scopeBranch || p.hr.cover.includes(scopeBranch))).map(p => {
+    const h = p.hr, ds = days(s, p.id), byBranch = {};
+    for (const d of ds) byBranch[d.branchId] = (byBranch[d.branchId] || 0) + 1;
+    const worked = ds.length, coverDays = ds.filter(d => d.cover).length;
+    const orders = (s.customerOrders || []).filter(o => o.pick?.pickerId === p.id && (o.deliveredAt ? new Date(o.deliveredAt).toISOString().slice(0, 7) === month() : true)).length;
+    const base = h.payType === 'monthly' ? Math.round(h.rate * Math.min(worked, 26) / 26) : h.payType === 'per_order' ? h.rate * orders : h.rate * worked;
+    const meal = worked * (h.mealPerShift || 0), coverPay = coverDays * (h.coverAllowance || 0);
+    const posted = L(s).some(e => e.personId === p.id && e.type === 'earning' && e.period === month());
+    const owed = balance(s, p.id) + (posted ? 0 : base + meal + coverPay), adv = (s.staffAdvances || []).filter(a => a.personId === p.id && a.status === 'active'), recovery = Math.min(owed, adv.reduce((x, a) => x + Math.min(a.instalment, a.balance), 0));
+    return {p, worked, coverDays, byBranch, base, meal, coverPay, posted, recovery, net: Math.max(0, owed - recovery), method: h.payout?.method || 'cash', payoutOk: h.payout?.verified};
+  });
+}
+export function postEarnings(s, ws) {
+  const a = actor(s, ws); if (!['owner', 'manager'].includes(a.kind)) return 'Not allowed.';
+  for (const l of payrollLines(s, a.store, a.kind === 'manager' ? a.branch : null)) {
+    if (l.posted) continue;
+    for (const [b, n] of Object.entries(l.byBranch)) { const share = l.worked ? Math.round(l.base * n / l.worked) : 0; if (share) post(s, {store: a.store, personId: l.p.id, branchId: b, type: 'earning', amount: share, period: month(), note: `${l.p.hr.payType === 'monthly' ? 'Salary' : l.p.hr.payType === 'per_order' ? 'Per-order pay' : 'Shift pay'} · ${n} day(s) at ${branchName(s, a.store, b)}`}); }
+    if (!l.worked && l.base) post(s, {store: a.store, personId: l.p.id, branchId: l.p.hr.homeBranch, type: 'earning', amount: l.base, period: month(), note: 'Per-order pay'});
+    if (l.meal) post(s, {store: a.store, personId: l.p.id, branchId: l.p.hr.homeBranch, type: 'allowance', amount: l.meal, period: month(), note: `Meal allowance · ${l.worked} shift(s) — not recovered`});
+    if (l.coverPay) post(s, {store: a.store, personId: l.p.id, branchId: Object.keys(l.byBranch).find(b => b !== l.p.hr.homeBranch) || l.p.hr.homeBranch, type: 'allowance', amount: l.coverPay, period: month(), note: `Cover allowance · ${l.coverDays} day(s) at another branch`});
+  }
+  return '';
+}
+export function payPerson(s, ws, pid, method) {
+  const a = actor(s, ws); if (a.kind !== 'owner') return 'The owner pays staff (managers prepare).';
+  const l = payrollLines(s, a.store).find(x => x.p.id === pid); if (!l) return 'Not found.'; if (!l.posted) return 'Post this month\'s earnings first.';
+  if (l.recovery) { let left = l.recovery; for (const adv of (s.staffAdvances || []).filter(x => x.personId === pid && x.status === 'active')) { const take = Math.min(left, adv.instalment, adv.balance); if (!take) continue; adv.balance -= take; left -= take; if (!adv.balance) adv.status = 'recovered'; post(s, {store: a.store, personId: pid, branchId: l.p.hr.homeBranch, type: 'advance_recovery', amount: take, note: `Advance instalment · ${adv.reason}`}); } }
+  if (!(l.net > 0)) return 'Nothing to pay.';
+  const r = payOut(s, a.store, pid, l.net, method || l.method, `Pay for ${month()}`); return r.error || '';
+}
+export function payslip(s, store, pid) {
+  const p = people(s, store).find(x => x.id === pid), es = L(s).filter(e => e.personId === pid && (e.period === month() || (e.ts && new Date(e.ts).toISOString().slice(0, 7) === month())));
+  return {p, es, branches: Object.entries(days(s, pid).reduce((a, d) => (a[d.branchId] = (a[d.branchId] || 0) + 1, a), {})).map(([b, n]) => `${branchName(s, store, b)} ${n} day(s)`)};
+}
+
+// ---------- petty cash per branch ----------
+export function petty(s, branchId) { s.pettyCash ||= {}; return (s.pettyCash[branchId] ||= {entries: []}); }
+export const pettyBalance = (s, b) => petty(s, b).entries.reduce((a, e) => a + (e.type === 'topup' ? e.amount : e.type === 'expense' ? -e.amount : e.type === 'count_diff' ? e.amount : 0), 0);
+export function pettyAction(s, ws, branchId, v) {
+  const a = actor(s, ws); if (a.kind === 'manager' && branchId !== a.branch) return 'Managers handle petty cash only at their branch.';
+  const amount = Math.round(Number(v.amount)), book = petty(s, branchId);
+  if (v.type === 'topup') { if (a.kind !== 'owner') return 'Only the owner tops up petty cash.'; if (!(amount > 0)) return 'Enter the amount.'; book.entries.push({type: 'topup', amount, by: a.name, at: stamp(), note: 'Float given'}); return ''; }
+  if (v.type === 'expense') { if (!(amount > 0) || !String(v.note || '').trim()) return 'Enter amount and what it was for.'; if (!v.receipt) return 'Attach the receipt photo.'; if (amount > pettyBalance(s, branchId)) return 'Not enough petty cash. Ask the owner to top up.'; book.entries.push({type: 'expense', amount, note: v.note.trim(), receipt: v.receipt, by: a.name, at: stamp()}); return ''; }
+  if (v.type === 'count') { const counted = Math.round(Number(v.counted)); if (!(counted >= 0)) return 'Enter the cash counted.'; const diff = counted - pettyBalance(s, branchId); book.entries.push({type: 'count_diff', amount: diff, by: a.name, at: stamp(), note: diff ? `Day-end count ${inr(counted)} · ${diff < 0 ? 'short' : 'extra'} ${inr(Math.abs(diff))}` : `Day-end count ${inr(counted)} · matches`}); return ''; }
+  return 'Unknown action.';
+}
+export function branchCost(s, store) {
+  const out = {}; for (const e of L(s).filter(x => x.store === store && ['earning', 'allowance'].includes(x.type) && (x.period === month()))) out[e.branchId] = (out[e.branchId] || 0) + e.amount;
+  for (const b of branchesOf(s, store)) for (const e of petty(s, b.id).entries.filter(x => x.type === 'expense')) out[b.id] = (out[b.id] || 0) + e.amount;
+  return out;
+}
+
+// ---------- seller onboarding levels and branch documents ----------
+const stateOf = b => Object.keys(STATE_CODE).find(k => String(b.serviceArea || b.address || '').includes(k)) || 'Delhi';
+export function sellerLevel(s, ws) {
+  const p = s.shopPartners?.[ws], ob = p?.onboarding || {}, food = (p?.approvedGroups || []).some(g => ['food', 'fresh'].includes(g));
+  const brs = branchesOf(s, ws), branchOk = brs.every(b => !food || (b.docs?.fssai && b.docs.fssaiExpiry >= today())) && brs.every(b => (b.docs?.gstin || ob.gstin || '').startsWith(STATE_CODE[stateOf(b)] || '07') || !ob.gstin);
+  if (!ob.pan || !ob.gstin || !branchOk || ob.status === 'pending' || ob.status === 'correction_required') return {level: 1, label: 'Draft', next: 'Add PAN, GSTIN and branch documents (FSSAI for food branches) to start selling.'};
+  if (!ob.bankVerified) return {level: 2, label: 'Verified to sell', next: 'Verify the payout account to receive money.'};
+  return {level: 3, label: 'Payout-ready', next: ''};
+}
+export function ensureBranchDocs(s) {
+  for (const [ws, brs] of Object.entries(s.sellerBranches || {})) for (const b of brs) {
+    const p = s.shopPartners?.[ws], st = stateOf(b);
+    b.docs ||= {gstin: st === 'Noida' ? (p?.onboarding?.gstin || '07AABCA1234K1Z5').replace(/^\d\d/, '09') : p?.onboarding?.gstin || '07AABCA1234K1Z5', fssai: /grocery|fresh/i.test(ws) ? `1332199900${String(brs.indexOf(b) + 1).padStart(4, '0')}` : '', fssaiExpiry: '2028-03-31', photo: 'storefront.jpg'};
+  }
+}
+export function saveBranchDocs(s, ws, branchId, v) {
+  const b = branchesOf(s, ws).find(x => x.id === branchId); if (!b) return 'Branch not found.';
+  const st = stateOf(b), code = STATE_CODE[st] || '07', g = String(v.gstin || '').toUpperCase();
+  if (g && !g.startsWith(code)) return `${b.name} is in ${st === 'Noida' ? 'Uttar Pradesh' : st}; its GSTIN must start with ${code} (one GSTIN per state).`;
+  if (g) { const r = gstLookup(g, s.shopPartners?.[ws]?.name); if (!r.ok) return r.reason; }
+  if (v.fssai && !/^\d{14}$/.test(v.fssai)) return 'FSSAI numbers have 14 digits.';
+  if (v.fssai && !(v.fssaiExpiry > today())) return 'Enter a future FSSAI expiry date.';
+  b.docs = {...(b.docs || {}), gstin: g || b.docs?.gstin, fssai: v.fssai || b.docs?.fssai, fssaiExpiry: v.fssaiExpiry || b.docs?.fssaiExpiry, photo: v.photo || b.docs?.photo};
+  return '';
+}
+export function dailyChecks(s) {
+  const out = [];
+  for (const [ws, p] of Object.entries(s.shopPartners || {})) {
+    const g = p.onboarding?.gstin; if (g && !gstLookup(g, p.name).ok && !p.gstPaused) { p.gstPaused = true; p.paused = true; out.push(`${p.name}: GSTIN ${g} is no longer active — listings and payouts paused`); }
+    for (const b of branchesOf(s, ws)) { const exp = b.docs?.fssaiExpiry; if (!b.docs?.fssai) continue; if (exp && exp < today() && b.open !== false) { b.open = false; b.pausedReason = 'FSSAI expired'; out.push(`${b.name}: FSSAI expired — branch paused`); } else if (exp && exp <= new Date(clock() + 30 * DAY).toISOString().slice(0, 10)) out.push(`${b.name}: FSSAI expires on ${exp} — renew within 30 days`); }
+  }
+  for (const t of out) (s.notifications ||= []).unshift({id: uid('NT'), to: 'admin', text: t, at: stamp(), read: false});
+  s.lastDailyCheck = stamp(); return out;
+}
+
+// ---------- screens ----------
+export function screen(s, route, ws) {
+  const a = actor(s, ws); if (!a) return '';
+  if (route === 'storeHR' && ['owner', 'manager'].includes(a.kind)) return ownerScreen(s, ws, a);
+  if (route === 'myHR' && a.kind === 'staff') return staffScreen(s, ws, a);
+  return '';
+}
+function ownerScreen(s, ws, a) {
+  ensureBranchDocs(s);
+  const tab = s.hrTab || 'team', brs = branchesOf(s, a.store), list = people(s, a.store).filter(p => inScope(a, p));
+  const tabs = [['team', 'Team by branch'], ['payroll', 'Payroll'], ['ledgers', 'Ledgers & advances'], ['petty', 'Petty cash'], ['reports', 'Branch cost']];
+  return `${head('People & pay', `${s.shopPartners?.[a.store]?.name || a.store}${a.kind === 'manager' ? ` · you manage ${branchName(s, a.store, a.branch)}` : ' · owner'}`)}
+  <div class="people-tabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'active' : ''}" data-hr-tab="${k}">${l}</button>`).join('')}</div>
+  ${tab === 'team' ? teamTab(s, a, brs, list) : tab === 'payroll' ? payrollTab(s, a) : tab === 'ledgers' ? ledgersTab(s, a, list) : tab === 'petty' ? pettyTab(s, a, brs) : reportsTab(s, a, brs)}<p class="hr-error field-error" hidden></p>`;
+}
+function teamTab(s, a, brs, list) {
+  const sel = (n, opts, v = '') => `<select name="${n}">${opts.map(([k, l]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  const myBrs = a.kind === 'manager' ? brs.filter(b => b.id === a.branch) : brs;
+  return `<section class="panel"><h2>Invite staff</h2><form class="form-grid two" data-hr-form="invite"><label><span>Name</span><input name="name"></label><label><span>Mobile</span><input name="mobile" inputmode="numeric"></label><label><span>Role</span>${sel('role', Object.entries(ROLES).filter(([k]) => a.kind === 'owner' || k !== 'manager'))}</label><label><span>Home branch</span>${sel('homeBranch', myBrs.map(b => [b.id, b.name]))}</label><label><span>Pay type</span>${sel('payType', [['monthly', 'Monthly salary'], ['per_shift', 'Per shift'], ['per_order', 'Per order picked']])}</label><label><span>Rate ₹</span><input name="rate" type="number" placeholder="e.g. 12000 / 450 / 8"></label><label><span>Pay frequency</span>${sel('freq', [['monthly', 'Monthly'], ['weekly', 'Weekly'], ['daily', 'Daily']])}</label><label><span>Start date</span><input name="start" type="date" value="${today()}"></label><label><span>Meal allowance per shift ₹</span><input name="meal" type="number" value="60"></label><label><span>Can also cover</span><span class="hr-cover">${brs.filter(b => !myBrs.some(m => m.id === b.id) || a.kind === 'owner').map(b => `<label><input type="checkbox" name="cover" value="${b.id}"> ${esc(b.name.split(' · ').pop())}</label>`).join('')}</span></label><button class="button primary wide">Send invitation</button></form><p class="muted">They accept with an OTP on their own phone, then verify their ID and add UPI/bank details before the first payout.</p></section>
+  ${brs.filter(b => a.kind === 'owner' || b.id === a.branch).map(b => { const home = list.filter(p => p.hr.homeBranch === b.id && p.status !== 'offboarded'), covers = list.filter(p => p.hr.cover.includes(b.id)); const mgr = home.find(p => p.hr.role === 'manager');
+    return `<section class="panel"><h2>${esc(b.name)} · ${home.filter(p => p.status === 'active').length} staff · ${mgr ? `Manager: ${esc(mgr.name)}` : 'No manager'}</h2>${home.map(p => personRow(s, a, p, brs)).join('') || '<p class="muted">No staff with this home branch.</p>'}${covers.length ? `<small class="muted">Can cover here: ${covers.map(p => esc(p.name)).join(', ')}</small>` : ''}
+    <form class="inline-form" data-hr-form="day" data-branch="${b.id}"><b>Attendance at ${esc(b.name.split(' · ').pop())}</b><select name="pid">${list.filter(p => p.status === 'active' && [p.hr.homeBranch, ...p.hr.cover].includes(b.id)).map(p => `<option value="${p.id}">${esc(p.name)}${p.hr.homeBranch !== b.id ? ' (cover)' : ''}</option>`).join('')}</select><input type="date" name="date" value="${today()}"><button class="button secondary compact">Mark present</button></form></section>`; }).join('')}`;
+}
+function personRow(s, a, p, brs) {
+  const h = p.hr;
+  return `<div class="ledger-row static hr-person"><span><b>${esc(p.name)}</b> <small class="muted">${esc(ROLES[h.role] || h.role)} · ${esc(p.mobile || '')}</small><small class="block">Home: <b>${esc(branchName(s, p.store, h.homeBranch))}</b>${h.cover.length ? ` · Also covers: ${h.cover.map(c => esc(branchName(s, p.store, c))).join(', ')}` : ''} · ${esc(h.payType === 'monthly' ? `₹${h.rate}/month` : h.payType === 'per_order' ? `₹${h.rate}/order` : `₹${h.rate}/shift`)} · paid ${esc(h.freq)}${h.payout?.method ? ` by ${esc(h.payout.method)}` : ' · payout details not added yet'}</small><small class="block">${pill(p.status)} ID ${pill(h.kyc?.status || 'pending')} Payout ${pill(h.payout?.verified ? 'verified' : 'pending')}${h.transfers.length ? ` · moved ${h.transfers.map(t => `${esc(branchName(s, p.store, t.from))} → ${esc(branchName(s, p.store, t.to))} on ${t.date}`).join('; ')}` : ''}</small></span>
+  <details><summary class="button secondary compact">Change branches</summary><form class="inline-form" data-hr-form="branches" data-id="${p.id}"><label>Home <select name="home" ${a.kind === 'manager' ? 'disabled' : ''}>${brs.map(b => `<option value="${b.id}" ${b.id === h.homeBranch ? 'selected' : ''}>${esc(b.name.split(' · ').pop())}</option>`).join('')}</select></label>${brs.map(b => `<label><input type="checkbox" name="cover" value="${b.id}" ${h.cover.includes(b.id) ? 'checked' : ''}> covers ${esc(b.name.split(' · ').pop())}</label>`).join('')}<input name="reason" placeholder="Reason (for a transfer)"><button class="button primary compact">${a.kind === 'owner' ? 'Save / transfer' : 'Save cover'}</button></form></details></div>`;
+}
+function payrollTab(s, a) {
+  const lines = payrollLines(s, a.store, a.kind === 'manager' ? a.branch : null), slip = s.hrSlip && payslip(s, a.store, s.hrSlip);
+  return `<section class="panel"><div class="panel-header"><div><h2>Payroll · ${month()}</h2><p>${a.kind === 'owner' ? 'Post earnings, then pay each person.' : 'Managers prepare (post earnings); the owner pays.'}</p></div><button class="button secondary" data-hr="post">Post earnings for ${month()}</button></div>
+  <div class="table-scroll"><table class="data-table"><thead><tr><th>Staff</th><th>Days by branch</th><th>Base</th><th>Meal</th><th>Cover</th><th>Advance recovery</th><th>To pay</th><th>Method</th><th></th></tr></thead><tbody>${lines.map(l => `<tr><td><b>${esc(l.p.name)}</b><small class="block muted">${esc(l.p.hr.payType)} · ${esc(l.p.hr.freq)}</small></td><td>${Object.entries(l.byBranch).map(([b, n]) => `${esc(branchName(s, a.store, b))} ${n}`).join(' · ') || '—'}</td><td>${inr(l.base)}</td><td>${inr(l.meal)}</td><td>${inr(l.coverPay)}</td><td>${l.recovery ? `−${inr(l.recovery)}` : '—'}</td><td><b>${inr(l.net)}</b>${l.posted ? '' : '<small class="block muted">not posted</small>'}</td><td>${esc(l.method)}${l.payoutOk ? '' : ' <small class="field-error">add UPI/bank</small>'}</td><td>${a.kind === 'owner' ? `<span class="row-actions"><select data-hr-method="${l.p.id}"><option value="">${esc(l.method)}</option><option value="upi">UPI</option><option value="bank">Bank</option><option value="wallet">MoveAI wallet</option><option value="cash">Cash</option></select><button class="button primary compact" data-hr="pay" data-id="${l.p.id}" ${l.posted ? '' : 'disabled'}>Pay</button></span>` : ''}<button class="button text compact" data-hr="slip" data-id="${l.p.id}">Payslip</button></td></tr>`).join('') || '<tr><td colspan="9">No active staff.</td></tr>'}</tbody></table></div><p class="mock-hint">Cash payments stay “waiting for staff confirmation” until the staff member confirms on their phone. Payout to a UPI ending “fail@upi” fails (prototype).</p></section>
+  ${slip ? `<section class="panel payslip"><div class="panel-header"><div><h2>Payslip · ${esc(slip.p.name)} · ${month()}</h2><p>${esc(slip.branches.join(' · ') || 'No attendance yet')}</p></div><span class="row-actions"><button class="button secondary compact" data-hr="print">Print / PDF</button><button class="button text compact" data-hr="slip" data-id="">Close</button></span></div><table class="price-table"><tbody>${slip.es.map(e => `<tr><td>${esc(e.note || e.type)}${e.status !== 'posted' ? ` · ${esc(e.status.replace(/_/g, ' '))}` : ''}</td><td>${SIGN[e.type] < 0 || e.type === 'advance_paid' ? '−' : ''}${inr(e.amount)}</td></tr>`).join('')}<tr class="total"><td>Balance due</td><td>${inr(balance(s, slip.p.id))}</td></tr><tr><td>Advance remaining</td><td>${inr(advanceLeft(s, slip.p.id))}</td></tr></tbody></table></section>` : ''}`;
+}
+function ledgersTab(s, a, list) {
+  const pend = L(s).filter(e => e.store === a.store && e.type === 'reimbursement' && e.status === 'submitted' && list.some(p => p.id === e.personId)), disp = L(s).filter(e => e.store === a.store && e.status === 'disputed'), advP = (s.staffAdvances || []).filter(x => x.store === a.store && x.status === 'pending_approval');
+  return `${pend.length || disp.length || advP.length ? `<section class="panel nc-actions"><h2>Needs your decision</h2>${pend.map(e => `<div class="ledger-row static"><span><b>Reimbursement ${inr(e.amount)} · ${esc(people(s, a.store).find(p => p.id === e.personId)?.name)}</b><small>${esc(e.note)} · receipt ${esc(e.receipt)}</small></span><span class="row-actions"><button class="button primary compact" data-hr="decide" data-id="${e.id}" data-d="approve">Approve</button><button class="button secondary compact" data-hr="decide" data-id="${e.id}" data-d="reject">Reject</button></span></div>`).join('')}${disp.map(e => `<div class="ledger-row static"><span><b>Disputed deduction ${inr(e.amount)}</b><small>${esc(e.note)} · staff says: ${esc(e.disputeReason)}</small></span><span class="row-actions"><button class="button secondary compact" data-hr="decide" data-id="${e.id}" data-d="approve">Uphold</button><button class="button secondary compact" data-hr="decide" data-id="${e.id}" data-d="reject">Waive</button></span></div>`).join('')}${advP.map(x => `<div class="ledger-row static"><span><b>Advance request ${inr(x.amount)} · ${esc(people(s, a.store).find(p => p.id === x.personId)?.name)}</b><small>${esc(x.reason)} · ${inr(x.instalment)}/month · by ${esc(x.by)}</small></span><button class="button primary compact" data-hr="adv-approve" data-id="${x.id}">Approve & pay</button></div>`).join('')}</section>` : ''}
+  ${list.filter(p => p.status === 'active').map(p => `<section class="panel"><div class="panel-header"><div><h2>${esc(p.name)} · balance ${inr(balance(s, p.id))}</h2><p>Advance remaining ${inr(advanceLeft(s, p.id))}</p></div></div>${L(s).filter(e => e.personId === p.id).slice(-8).reverse().map(e => `<div class="ledger-row static"><span><b>${esc(e.note || e.type)}</b><small>${esc(e.at)} · ${esc(e.type.replace(/_/g, ' '))}${e.method ? ` · ${esc(e.method)}` : ''} · ${esc(branchName(s, a.store, e.branchId))}</small></span><span class="amount ${SIGN[e.type] < 0 || e.type === 'advance_paid' ? 'out' : 'in'}">${SIGN[e.type] < 0 || e.type === 'advance_paid' ? '−' : '+'}${inr(e.amount)}</span>${e.status !== 'posted' ? pill(e.status) : ''}</div>`).join('') || '<p class="muted">No entries yet.</p>'}
+  <div class="row-actions"><details><summary class="button secondary compact">Give advance</summary><form class="inline-form" data-hr-form="advance" data-id="${p.id}"><input name="amount" type="number" placeholder="Advance ₹"><input name="instalment" type="number" placeholder="Monthly instalment ₹"><input name="reason" placeholder="Reason"><select name="method"><option value="upi">UPI</option><option value="cash">Cash</option><option value="wallet">Wallet</option></select><button class="button primary compact">${a.kind === 'owner' ? 'Give' : 'Request approval'}</button></form></details>
+  <details><summary class="button secondary compact">Add reimbursement</summary><form class="inline-form" data-hr-form="reimb" data-id="${p.id}"><input name="amount" type="number" placeholder="₹"><input name="note" placeholder="What was bought (e.g. carry bags)"><input name="receipt" type="file" accept="image/*"><button class="button secondary compact">Add</button></form></details>
+  <details><summary class="button secondary compact">Deduction</summary><form class="inline-form" data-hr-form="deduct" data-id="${p.id}"><input name="amount" type="number" placeholder="₹"><input name="reason" placeholder="Reason (e.g. scanner broken)"><input name="evidence" type="file"><button class="button secondary compact">Add</button></form></details></div></section>`).join('')}
+  <section class="panel"><h2>Advances register</h2>${(s.staffAdvances || []).filter(x => x.store === a.store).map(x => `<div class="ledger-row static"><span><b>${esc(people(s, a.store).find(p => p.id === x.personId)?.name)} · ${inr(x.amount)}</b><small>${esc(x.reason)} · ${inr(x.instalment)}/month · given ${esc(x.at)} by ${esc(x.by)}</small></span><span>${inr(x.balance)} left</span>${pill(x.status)}</div>`).join('') || '<p class="muted">No advances.</p>'}</section>`;
+}
+function pettyTab(s, a, brs) {
+  return brs.filter(b => a.kind === 'owner' || b.id === a.branch).map(b => { const book = petty(s, b.id); return `<section class="panel"><h2>${esc(b.name)} · petty cash ${inr(pettyBalance(s, b.id))}</h2>${book.entries.slice(-8).reverse().map(e => `<div class="ledger-row static"><span><b>${esc(e.note)}</b><small>${esc(e.at)} · ${esc(e.by)}${e.receipt ? ` · receipt ${esc(e.receipt)}` : ''}</small></span><span class="amount ${e.type === 'expense' || (e.type === 'count_diff' && e.amount < 0) ? 'out' : 'in'}">${e.type === 'expense' ? '−' : e.amount < 0 ? '−' : '+'}${inr(Math.abs(e.amount))}</span></div>`).join('') || '<p class="muted">No entries.</p>'}
+  <div class="row-actions">${a.kind === 'owner' ? `<form class="inline-form" data-hr-form="petty" data-branch="${b.id}" data-type="topup"><input name="amount" type="number" placeholder="Top-up ₹"><button class="button secondary compact">Give float</button></form>` : ''}<form class="inline-form" data-hr-form="petty" data-branch="${b.id}" data-type="expense"><input name="amount" type="number" placeholder="₹"><input name="note" placeholder="Tea / snacks / bags"><input name="receipt" type="file" accept="image/*"><button class="button secondary compact">Record expense</button></form><form class="inline-form" data-hr-form="petty" data-branch="${b.id}" data-type="count"><input name="counted" type="number" placeholder="Cash counted ₹"><button class="button secondary compact">Day-end count</button></form></div></section>`; }).join('');
+}
+function reportsTab(s, a, brs) {
+  const c = branchCost(s, a.store);
+  return `<section class="panel"><h2>Staff cost by branch · ${month()}</h2>${brs.filter(b => a.kind === 'owner' || b.id === a.branch).map(b => `<div class="ledger-row static"><span><b>${esc(b.name)}</b><small>Pay + allowances + petty cash expenses</small></span><span class="amount">${inr(c[b.id] || 0)}</span></div>`).join('')}<p class="mock-hint">Pay is charged to the branch where each day was worked; cover days go to the branch covered.</p></section>`;
+}
+function staffScreen(s, ws, a) {
+  const p = a.person; if (!p) return head('My pay & details', 'No active store account.');
+  const h = hr(s, {...p, kind: 'staff'}), others = (s.pickerStaff || []).filter(x => x.mobile === p.mobile && x.store !== p.store && x.status === 'active');
+  const acks = L(s).filter(e => e.personId === p.id && e.status === 'pending_ack');
+  return `${head('My pay & details', `${p.name} · ${s.shopPartners?.[p.store]?.name || p.store} · home ${branchName(s, p.store, h.homeBranch)}`)}
+  ${others.length ? `<p class="muted">You also work at ${others.map(x => esc(s.shopPartners?.[x.store]?.name || x.store)).join(', ')} — each employer sees only its own records.</p>` : ''}
+  ${acks.length ? `<section class="panel nc-actions"><h2>Confirm cash you received</h2>${acks.map(e => `<div class="ledger-row static"><span><b>${inr(e.amount)} · ${esc(e.note)}</b><small>${esc(e.at)}</small></span><span class="row-actions"><button class="button primary compact" data-hr="ack" data-id="${e.id}" data-ok="1">I received it</button><button class="button secondary compact" data-hr="ack" data-id="${e.id}" data-ok="">Not received</button></span></div>`).join('')}</section>` : ''}
+  <div class="metrics"><div class="metric"><span>Balance due to you</span><b>${inr(balance(s, p.id))}</b></div><div class="metric"><span>Advance remaining</span><b>${inr(advanceLeft(s, p.id))}</b></div><div class="metric"><span>ID check</span><b>${esc(h.kyc.status)}</b></div><div class="metric"><span>Payout</span><b>${esc(h.payout?.verified ? h.payout.method : 'not set')}</b></div></div>
+  ${h.kyc.status !== 'verified' ? `<section class="panel"><h2>Verify yourself (before your first shift)</h2><form class="form-grid two" data-hr-form="kyc"><label><span>Aadhaar number</span><input name="aadhaar" inputmode="numeric"></label><label><span>OTP</span><input name="otp" placeholder="123456"></label><label><span>Date of birth</span><input name="dob" type="date"></label><label><span>Live selfie</span><input name="selfie" type="file" accept="image/*" capture="user"></label><label><span>Emergency contact name</span><input name="emergencyName"></label><label><span>Emergency mobile</span><input name="emergencyMobile"></label><button class="button primary wide">Verify</button></form><p class="mock-hint">Test: any 12-digit Aadhaar starting 2–9, OTP 123456.</p></section>` : ''}
+  <section class="panel"><h2>How you get paid</h2><form class="form-grid two" data-hr-form="payout"><label><span>Method</span><select name="method"><option value="upi" ${h.payout?.method === 'upi' ? 'selected' : ''}>UPI</option><option value="bank" ${h.payout?.method === 'bank' ? 'selected' : ''}>Bank account</option><option value="cash" ${h.payout?.method === 'cash' ? 'selected' : ''}>Cash at the store</option></select></label><label><span>UPI ID</span><input name="upi" value="${esc(h.payout?.upi || '')}"></label><label><span>Bank account</span><input name="account"></label><label><span>IFSC</span><input name="ifsc" placeholder="SBIN0001234"></label><button class="button secondary wide">Save</button></form></section>
+  <section class="panel"><h2>My ledger</h2>${L(s).filter(e => e.personId === p.id).slice().reverse().map(e => `<div class="ledger-row static"><span><b>${esc(e.note || e.type)}</b><small>${esc(e.at)} · ${esc(branchName(s, p.store, e.branchId))}</small></span><span class="amount">${SIGN[e.type] < 0 || e.type === 'advance_paid' ? '−' : '+'}${inr(e.amount)}</span>${e.status !== 'posted' ? pill(e.status) : ''}${e.type === 'deduction' && e.status === 'posted' ? `<details><summary class="button text compact">Dispute</summary><form class="inline-form" data-hr-form="dispute" data-id="${e.id}"><input name="reason" placeholder="Why?"><button class="button secondary compact">Send</button></form></details>` : ''}</div>`).join('') || '<p class="muted">No entries yet.</p>'}
+  <details><summary class="button secondary compact">Claim money you spent for the store</summary><form class="inline-form" data-hr-form="my-reimb"><input name="amount" type="number" placeholder="₹"><input name="note" placeholder="What did you buy?"><input name="receipt" type="file" accept="image/*"><button class="button secondary compact">Submit</button></form></details>
+  <details><summary class="button secondary compact">Ask for an advance</summary><form class="inline-form" data-hr-form="my-advance"><input name="amount" type="number" placeholder="₹"><input name="instalment" type="number" placeholder="Pay back per month ₹"><input name="reason" placeholder="Reason"><button class="button secondary compact">Request</button></form></details></section>`;
+}
+export function storeSetupExtras(s, ws) {
+  ensureBranchDocs(s); const lv = sellerLevel(s, ws), brs = branchesOf(s, ws);
+  return `<section class="panel"><h2>Onboarding level: ${lv.level} of 3 · ${esc(lv.label)}</h2><div class="chip-row">${['Draft', 'Verified to sell', 'Payout-ready'].map((l, i) => `<span class="chip ${lv.level > i ? 'active' : ''}">${i + 1}. ${l}</span>`).join('')}</div>${lv.next ? `<p class="muted">${esc(lv.next)}</p>` : '<p class="muted">Listings are live and payouts are released.</p>'}${s.lastDailyCheck ? `<small class="muted">Last automatic check: ${esc(s.lastDailyCheck)}</small>` : ''}</section>
+  <section class="panel"><h2>Branch documents</h2>${brs.map(b => `<form class="form-grid two" data-hr-form="branch-docs" data-branch="${b.id}"><b class="wide">${esc(b.name)} ${b.open === false ? pill(b.pausedReason || 'paused') : ''}</b><label><span>GSTIN for this state</span><input name="gstin" value="${esc(b.docs?.gstin || '')}"></label><label><span>FSSAI (food branches)</span><input name="fssai" value="${esc(b.docs?.fssai || '')}"></label><label><span>FSSAI expiry</span><input name="fssaiExpiry" type="date" value="${esc(b.docs?.fssaiExpiry || '')}"></label><label><span>Storefront photo</span><input name="photo" type="file" accept="image/*"></label><button class="button secondary compact">Save branch documents</button></form>`).join('')}<p class="hr-error field-error" hidden></p></section>`;
+}
+
+// ---------- bindings ----------
+export function bind(root, api, inviteFn) {
+  const S = () => api.getState(), ws = () => S().currentWorkspace, err = m => { const e = root.querySelector('.hr-error'); if (e) { e.textContent = m; e.hidden = !m; } else api.toast(m); };
+  const done = (e, ok) => { if (e) return err(e); api.save(); api.render(); if (ok) api.toast(ok); };
+  const me = () => actor(S(), ws())?.person?.id;
+  root.querySelectorAll('[data-hr-tab]').forEach(b => b.onclick = () => { S().hrTab = b.dataset.hrTab; done(''); });
+  root.querySelectorAll('[data-hr]').forEach(b => b.onclick = () => { const s = S(), k = b.dataset.hr, id = b.dataset.id;
+    if (k === 'post') return done(postEarnings(s, ws()), 'Earnings posted for this month');
+    if (k === 'pay') return done(payPerson(s, ws(), id, root.querySelector(`[data-hr-method="${id}"]`)?.value), 'Payment recorded');
+    if (k === 'slip') { s.hrSlip = id || null; return done(''); }
+    if (k === 'print') return window.print();
+    if (k === 'decide') return done(decideEntry(s, ws(), id, b.dataset.d), 'Decision saved');
+    if (k === 'adv-approve') return done(approveAdvance(s, ws(), id), 'Advance approved and paid');
+    if (k === 'ack') return done(acknowledge(s, me(), id, Boolean(b.dataset.ok)), b.dataset.ok ? 'Thanks — confirmed' : 'Reported as not received; the owner will check');
+  });
+  root.querySelectorAll('form[data-hr-form]').forEach(f => f.onsubmit = e => { e.preventDefault(); const s = S(), fd = new FormData(f), v = Object.fromEntries(fd), k = f.dataset.hrForm, file = n => fd.get(n)?.name || '';
+    if (k === 'invite') { const r = invite(s, ws(), {...v, cover: fd.getAll('cover')}, inviteFn); return done(r.error, `Invitation sent to ${v.name}${r.note ? ` · ${r.note}` : ''}`); }
+    if (k === 'branches') return done(setBranches(s, ws(), f.dataset.id, v.home || s.staffHR[f.dataset.id].homeBranch, fd.getAll('cover'), v.reason), 'Branches updated');
+    if (k === 'day') return done(markDay(s, ws(), v.pid, v.date, f.dataset.branch), 'Attendance marked');
+    if (k === 'advance') { const r = giveAdvance(s, ws(), f.dataset.id, v); return done(r === 'sent' ? '' : r, r === 'sent' ? 'Advance request sent to the owner' : 'Advance given'); }
+    if (k === 'reimb') return done(addReimbursement(s, f.dataset.id, {...v, receipt: file('receipt')}), 'Reimbursement added for approval');
+    if (k === 'deduct') return done(addDeduction(s, ws(), f.dataset.id, {...v, evidence: file('evidence')}), 'Deduction added');
+    if (k === 'petty') return done(pettyAction(s, ws(), f.dataset.branch, {...v, type: f.dataset.type, receipt: file('receipt')}), 'Petty cash updated');
+    if (k === 'kyc') return done(verifyStaff(s, me(), {...v, selfie: file('selfie'), name: actor(s, ws()).name}), 'You are verified');
+    if (k === 'payout') return done(setPayout(s, me(), {...v, name: actor(s, ws()).name}), 'Payout details saved');
+    if (k === 'dispute') return done(dispute(s, me(), f.dataset.id, v.reason), 'Dispute sent to the owner');
+    if (k === 'my-reimb') return done(addReimbursement(s, me(), {...v, receipt: file('receipt')}, true), 'Claim sent for approval');
+    if (k === 'my-advance') { const a0 = actor(s, ws()), h = s.staffHR[me()]; const amount = Math.round(Number(v.amount)); if (!(amount > 0) || !(Number(v.instalment) > 0) || !String(v.reason || '').trim()) return err('Enter amount, monthly pay-back and reason.'); (s.staffAdvances ||= []).push({id: uid('ADV'), store: a0.store, personId: me(), amount, balance: amount, instalment: Math.round(Number(v.instalment)), reason: v.reason.trim(), method: h.payout?.method || 'cash', status: 'pending_approval', at: stamp(), by: a0.name}); return done('', 'Advance request sent'); }
+    if (k === 'branch-docs') return done(saveBranchDocs(s, ws(), f.dataset.branch, {...v, photo: file('photo')}), 'Branch documents saved');
+  });
+}
