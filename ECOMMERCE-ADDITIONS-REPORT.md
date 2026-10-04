@@ -29,7 +29,7 @@ Commission 8% and payout hold 7 days for every category, TCS/TDS 0% and no extra
 
 ## Try it (same browser profile)
 1. Customer: Shop → search “chawal” or “tamatar” → filters → product page (MRP, variants, reviews, wishlist) → add to cart → checkout: coupon `SAVE10` / `FIRST50`, tip, slot.
-2. Seller (`seller.html`): accept → pick: type the barcode shown on each item, weigh tomatoes → pack (photo for big orders). Listings & stock, Store setup, Analytics, Returns.
+2. Seller (`seller.html`) or store staff (`picker.html`): accept → pick: tap **Demo: simulate scan** (or type the barcode shown on the item), weigh tomatoes → pack (photo for big orders). Listings & stock, Store setup, Analytics, Returns.
 3. Delivery (`delivery.html`): Deliveries shows distance, pay incl. tip, masked number, proof of delivery and return pickups.
 4. Customer: Orders → Help with this order → claim or return → watch the wallet / refund; rate the items.
 5. Admin (`admin.html`): Listing approvals, Returns & claims, Commerce settings, Commerce reports.

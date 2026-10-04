@@ -212,7 +212,7 @@ export const deliveryPay = (s, o) => Math.max(30, Math.round(20 + 8 * (o.deliver
 export const aisleSort = (s, items) => [...items].sort((a, b) => String(s.products.find(p => p.id === a.productId)?.aisle).localeCompare(String(s.products.find(p => p.id === b.productId)?.aisle)));
 export function pickInputs(s, o, i) {
   const p = s.products.find(x => x.id === i.productId); if (!p) return '';
-  return `<small class="muted">Aisle ${esc(p.aisle)} · barcode ends ${esc(String(p.barcode).slice(-4))}</small><input class="scan-input" data-scan="${esc(o.id)}|${esc(p.id)}" placeholder="Scan or type barcode">${p.soldByWeight ? `<input class="scan-input" type="number" step="0.01" data-weight="${esc(o.id)}|${esc(p.id)}" placeholder="Weighed kg (ordered ${i.quantity * (p.nominalKg || 1)})">` : ''}`;
+  return `<small class="muted">Aisle ${esc(p.aisle)} · barcode ${esc(p.barcode)}</small><input class="scan-input" data-scan="${esc(o.id)}|${esc(p.id)}" placeholder="Scan or type barcode"><button type="button" class="button text compact" data-plus-demo-scan="${esc(o.id)}|${esc(p.id)}" data-code="${esc(p.barcode)}">Demo: simulate scan</button>${p.soldByWeight ? `<input class="scan-input" type="number" step="0.01" data-weight="${esc(o.id)}|${esc(p.id)}" placeholder="Weighed kg (ordered ${i.quantity * (p.nominalKg || 1)})">` : ''}`;
 }
 export function pickVerify(s, oid, pid, root) {
   ensurePlus(s);
@@ -476,6 +476,7 @@ export function bind(root, api) {
   const S = () => api.getState(), err = m => { const e = root.querySelector('.plus-error') || root.querySelector('#po-error'); if (e) { e.textContent = m; e.hidden = !m; } else api.toast(m); };
   const done = (e, ok) => { if (e) return err(e); api.save(); api.render(); if (ok) api.toast(ok); };
   const ws = () => S().currentWorkspace, sw = () => storeWs(ws());
+  root.querySelectorAll('[data-plus-demo-scan]').forEach(b => b.onclick = () => { const i = root.querySelector(`[data-scan="${b.dataset.plusDemoScan}"]`); if (i) { i.value = b.dataset.code; i.focus(); } });
   root.querySelectorAll('[data-plus-variant]').forEach(b => b.onclick = () => { S().selectedProductId = b.dataset.plusVariant; done('', ''); });
   root.querySelectorAll('[data-plus-file]').forEach(f => f.onchange = () => { const o = S().customerOrders.find(x => x.id === f.dataset.id); if (o && f.files[0]) { o.packPhoto = f.files[0].name; done('', 'Packing photo saved'); } });
   root.querySelectorAll('[data-plus]').forEach(b => b.onclick = () => { const s = S(), a = b.dataset.plus, id = b.dataset.id;
