@@ -55,7 +55,7 @@ export function issueInvoice(state, {kind, r, o, party}) {
     for (const x of (r.extras || []).filter(e => e.status === 'approved')) (x.passThrough ? reimb : lines).push({desc: x.label + (x.note ? ` · ${x.note}` : ''), amount: x.amount});
     gst = r.quote?.gst || 0; gstRate = r.quote?.gstRate || 0;
   } else {
-    lines = o.items.map(i => { const p = state.products.find(x => x.id === i.productId); return {desc: `${i.quantity} × ${i.name || p?.name || i.productId}`, amount: (i.unitPrice ?? p?.price ?? 0) * i.quantity}; });
+    lines = o.items.map(i => { const p = state.products.find(x => x.id === i.productId); return {desc: `${i.quantity} × ${i.name || p?.name || i.productId}${p?.hsn ? ` · HSN ${p.hsn}` : ''}${p?.mrp ? ` · MRP ₹${p.mrp}` : ''}${p?.gstRate != null ? ` · GST ${p.gstRate}% incl.` : ''}${i.weighedKg ? ` · weighed ${i.weighedKg} kg` : ''}`, amount: i.finalAmount ?? (i.unitPrice ?? p?.price ?? 0) * i.quantity}; });
     if (o.deliveryFee) lines.push({desc: 'Delivery', amount: o.deliveryFee});
   }
   const taxable = lines.reduce((a, l) => a + l.amount, 0);

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as Plus from '../js/commerce-plus.js';
 import {SEED} from '../js/mock-data.js';
 import * as PO from '../js/product-orders.js';
 import * as C from '../js/commerce.js';
@@ -95,7 +96,7 @@ const uiOrder=PO.placeOrder(ui,{productId:'PRD-103',qty:1,address:'Delhi',method
 tap('grocery','accept',uiOrder.id);
 tap('grocery','assign-picker',uiOrder.id,{[`[data-picker-assignment="${uiOrder.id}"]`]:nina.id});
 assert.equal(uiOrder.pickerId,nina.id);
-tap('picker','pick-start',uiOrder.id);tap('picker','pick-check',uiOrder.id,{},'PRD-103');tap('picker','pick-complete',uiOrder.id);
+tap('picker','pick-start',uiOrder.id);Plus.ensurePlus(ui);tap('picker','pick-check',uiOrder.id,{[`[data-scan="${uiOrder.id}|PRD-103"]`]:ui.products.find(p=>p.id==='PRD-103').barcode},'PRD-103');tap('picker','pick-complete',uiOrder.id);
 tap('grocery','pack',uiOrder.id,{[`[data-bags="${uiOrder.id}"]`]:'1'});
 assert.equal(uiOrder.status,'ready_for_pickup');
 assert.ok(saved>=6);

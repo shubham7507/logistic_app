@@ -29,7 +29,7 @@ assert.equal(canOpen('personal','productDetail'),true);
 assert.equal(canOpen('personal','cartAdded'),true);
 assert.equal(canOpen('grocery','cartAdded'),false);
 s.checkoutFromCart=true;
-for(const step of ['1 · Fulfilment','2 · Payment method','3 · Review items and total'])assert.ok(Shop.checkoutScreen(s).includes(step));
+for(const step of ['1 · Fulfilment','2 · Payment method','3 · Review seller packages and total'])assert.ok(Shop.checkoutScreen(s).includes(step));
 const mobileCss=fs.readFileSync(new URL('../css/marketplace.css',import.meta.url),'utf8');
 assert.match(mobileCss,/\.shop-toolbar/);
 console.log(JSON.stringify({status:'PASS',suite:'Product detail → add button → visible cart confirmation → basket → checkout'}));

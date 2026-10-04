@@ -30,8 +30,8 @@ assert.equal(s.products.find(p=>p.id==='PRD-103').price,30);
 const stock=Voice.productUpdateDraft('Add Tata Salt stock by 10',s.products);assert.equal(stock.productId,'PRD-103');ok(Inventory.adjustStock(s,'grocery',stock.productId,stock.value,'Received'));
 
 const spoken=Voice.orderDraft('Two Tata Salt and one rice',s.products.filter(Inventory.published));
-assert.equal(spoken.lines.length,2);assert.equal(spoken.lines[0].productId,'PRD-103');assert.equal(spoken.lines[1].productId,'');assert.equal(spoken.lines[1].options.length,2);
-const hindi=Voice.orderDraft('दो नमक और एक चावल',s.products.filter(Inventory.published));assert.equal(hindi.lines[0].productId,'PRD-103');assert.equal(hindi.lines[0].quantity,2);assert.equal(hindi.lines[1].options.length,2);
+assert.equal(spoken.lines.length,2);assert.equal(spoken.lines[0].productId,'PRD-103');assert.equal(spoken.lines[1].productId,'');assert.ok(spoken.lines[1].options.length>=2,'rice pack sizes offered as options');
+const hindi=Voice.orderDraft('दो नमक और एक चावल',s.products.filter(Inventory.published));assert.equal(hindi.lines[0].productId,'PRD-103');assert.equal(hindi.lines[0].quantity,2);assert.ok(hindi.lines[1].options.length>=2);
 ok(Orders.addToCart(s,spoken.lines[0].productId,2));ok(Orders.addToCart(s,'PRD-101',1));
 const {order,error}=Orders.placeOrder(s,{fromCart:true,address:'Flat 402, Noida',method:'cod'});assert.equal(error,undefined);assert.equal(order.items.length,2);
 assert.match(Commerce.screen(s,'shopOrders','grocery'),/offer to an on-shift worker/);

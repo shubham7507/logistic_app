@@ -19,7 +19,7 @@ for(const method of ['upi','cod']){
  const s=structuredClone(SEED);
  for(const id of ['PRD-101','PRD-201','PRD-301'])assert.equal(Shop.addToCart(s,id),'');
  assert.match(Shop.cartScreen(s),/Sharma Electricals/);
- assert.match(Shop.checkoutScreen({...s,checkoutFromCart:true}),/City Fashion · separate package/);
+ assert.match(Shop.checkoutScreen({...s,checkoutFromCart:true}),/Package 3 · City Fashion/);
  assert.match(Shop.placeOrder(s,{fromCart:true,fulfilment:'pickup',method:'upi',vpa:'test@okaxis'}).error,/one seller/);
  const r=Shop.placeOrder(s,{fromCart:true,fulfilment:'delivery',address:'42 MG Road, Delhi 110001',method,vpa:'test@okaxis'});
  assert.equal(r.ok,true,r.error);assert.equal(r.orders.length,3);assert.equal(r.total,1669);

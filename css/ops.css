@@ -168,3 +168,10 @@ td.duty.free{background:#eef8f3}td.duty.on_trip,td.duty.on_job{background:var(--
 .doc .doc-head{display:flex;justify-content:space-between;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:10px}.doc .doc-head div{display:grid;gap:2px}.doc small{color:var(--muted)}
 @media print{.doc{box-shadow:none;border:0}}
 .price-table tr.sub td{text-align:left!important}
+/* commerce-plus */
+.shop-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px}.shop-filters select,.shop-filters input{min-height:36px;border:1px solid var(--line);border-radius:10px;padding:4px 8px;font:inherit}.shop-filters small{flex-basis:100%}
+.mrp{display:block;color:var(--muted)}.mrp b{color:var(--brand)}.stars{display:block;color:#a26b00;font-weight:700}
+.plus-product .price{font-size:24px}.variants .chip.active{background:var(--brand);color:#fff}.thumbs{display:flex;gap:6px;overflow-x:auto}.thumbs img{width:64px;height:64px;object-fit:cover;border-radius:8px}
+.review{border-top:1px solid var(--line);padding:6px 0}.plus-checkout{border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.scan-input{min-height:34px;border:1px solid var(--line);border-radius:8px;padding:4px 8px;max-width:180px}.pack-photo{margin-top:6px}
+.order-help{margin-top:8px}.help-item{border-top:1px solid var(--line);padding:8px 0}.claim-row{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:6px 0;display:grid;gap:4px}

@@ -59,8 +59,8 @@ o=order(s);pack(s,o);assert.equal(o.deliveryAssignment,null);assert.match(C.assi
 s.deliveryPartners.deliveryPartner.available=true;assert.equal(C.assign(s,o.id,'DP-001'),'');
 assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,o.bagCount),'');
 assert.match(C.customerCancel(s,o.id),/before pickup/);
-assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'issue','Customer unavailable'),'');assert.equal(o.status,'delivery_issue');
-assert.equal(C.retryDelivery(s,o.id),'');assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode),'');
+assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'issue','Customer unavailable'),'');assert.equal(o.status,'out_for_delivery','first failed attempt is retried automatically');assert.equal(o.attempts,1);
+assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode),'');
 assert.equal(C.requestReturn(s,o.id,'Damaged pack'),'');assert.equal(C.resolveReturn(s,o.id,false),'');assert.equal(o.status,'delivered');
 // A seller toggles only its own stock, and new orders respect availability.
 s=fresh();s.products.find(p=>p.id==='PRD-101').stock='Unavailable';assert.match(PO.placeOrder(s,{productId:'PRD-101',qty:1,address:'X',method:'cod'}).error,/availability/);

@@ -17,7 +17,7 @@ export const available=(p,branchId)=>{const rows=p?.branchStock;if(rows){if(bran
 const ensureBranch=(s,p)=>{if(!p.branchStock){const store=Object.keys(s.shopPartners||{}).find(k=>s.shopPartners[k].name===p.fulfilmentPartner);p.branchStock={[defaultBranch(s,store)]:{quantity:Number(p.quantity??100),reserved:Number(p.reserved||0)}}}return p.branchStock};
 export const ensureProductBranches=ensureBranch;
 const branchLine=(s,p,id)=>{const rows=ensureBranch(s,p);return rows[id]||(rows[id]={quantity:0,reserved:0})};
-export const published=p=>p?.status!=='draft'&&p?.status!=='paused'&&p?.stock==='In stock'&&available(p)>0&&categoryOptions.includes(categoryFor(p))&&!excludedProduct(`${p.name} ${p.description||''}`)&&p.vegStatus===(HOUSEHOLD_CATEGORIES.has(categoryFor(p))?'not_applicable':'vegetarian');
+export const published=p=>(p?.approval||'approved')==='approved'&&p?.status!=='draft'&&p?.status!=='paused'&&p?.stock==='In stock'&&available(p)>0&&categoryOptions.includes(categoryFor(p))&&!excludedProduct(`${p.name} ${p.description||''}`)&&p.vegStatus===(HOUSEHOLD_CATEGORIES.has(categoryFor(p))?'not_applicable':'vegetarian');
 export const low=p=>p?.stock==='In stock'&&p?.status!=='draft'&&available(p)<=Number(p?.lowStockAt??5);
 export const label=p=>p?.status==='draft'?'Draft':p?.status==='paused'?'Paused':p?.stock!=='In stock'||available(p)===0?'Sold out':low(p)?`Only ${available(p)} left`:'In stock';
 export const forStore=(s,ws)=>s.products.filter(p=>p.fulfilmentPartner===storeName(s,ws));

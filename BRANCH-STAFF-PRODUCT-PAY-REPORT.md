@@ -33,3 +33,12 @@ The automated mock role tests do not prove that real bank/UPI/card transfers, no
 ## Follow-up for production
 
 A server needs authenticated role/branch membership, transactional stock reservations, distributed event notifications, audited payroll and payment integrations, verified webhooks, refunds and reconciliation. The current UI is a mock prototype.
+
+## Seller-grouped cart update (4 October 2026)
+
+- Customer cart now displays one card for each seller, containing that seller's product quantities, item subtotal, delivery fee and package total. A separate summary displays one combined checkout amount and package count. The layout stacks cards and summary on smaller screens.
+- Checkout repeats each seller's items, delivery charge and package total before the single payment action.
+- After checkout, My orders shows a shared checkout summary with a separate order card for every seller. Each card and tracking screen labels its seller and its position among the packages. Sellers still see only their own order.
+- The screenshot example was checked with Fortune Chakki Atta (₹485 + ₹40 delivery), LED Bulb 9 W (₹120 + ₹40) and Everyday Basmati Rice (₹650 + free delivery): one ₹1,335 checkout, three seller orders, and separate tracking.
+- Tests: `node tests/grouped-seller-cart.e2e.mjs`, `npm run test:commerce`, `npm run test:unit`, all JavaScript syntax checks, and seller/delivery/admin screen integration passed.
+- Live browser click-through remains unverified in this execution environment because its browser runner is unavailable. Payments and cross-device sync remain simulated pending a backend.
