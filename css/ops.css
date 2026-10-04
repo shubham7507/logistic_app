@@ -176,3 +176,9 @@ td.duty.free{background:#eef8f3}td.duty.on_trip,td.duty.on_job{background:var(--
 .scan-input{min-height:34px;border:1px solid var(--line);border-radius:8px;padding:4px 8px;max-width:180px}.pack-photo{margin-top:6px}
 .order-help{margin-top:8px}.help-item{border-top:1px solid var(--line);padding:8px 0}.claim-row{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:6px 0;display:grid;gap:4px}
 .scan-input:focus{outline:2px solid var(--brand)}
+/* geo */
+.geo-map{width:100%;max-width:520px;height:auto;display:block;margin:8px 0;border-radius:12px}.geo-pin{border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.live-dot{color:#0b6655}.geo-courier{border-bottom:1px dashed var(--line);padding-bottom:8px;margin-bottom:6px}
+/* notification centre */
+.nc-card{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.nc-card .progress{max-width:260px}
+.nc-actions{border:1px solid #f1d58f;background:#fffaf0}.nc-group{padding:8px 0;border-bottom:1px solid var(--line)}.nc-group summary{cursor:pointer}.nc-group.unread summary b::before{content:"● ";color:var(--brand)}

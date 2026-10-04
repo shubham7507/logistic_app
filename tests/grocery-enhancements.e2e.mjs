@@ -36,7 +36,7 @@ assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode)
 assert.equal(o.status,'delivered');
 assert.match(C.screen(s,'commercePayments','admin'),/Payment records/);
 assert.match(C.screen(s,'commercePayments','admin'),/customer payment/);
-assert.match(PO.trackingScreen({...s,selectedTrackingOrderId:o.id}),/no live GPS or calculated ETA/);
+assert.match(PO.trackingScreen({...s,selectedTrackingOrderId:o.id}),/Live map below|Checkpoints are shared manually/);
 const deliveredAlert=s.notifications.find(n=>n.to==='personal'&&n.ref===o.id&&/Delivered; view/.test(n.text));
 let click,route='';s.currentWorkspace='personal';
 const node={dataset:{op:'notif-open',id:deliveredAlert.id},addEventListener:(event,fn)=>{if(event==='click')click=fn}};

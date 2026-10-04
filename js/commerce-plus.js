@@ -8,6 +8,7 @@
 // store disputes. Money: commission & payout hold by category, seller- vs platform-funded discounts, TCS/TDS settings,
 // HSN/MRP on invoices. Admin: approvals, claims centre, settings, reports, fraud flags, notification outbox.
 import {esc, pill, inr} from './ops.js';
+import * as Geo from './geo.js';
 import {gateway, record, clock} from './pay.js';
 import * as Commerce from './commerce.js';
 import {rcLookup, gstLookup, pennyDrop} from './verify-sim.js';
@@ -162,7 +163,7 @@ export function checkoutExtrasHtml(s, lines, q) {
   ensurePlus(s); const cp = s.checkoutPlus || {}, stores = [...new Set(lines.map(l => l.product.fulfilmentPartner))];
   const eta = Math.max(...stores.map(n => etaMinutes(s, n, s.deliveryAddress))), weight = lines.some(l => l.product.soldByWeight), refusals = s.codRefusals[s.person?.id || 'me'] || 0;
   const slots = [0, 1].flatMap(d => ['09:00–11:00', '12:00–14:00', '18:00–20:00'].map(w => `${d ? 'Tomorrow' : 'Today'} ${w}`));
-  return `<fieldset class="wide plus-checkout"><legend>Offers, tip and delivery time</legend>
+  return `${Geo.pinHtml(s, lines)}<fieldset class="wide plus-checkout"><legend>Offers, tip and delivery time</legend>
   <div class="form-grid two"><label><span>Coupon code</span><span class="inline-add"><input name="plusCoupon" value="${esc(cp.coupon || '')}" placeholder="e.g. SAVE10" autocapitalize="characters"><button type="button" class="button secondary compact" data-plus="apply-checkout">Apply</button></span>${q.couponError ? `<small class="field-error">${esc(q.couponError)}</small>` : q.discount ? `<small class="chip">−${inr(q.discount)} applied</small>` : ''}</label>
   <label><span>Tip your delivery partner (100% goes to them)</span><select name="plusTip">${[0, 10, 20, 30, 50].map(t => `<option value="${t}" ${Number(cp.tip || 0) === t ? 'selected' : ''}>${t ? inr(t) : 'No tip'}</option>`).join('')}</select></label>
   <label><span>Delivery time</span><select name="plusSlot"><option value="express">Express · arrives in about ${eta} min</option>${slots.map(x => `<option ${cp.slot === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
@@ -176,10 +177,11 @@ export function checkoutAdjust(s, v, lines, q) {
   ensurePlus(s);
   for (const n of [...new Set(lines.map(l => l.product.fulfilmentPartner))]) { const o = storeOpen(s, n); if (!o.open) return {error: `${o.reason}. Remove its items or try later.`}; }
   if (v.method === 'cod' && (s.codRefusals[s.person?.id || 'me'] || 0) >= settings(s).codRefusalLimit) return {error: 'Cash on delivery is unavailable after repeated refused deliveries. Pay online.'};
+  const pin = Geo.pinFrom(s, v), geoErr = Geo.checkServiceable(s, [...new Set(lines.map(l => l.product.fulfilmentPartner))], pin); if (geoErr && v.fulfilment !== 'pickup') return {error: geoErr}; s.customerPin = pin;
   const r = couponDiscount(s, v.plusCoupon, lines, v.method); if (r.error) return {error: r.error};
   const tip = v.fulfilment === 'pickup' ? 0 : Math.max(0, Math.min(500, Number(v.plusTip || 0)));
   const weightExtra = lines.filter(l => l.product.soldByWeight).reduce((a, l) => a + Math.round(l.product.price * l.quantity * 0.1), 0);
-  return {discount: r.discount || 0, coupon: r.coupon || null, tip, slot: v.plusSlot || 'express', repeat: v.plusRepeat || '', itemsAll: q.items, weightExtra};
+  return {discount: r.discount || 0, coupon: r.coupon || null, tip, slot: v.plusSlot || 'express', repeat: v.plusRepeat || '', itemsAll: q.items, weightExtra, pin};
 }
 export function applyToOrder(s, o, adj, index, count, ordersSoFar = []) {
   if (!adj) return;
@@ -189,6 +191,7 @@ export function applyToOrder(s, o, adj, index, count, ordersSoFar = []) {
   Object.assign(o, {discount: share, couponCode: share ? adj.coupon.code : '', couponFunding: share ? adj.coupon.fundedBy : '', tip, slot: adj.slot, total: o.itemTotal + o.deliveryFee - share + tip, weightPreauth: o.items.some(i => s.products.find(p => p.id === i.productId)?.soldByWeight)});
   o.etaMinutes = adj.slot === 'express' ? etaMinutes(s, o.fulfilmentPartner, o.address) : null;
   o.deliveryKm = distanceKm(o.pickupAddress || o.fulfilmentPartner, o.address);
+  if (o.fulfilment !== 'pickup') Geo.applyOrder(s, o, adj.pin);
 }
 export function afterInitialize(s, o) {
   const st = settings(s);
@@ -459,7 +462,7 @@ function reportsScreen(s) {
   const late = done.filter(o => o.etaMinutes && o.deliveredAt && o.createdAt && (o.deliveredAt - o.createdAt) / 60000 > o.etaMinutes).length;
   const claimsBy = {}; for (const c of s.claims || []) claimsBy[c.orderId] = 1;
   const flags = [...Object.entries(s.codRefusals || {}).filter(([, n]) => n >= 2).map(([k, n]) => `Customer ${k}: ${n} refused COD deliveries`), ...((s.claims || []).filter(c => clock() - c.createdAt < 30 * DAY).length >= settings(s).claimMax30d ? [`${(s.claims || []).filter(c => clock() - c.createdAt < 30 * DAY).length} claims in 30 days from one customer`] : []), ...Object.values(s.shopPartners || {}).filter(p => (p.completedOrders || 0) < 5).map(p => `${p.name}: new seller — payouts held ${settings(s).newSellerExtraHoldDays} extra days`)];
-  return `${head('Commerce reports', 'Sales, commission, returns, delivery performance, fraud flags and outgoing notifications.')}<div class="metrics"><div class="metric"><span>GMV (delivered)</span><b>${inr(done.reduce((a, o) => a + o.itemTotal, 0))}</b></div><div class="metric"><span>Commission</span><b>${inr(done.reduce((a, o) => a + (o.feeBreakdown?.productCommission || 0), 0))}</b></div><div class="metric"><span>Orders with claims</span><b>${Object.keys(claimsBy).length}</b></div><div class="metric"><span>Late vs promise</span><b>${late}/${done.filter(o => o.etaMinutes).length}</b></div></div>
+  return `${head('Commerce reports', 'Sales, commission, returns, delivery performance, fraud flags and outgoing notifications.')}${Geo.adminLive(s)}<div class="metrics"><div class="metric"><span>GMV (delivered)</span><b>${inr(done.reduce((a, o) => a + o.itemTotal, 0))}</b></div><div class="metric"><span>Commission</span><b>${inr(done.reduce((a, o) => a + (o.feeBreakdown?.productCommission || 0), 0))}</b></div><div class="metric"><span>Orders with claims</span><b>${Object.keys(claimsBy).length}</b></div><div class="metric"><span>Late vs promise</span><b>${late}/${done.filter(o => o.etaMinutes).length}</b></div></div>
   <div class="grid two"><section class="panel"><h2>By store</h2>${Object.entries(by).map(([k, x]) => `<div class="ledger-row static"><span><b>${esc(k)}</b><small>${x.orders} orders</small></span><span>${inr(x.gmv)} · ${inr(x.commission)}</span></div>`).join('') || '<p class="muted">No delivered orders yet.</p>'}</section><section class="panel"><h2>Fraud and risk flags</h2>${flags.map(f => `<p class="action-warning">${esc(f)}</p>`).join('') || '<p class="muted">No flags.</p>'}</section></div>
   <section class="panel"><h2>Notification outbox (simulated SMS / WhatsApp / push)</h2>${(s.outbox || []).slice(0, 15).map(m => `<small class="block">${esc(m.at)} · ${esc(m.channels.join(' + '))} → ${esc(m.to)}: ${esc(m.text)}</small>`).join('') || '<p class="muted">Nothing sent yet.</p>'}</section>`;
 }
@@ -467,12 +470,13 @@ export function deliveryExtras(s, ws) {
   ensurePlus(s); const me = s.deliveryPartners?.[ws]; if (!me) return '';
   const jobs = (s.customerOrders || []).filter(o => o.deliveryAssignment?.partnerId === me.id && ['accepted', 'picked_up'].includes(o.deliveryAssignment.status));
   const pickups = (s.claims || []).filter(c => c.pickup?.partnerId === me.id && c.status === 'pickup_assigned');
-  return `<section class="panel"><h2>Delivery details</h2>${jobs.map(o => `<div class="claim-row"><b>${esc(o.id)}</b> · ${(o.deliveryKm || distanceKm(o.pickupAddress || '', o.address)).toFixed(1)} km · you earn ${inr(o.feeBreakdown?.deliveryPartnerEarning ?? deliveryPay(s, o))}${o.tip ? ` (incl. ${inr(o.tip)} tip)` : ''}<small class="block muted">Call customer: masked number +91 80 4${String(hash(o.id)).slice(0, 3)} XX${String(hash(o.id)).slice(-2)} · attempts ${o.attempts || 0}/2</small><form class="inline-form" data-plus-form="pod" data-id="${esc(o.id)}"><select name="mode"><option value="customer" ${o.podMode === 'customer' ? 'selected' : ''}>Handed to customer (code)</option><option value="door" ${o.podMode === 'door' ? 'selected' : ''}>Left at door</option><option value="guard" ${o.podMode === 'guard' ? 'selected' : ''}>With guard / reception</option></select><input type="file" name="photo" accept="image/*" capture="environment"><button class="button secondary compact">Save proof</button>${o.podPhoto ? `<small>Photo ✓ ${esc(o.podPhoto)}</small>` : ''}</form></div>`).join('') || '<p class="muted">No active deliveries.</p>'}</section>
+  return `<section class="panel"><h2>Delivery details</h2>${jobs.map(o => `<div class="claim-row">${Geo.courierPanel(s, o)}<b>${esc(o.id)}</b> · ${(o.deliveryKm || distanceKm(o.pickupAddress || '', o.address)).toFixed(1)} km · you earn ${inr(o.feeBreakdown?.deliveryPartnerEarning ?? deliveryPay(s, o))}${o.tip ? ` (incl. ${inr(o.tip)} tip)` : ''}<small class="block muted">Call customer: masked number +91 80 4${String(hash(o.id)).slice(0, 3)} XX${String(hash(o.id)).slice(-2)} · attempts ${o.attempts || 0}/2</small><form class="inline-form" data-plus-form="pod" data-id="${esc(o.id)}"><select name="mode"><option value="customer" ${o.podMode === 'customer' ? 'selected' : ''}>Handed to customer (code)</option><option value="door" ${o.podMode === 'door' ? 'selected' : ''}>Left at door</option><option value="guard" ${o.podMode === 'guard' ? 'selected' : ''}>With guard / reception</option></select><input type="file" name="photo" accept="image/*" capture="environment"><button class="button secondary compact">Save proof</button>${o.podPhoto ? `<small>Photo ✓ ${esc(o.podPhoto)}</small>` : ''}</form></div>`).join('') || '<p class="muted">No active deliveries.</p>'}</section>
   <section class="panel"><h2>Return pickups</h2>${pickups.map(c => `<form class="claim-row" data-plus-form="pickup" data-id="${esc(c.id)}"><b>${esc(c.id)}</b> · ${esc(KIND_LABEL[c.kind])} · ${c.items.map(x => `${x.qty} × ${esc(s.products.find(p => p.id === x.productId)?.name || '')}`).join(', ')}<div class="chip-row">${(QC[c.group] || QC.food).map((q, i) => `<label><input type="checkbox" name="qc${i}"> ${esc(q)}</label>`).join('')}</div><input name="code" placeholder="Customer's return code"><button class="button primary compact">Collect</button></form>`).join('') || '<p class="muted">No return pickups.</p>'}</section><p class="plus-error field-error" hidden></p>`;
 }
 
 // ---------- bindings ----------
 export function bind(root, api) {
+  Geo.bind(root, api);
   const S = () => api.getState(), err = m => { const e = root.querySelector('.plus-error') || root.querySelector('#po-error'); if (e) { e.textContent = m; e.hidden = !m; } else api.toast(m); };
   const done = (e, ok) => { if (e) return err(e); api.save(); api.render(); if (ok) api.toast(ok); };
   const ws = () => S().currentWorkspace, sw = () => storeWs(ws());

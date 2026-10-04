@@ -39,3 +39,11 @@ Server-side orders/stock/payments, real logins, live GPS and maps, camera barcod
 
 ## Parked (separate note)
 Old tests `p0-foundation.e2e.cjs` (customer menu changed in v4) and `p3-hiring.e2e.cjs` (Apply button not visible on a job opening — needs checking) still fail; products should use only v4's 7-day seller settlement, not the older wallet release in `product-orders.js`.
+
+## GPS tracking for deliveries (phase 1, prototype)
+`js/geo.js`. Checkout has a **map pin** (area list or "Use my current location") and checks each store's **delivery radius** (12 km). Orders store real coordinates; route distance and courier pay come from them. The courier screen shows a map, **Navigate** (Google Maps), **Share live location** (browser GPS with permission, only during the job, stops on delivery) and demo buttons (**move 400 m**, **auto-drive**). The system marks **arrived at store** (100 m), **arriving** (500 m, customer notified) and **arrived** (100 m) automatically, blocks pickup more than 300 m from the store and failed-delivery reports more than 200 m from the customer's pin, and saves the delivery location and distance driven. The customer's **Track order** shows a live map with ETA and a share link; admin **Commerce reports** shows live deliveries with late / no-update flags. Maps are simple drawings for now (no tile provider chosen). Live tracking between different phones needs a backend.
+
+## Notification centre
+`js/notify-center.js`. **Needs your action** pinned (rate, approve extras, confirm work and pay, accept fixed quote, return pickup code, replacements; for stores: new orders, courier arriving, return disputes; couriers: offers and return pickups; admin: approvals, claims, delivery problems), then **Active** (one card per order or booking with progress, ETA and Track), **Updates** grouped per order ("3 earlier updates"), **Past orders** (receipt, help, buy again), **Payments & refunds** and opt-in **Offers**. The bell counts orders and actions, not every event.
+
+Tests: `tests/geo-notify.unit.mjs` (in `npm run test:commerce`), `tests/geo-notify.smoke.py` (courier drives in one tab while the customer watches in another). `grocery-enhancements.e2e.mjs` updated for the new tracking text.
