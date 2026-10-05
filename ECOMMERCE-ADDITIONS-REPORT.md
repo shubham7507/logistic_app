@@ -90,3 +90,49 @@ Tests: `tests/store-hr.unit.mjs` (in `npm run test:commerce`), `tests/store-hr.s
 Tests: `tests/people-core.unit.mjs` (in `npm run test:commerce`), `tests/people-core.smoke.py`.
 
 **Next steps (not yet built):** one ledger and payroll for all business types (merge `workforce.js` and `store-hr.js`), approval chain by team lead → branch manager → owner everywhere, the worker's "My work & pay" across employers with past work and yearly statement, simple mode / Hindi / voice.
+
+## Unified people — step 2: one pay & ledgers view and one approval chain
+`js/ledger-core.js` · every business app (transporter, goods owner, truck owner, movers, store owners and store managers) → **Pay & ledgers**.
+
+- **One schema for everyone:** each person's ledger is shown with the same entry types — earning, allowance (bata, meal, cover), reimbursement, advance, advance recovery, deduction, payment, cash returned — whether the money is kept in the business khata (`workforce.js`) or the store ledger (`store-hr.js`). Storage stays in the two engines for now; everything is read, approved and reported through this one layer.
+- **Staff balances:** one table per business (filtered to the manager's branch), with home branch, teams, balance due and advance left; open any person's ledger.
+- **One approval chain everywhere:** team lead up to ₹200 → branch manager up to ₹5,000 → owner above (owner can change the limits). Applied to store reimbursements, transporter trip receipts and petty-cash expenses; branches without a manager go to the owner; disputes and advances are decided by the owner.
+- **Approvals inbox:** store reimbursements, advance requests and disputed deductions, trip receipts, business khata disputes and branch cover requests in one list, each showing who must approve.
+- **Cash payments the worker confirms — now for business staff too:** the owner pays a balance in cash; it shows "waiting for staff confirmation" until the driver/helper/staff member taps **I received it** (or "Not received") in their Money screen.
+- **Petty cash for every branch** (transport offices, warehouses, moving branches, stores): owner gives a float, expenses need a receipt and follow the approval chain, day-end count records short/extra.
+- **Payroll register:** every salary, shift, trip and advance payment for the business with method and status.
+
+Tests: `tests/ledger-core.unit.mjs` (in `npm run test:commerce`), `tests/ledger-core.smoke.py`.
+
+**Still to do:** move both engines onto one storage (so payroll calculation itself is shared), the worker's "My work & pay" across employers with past work and yearly statement (step 3), simple mode / Hindi / voice (step 4).
+
+## Unified people — step 3: the worker's "My work & pay"
+`js/worker-hub.js` · new menu **My work & pay** for drivers, khalasi/helpers and personal drivers (Partner app), business staff (staff view), store staff (Store Staff app) and delivery partners (Delivery app).
+
+- **One profile for every job:** the screen finds the worker's shared profile from whichever app they open.
+- **My work:** current jobs with a switcher when there are several (e.g. a driver who also picks at a store on Sundays). Each employer card shows branch, teams, employment type, **balance due**, **advance left**, **cash to confirm**, buttons to the work screen and pay/khata, and the **role & branch history**.
+- **MoveAI partner roles** (delivery partner, personal driver) appear alongside employments, with the **MoveAI wallet** balance.
+- **Past work:** ended employments with dates, branch, balance at exit and history. Offboarding in the older People screens now ends the shared employment automatically.
+- **Earnings statement:** money received per year from every employer and wallet payouts (only payments the worker confirmed), print / PDF — usable as income proof.
+- **Work history:** roles and dates (never pay), with the worker's consent switch for new employers and **Copy work history**.
+- **Profile & documents:** ID and payout status, documents with expiry warnings (licence, RC, insurance, PAN), reused by every employer.
+- **Demo person Sanju Kumar (9876507001):** picker at ABC Grocery in Jan 2026 (left with a ₹11,220 final settlement), then Raj Logistics from Feb — operations staff at Noida HQ, khalasi at Jaipur from Aug — with ₹2,700 trip pay and bata due. Open **My work & pay** in the Partner app and use **Prototype: view as → Sanju Kumar**.
+
+Tests: `tests/worker-hub.unit.mjs` (in `npm run test:commerce`), `tests/worker-hub.smoke.py`.
+
+**Still to do:** one storage for both money engines; step 4 — simple mode, Hindi and voice for first-time users.
+
+## Unified people — step 4: easy for first-time users
+`js/easy-mode.js` · new menu **Staff (easy)** right after Home for every owner (transporter, goods owner, truck owner, movers, stores) and store manager · **हिंदी / English** switch in the top bar of every app.
+
+- **Five big actions:** ➕ Add staff · ✅ Mark present · 💵 Give advance · ₹ Pay · 📒 See balances. Managers get Mark present, Give advance (sent to the owner) and balances; adding staff and paying stay with the owner. "More options" opens the full Pay & ledgers.
+- **Words of the business:** transporters and truck owners see *Bata* and per-trip pay with Driver / Khalasi; goods owners see daily allowance and Loader; movers see job allowance and Packer / Crew lead; stores see meal allowance and per shift / per order with Picker / Packer / Cashier.
+- **Voice or typed commands (Hindi / Hinglish / English):** “Raju ko 500 advance diya”, “Priya aaj present”, “Mohan ko do hazaar cash diya”, “Sunita ko 1500 UPI se diya” → the app shows what it understood and the owner taps **Confirm**. 🎤 Speak uses the browser's speech recognition (Hindi or English) where available; typing always works.
+- **Cash and basic phones:** cash payments and cash advances send the worker an SMS (simulated) to confirm — reply 1/2 or tap the link — besides “I received it” in the app.
+- **WhatsApp:** each balance has **Send on WhatsApp** with the worker's balance and advance left.
+- **Hindi:** the switch translates menus, the easy screen, My work & pay and the main people/pay labels (more screens can be added to the word list in `easy-mode.js`).
+- Business staff marked present here count in the existing payroll attendance; store staff go to the store attendance by branch.
+
+Tests: `tests/easy-mode.unit.mjs` (in `npm run test:commerce`), `tests/easy-mode.smoke.py`.
+
+**Limits:** the Hindi word list covers the people and pay screens, not every screen yet; voice depends on the browser (Chrome supports Hindi); SMS/WhatsApp are simulated or open WhatsApp with a ready message.

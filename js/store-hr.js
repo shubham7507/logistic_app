@@ -115,7 +115,7 @@ export function addReimbursement(s, pid, v, byStaff) {
 }
 export function decideEntry(s, ws, id, decision) {
   const a = actor(s, ws), e = L(s).find(x => x.id === id); if (!e) return 'Not found.';
-  if (e.type === 'reimbursement' && e.status === 'submitted') { if (a.kind === 'manager' && e.amount > LIMITS.managerExpense) return `Managers can approve up to ${inr(LIMITS.managerExpense)}; the owner must approve this.`; e.status = decision === 'approve' ? 'approved' : 'rejected'; e.decidedBy = a.name; return ''; }
+  if (e.type === 'reimbursement' && e.status === 'submitted') { const lc = globalThis.__moveaiLC?.canApprove?.(s, ws, a.store, e.branchId, e.amount); if (lc) return lc; if (!globalThis.__moveaiLC && a.kind === 'manager' && e.amount > LIMITS.managerExpense) return `Managers can approve up to ${inr(LIMITS.managerExpense)}; the owner must approve this.`; e.status = decision === 'approve' ? 'approved' : 'rejected'; e.decidedBy = a.name; return ''; }
   if (e.type === 'deduction' && e.status === 'disputed') { if (a.kind !== 'owner') return 'Only the owner decides disputes.'; e.status = decision === 'approve' ? 'posted' : 'rejected'; e.decidedBy = a.name; return ''; }
   return 'Nothing to decide.';
 }
