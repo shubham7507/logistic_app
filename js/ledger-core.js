@@ -79,6 +79,7 @@ export function payCash(s, ws, r, amount) {
 }
 export function ackPanel(s, ws) {
   const keys = [ws, s.selectedStaffId ? `staff:${s.selectedStaffId}` : null].filter(Boolean);
+  if (['commercialDriver', 'helper'].includes(ws)) for (const b of PC.BUSINESS) { const w = WF.workforceOf(s, b).find(v => v.kind === 'team' && (v.keys || []).includes(ws)); if (w) keys.push(...(w.keys || [w.key])); }
   const list = (s.ledger || []).filter(x => x.ack === 'pending' && keys.includes(x.payee)); if (!list.length) return '';
   return `<section class="panel nc-actions"><h2>Confirm cash you received</h2>${list.map(x => `<div class="ledger-row static"><span><b>${inr(x.amount)} · ${esc(x.note || 'Cash payment')}</b><small>${esc(x.history?.[0]?.at || '')}</small></span><span class="row-actions"><button class="button primary compact" data-lc-ack="${x.id}" data-ok="1">I received it</button><button class="button secondary compact" data-lc-ack="${x.id}" data-ok="">Not received</button></span></div>`).join('')}</section>`;
 }

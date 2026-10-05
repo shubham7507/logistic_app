@@ -34,7 +34,6 @@ with sync_playwright() as p:
     if bal > 0: check('waiting for staff confirmation' in main(), 'register shows cash waiting')
     # worker (Mohan, commercial driver persona or staff view) confirms cash via staff workspace
     if bal > 0:
-        pg.evaluate("""(()=>{const k=Object.keys(localStorage).find(k=>k.startsWith('moveai-vnext'));const d=JSON.parse(localStorage.getItem(k));const x=d.ledger.find(y=>y.ack==='pending');x.payee='commercialDriver';localStorage.setItem(k,JSON.stringify(d))})()""")
         pg.goto(f'{B}/partner.html#/money'); pg.wait_for_timeout(300); pg.evaluate("window.MoveAIVNextTest.switchWorkspace('commercialDriver')"); go('money')
         check('Confirm cash you received' in main(), 'worker sees cash to confirm'); pg.locator('[data-lc-ack][data-ok="1"]').first.click(); pg.wait_for_timeout(150)
         check(any(x.get('ack') == 'confirmed' for x in st()['ledger']), 'worker confirmed')
