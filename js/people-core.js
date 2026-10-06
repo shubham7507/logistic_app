@@ -74,6 +74,24 @@ export function approverFor(s, b, branchId) {
 
 // ---------- actions ----------
 export function findPerson(s, mobile) { return s.persons?.[`P-${String(mobile).replace(/\D/g, '')}`] || null; }
+// Finds actual reusable field values (not just a verified/true flag) from another active employment
+// of this same person — only 'people' (peopleByWorkspace) records carry real identity/bank data today;
+// picker/manager records have no onboarding form at all, so there is nothing to reuse from those.
+// Returns null if nothing complete and reusable is found.
+const SOURCE_ARRAY = {people: 'peopleByWorkspace', picker: 'pickerStaff', manager: 'storeManagers'};
+export function reusableIdentity(s, mobile, excludeBusiness) {
+  const p = findPerson(s, mobile); if (!p) return null;
+  const candidates = s.employments.filter(e => e.personId === p.id && e.business !== excludeBusiness && e.status === 'active');
+  for (const e of candidates) {
+    const key = SOURCE_ARRAY[e.source.kind]; if (!key) continue;
+    const pool = key === 'peopleByWorkspace' ? (s[key]?.[e.business] || []) : (s[key] || []);
+    const rec = pool.find(x => x.id === e.source.id);
+    if (rec?.identity && rec?.bank && ['verified', 'complete'].includes(rec.documentsStatus) && ['verified', 'complete'].includes(rec.bankStatus)) {
+      return {business: e.business, businessName: bizName(s, e.business), identity: rec.identity, bank: rec.bank, emergency: rec.emergency || null};
+    }
+  }
+  return null;
+}
 export function inviteNote(s, mobile, b) {
   const p = findPerson(s, mobile); if (!p) return 'New to MoveAI — they will create a profile with an OTP and verify once.';
   const active = s.employments.filter(e => e.personId === p.id && e.status === 'active');

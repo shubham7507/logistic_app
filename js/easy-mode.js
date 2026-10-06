@@ -64,16 +64,20 @@ export function parse(s, ws, text) {
 }
 
 // ---------- the five actions ----------
+// Returns {error, note}. 'note' was previously computed by HR.invite() (the "already has a verified
+// MoveAI profile, works at X, no re-verification needed" message) and then silently discarded by every
+// caller — it never reached the owner. Both branches below now return it instead of a bare string.
 export function addStaff(s, ws, v) {
-  const sc = PC.scopeOf(s, ws); if (sc?.kind !== 'owner') return 'Only the owner adds staff here.';
-  const name = String(v.name || '').trim(), mobile = String(v.mobile || '').replace(/\D/g, ''); if (!name || !/^[6-9]\d{9}$/.test(mobile)) return 'Enter the name and a 10-digit mobile.';
-  if (!(Number(v.rate) > 0)) return 'Enter the pay.';
+  const sc = PC.scopeOf(s, ws); if (sc?.kind !== 'owner') return {error: 'Only the owner adds staff here.'};
+  const name = String(v.name || '').trim(), mobile = String(v.mobile || '').replace(/\D/g, ''); if (!name || !/^[6-9]\d{9}$/.test(mobile)) return {error: 'Enter the name and a 10-digit mobile.'};
+  if (!(Number(v.rate) > 0)) return {error: 'Enter the pay.'};
   const home = v.branchId || PC.branchesFor(s, sc.business)[0]?.id;
-  if (isStore(sc.business)) { const r = HR.invite(s, sc.business, {name, mobile, role: v.role || 'picker', homeBranch: home, payType: v.payType, rate: v.rate, freq: 'weekly'}, globalThis.__moveaiInvitePicker); return r.error || ''; }
-  const list = (s.peopleByWorkspace[sc.business] ||= []); if (list.some(p => p.mobile === mobile && p.status !== 'offboarded')) return 'Already on your team.';
+  if (isStore(sc.business)) { const r = HR.invite(s, sc.business, {name, mobile, role: v.role || 'picker', homeBranch: home, payType: v.payType, rate: v.rate, freq: 'weekly'}, globalThis.__moveaiInvitePicker); return {error: r.error || '', note: r.note}; }
+  const list = (s.peopleByWorkspace[sc.business] ||= []); if (list.some(p => p.mobile === mobile && p.status !== 'offboarded')) return {error: 'Already on your team.'};
+  PC.ensureCore(s); const note = PC.inviteNote(s, mobile, sc.business);
   list.push({id: uid('STAFF'), name, mobile, role: v.role || 'helper', designation: words(sc.business).roles.find(r => r[0] === v.role)?.[1] || '', branchIds: [home], status: 'invited', employmentType: 'permanent', payType: v.payType, payAmount: Number(v.rate), invitedAt: today()});
   (s.outbox ||= []).unshift({to: mobile, text: `${PC.bizName(s, sc.business)} invited you to join MoveAI as ${name}. Open the link to accept.`, channels: ['SMS', 'WhatsApp'], at: stamp()});
-  return '';
+  return {error: '', note};
 }
 export function markPresent(s, ws, row, date = today()) {
   if (isStore(row.e.business)) return HR.markDay(s, ws, row.key, date, row.e.homeBranch);
@@ -133,7 +137,7 @@ export function bind(root, api) {
     done(e, e ? '' : 'Done'); });
   root.querySelectorAll('form[data-easy-form]').forEach(f => f.onsubmit = e => { e.preventDefault(); const s = S(), fd = new FormData(f), v = Object.fromEntries(fd), k = f.dataset.easyForm;
     if (k === 'voice') { s.easyText = v.text; const r = parse(s, ws(), v.text); if (r.error) { s.easyPending = null; s.easyMsg = r.error; return done(''); } s.easyPending = {intent: r.intent, empId: r.row.e.id, amount: r.amount, instalment: r.instalment, method: r.method, text: r.text}; s.easyMsg = 'Check and confirm:'; return done(''); }
-    if (k === 'add') return done(addStaff(s, ws(), v), `${v.name} added — invite sent by SMS/WhatsApp`);
+    if (k === 'add') { const r = addStaff(s, ws(), v); return done(r.error, r.note || `${v.name} added — invite sent by SMS/WhatsApp`); }
     if (k === 'present') { const ids = fd.getAll('who'); if (!ids.length) return err('Tick at least one person.'); for (const id of ids) { const x = markPresent(s, ws(), rowOf(id)); if (x && !/Already/.test(x)) return err(x); } return done('', `${ids.length} marked present`); }
     if (k === 'advance') return done(giveAdvance(s, ws(), rowOf(v.who), v.amount, v.instalment), 'Advance given');
     if (k === 'pay') return done(pay(s, ws(), rowOf(v.who), v.amount, v.method), v.method === 'cash' ? 'Paid in cash — SMS sent to confirm' : 'Paid by UPI');
