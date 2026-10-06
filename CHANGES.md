@@ -220,7 +220,59 @@ checkout-UI submit handlers in `app.js` are inline DOM event handlers rather tha
 the literal form-to-state wiring around business onboarding specifically wasn't driven through a form
 submit event (no browser available here, consistent with every other gap noted throughout this file).
 
-## 11. What was deliberately NOT done (and why)
+## 11. Unified payroll engine (new file: `js/payroll-core.js`) — replaces four disconnected systems
+
+A full audit found the app actually had **four separate payroll engines**, not one, each with its own
+storage and none aware of the others:
+
+| System | File | Storage |
+|---|---|---|
+| Monthly/attendance, advances, reimbursements, deductions, petty cash | `store-hr.js` | `s.ledger` |
+| Shift-based picker pay runs | `grocery-picker-pay.js` | `s.pickerShifts` / `s.pickerPayRuns` |
+| Manager pay runs | `grocery-manager-pay.js` | its own structure |
+| Monthly, per-trip, deductions ("khata") | `workforce.js` | `s.accruals` / `s.payrollRuns` |
+
+Concretely, this meant a picker paid through the shift system showed **zero** history in the
+"People & pay" payslip screen, and vice versa — whichever screen an owner happened to open showed an
+incomplete picture, with nothing reconciling the two.
+
+**What was built:** one shared ledger (`s.payEvents`) and one `balance()`/`history()` pair that works
+identically for monthly, daily, shift, and advance pay, across every vertical — reusing the exact
+verified-UPI/bank gate already fixed in `giveAdvance()` earlier this session, so the same safeguard
+now applies everywhere money moves, not just one screen.
+
+- **Migration is non-destructive**, the same pattern as `people-core.js`'s `ensureCore()`: reads all
+  four old systems and writes into the new unified ledger without deleting anything. Paid pay-runs
+  migrate in as history; still-draft ones are deliberately left alone (still "in flight" on their
+  original screen). Verified idempotent — running the migration repeatedly never duplicates events.
+- **Advances stay as their own record type** (declining balance + instalment plan), not flattened into
+  generic ledger lines — that's a loan, not a wage, and flattening it would lose "how much is still
+  outstanding."
+- **One screen per person** (`payPersonScreen`) — a single plain-language balance statement ("You owe
+  Meena ₹3,200" / "Meena owes you ₹500" / "Settled up"), the full interleaved history, and four actions
+  (Pay now, Give advance, Add reimbursement, Add deduction) in one place instead of three separate nav
+  destinations.
+- **Wired into the real UI**: a "Pay" button now appears next to every active picker and manager on the
+  Store team screen, resolving to their real shared identity and opening the new unified screen. New
+  route `unifiedPay`, granted to retail owners/managers and logistics businesses.
+- **Deliberately scoped out**: independent/per-trip crew in logistics (`workforce.js`'s `'per_trip'`/
+  `'partner'` engagement, keyed by a candidate persona rather than a real employment record) are **not**
+  covered — there's no shared-identity bridge for them yet, same boundary noted for delivery partners
+  earlier. Their pay stays on the existing trip-settlement system, clearly flagged rather than silently
+  half-migrated.
+- **The old four systems were not touched or retired.** Their screens, nav items, and write paths all
+  still work exactly as before — this is the new canonical system layered alongside them, not a
+  replacement surgery done blind. Retiring the old screens (so there's only one "Pay" entry point
+  everywhere, not the new one plus three legacy ones) is the natural next step once this has been used
+  for real and trusted.
+
+**Tested accordingly, since this is money:** 27 direct checks (migration correctness per source system
+with exact sign verification, idempotency, balance math, every validation gate, the dispute path, the
+plain-language screen output) plus a separate pass rendering the real screen against every real active
+employment in the actual seed data (16 people, zero errors) and confirming idempotency against real
+data too.
+
+## 12. What was deliberately NOT done (and why)
 
 - **General vs. Specialized role tiers** (the "anyone can hire a cleaner, but only a restaurant can
   hire a chef" design) was discussed and designed but not implemented in code — no `tier` field
@@ -238,7 +290,7 @@ submit event (no browser available here, consistent with every other gap noted t
 No browser or bundler is available in this environment, so testing was: `node --check` for syntax on
 every touched file; real `import()` of every touched module in Node to catch missing exports/broken
 references; and executing the actual edited functions against realistic mock state objects with
-explicit pass/fail assertions (not just "it ran without crashing"). **213 assertions total, across 11
+explicit pass/fail assertions (not just "it ran without crashing"). **247 assertions total, across 14
 suites**, covering: role-list correctness per vertical, emergency-contact optionality, the suspend
 action and its two follow-on bugs, cross-store identity reuse in both directions (logistics↔retail),
 the full picker onboarding lifecycle including the correction path, the two retail-hiring blockers
@@ -246,9 +298,11 @@ the full picker onboarding lifecycle including the correction path, the two reta
 manager, and logistics hire paths, plus duplicate-hire protection), the hub-grouping logic across all
 four retail workspace types plus a logistics workspace, the full delivery-partner onboarding lifecycle
 including bidirectional identity reuse (picker↔delivery), `ensureCore()` run against the actual real
-seed data, and a 54-step full end-to-end simulation with brand-new people at every role (customer,
-staff, delivery partner) from first contact through to offboarding, which is what caught the
-giveAdvance payout bug described above. All 213 pass as of this commit.
+seed data, a 54-step full end-to-end simulation with brand-new people at every role (customer, staff,
+delivery partner) from first contact through to offboarding (which caught the giveAdvance payout bug),
+and the new unified payroll engine — migration correctness from all four old systems with exact sign
+verification, idempotency, every validation gate, and rendering the real screen against all 16 real
+active employments in the actual seed data with zero errors. All 247 pass as of this commit.
 
 One known gap in the testing itself: the one-line wiring in `app.js`'s `change-application-status`
 `onchange` handler that calls `PC.hireIntoStaff()` is only syntax-checked, not executed — driving a
