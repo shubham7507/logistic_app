@@ -78,6 +78,41 @@ export const ROUTES={
 export const MOBILE_PRIMARY=['home','work','messages','money'];
 export const PUBLIC_ROUTES=new Set(['welcome','signup','otp','recover','consentDetails','recoverySupport']);
 
+// Hub grouping for the desktop sidebar — purely a presentation layer. No route, no permission, no
+// screen-rendering function changes here: every route below still works exactly as it did, reachable
+// through the exact same data-route buttons. This only changes how those buttons are grouped and
+// which ones are visible before you click into a hub. Routes not listed fall back to an 'other'
+// bucket automatically, so nothing silently disappears if a workspace has a route this map doesn't
+// know about yet.
+export const HUBS=[
+  {id:'home',label:'Home',icon:'⌂',primary:'home'},
+  {id:'orders',label:'Orders',icon:'▥',primary:'shopOrders'},
+  {id:'catalog',label:'Catalog',icon:'▦',primary:'shopCatalog'},
+  {id:'staff',label:'Staff',icon:'♟',primary:'shopTeam'},
+  {id:'money',label:'Money',icon:'₹',primary:'shopEarnings'},
+  {id:'business',label:'Business',icon:'⌘',primary:'shopBranches'},
+  {id:'other',label:'More',icon:'□'},
+];
+export const HUB_OF_ROUTE={
+  home:'home',
+  shopOrders:'orders',shopIssues:'orders',shopCounter:'orders',shopCounterDelivery:'orders',work:'orders',trips:'orders',movingJob:'orders',
+  shopCatalog:'catalog',plusListings:'catalog',plusReturns:'catalog',fleet:'catalog',
+  easyStaff:'staff',shopTeam:'staff',shopSchedule:'staff',shopOffboarding:'staff',hiring:'staff',pickerReview:'staff',storeHR:'staff',branchesTeams:'staff',people:'staff',postOpening:'staff',findWorkers:'staff',openingDetail:'staff',applications:'staff',roles:'staff',staffAccess:'staff',ownerCover:'staff',offboarding:'staff',addStaff:'staff',staffDetail:'staff',staffReview:'staff',managerTimecards:'staff',employmentChange:'staff',
+  shopSales:'money',shopPickerPay:'money',shopEarnings:'money',payLedgers:'money',money:'money',invoices:'money',
+  shopBranches:'business',plusAnalytics:'business',plusStore:'business',shopProfile:'business',branches:'business',business:'business',bank:'business',serviceExpansion:'business',managerProfile:'business',
+};
+export const hubForRoute=route=>HUB_OF_ROUTE[route]||'other';
+export function groupNavByHub(nav){
+  const groups=new Map(HUBS.map(h=>[h.id,{...h,items:[]}]));
+  for(const [id,label] of nav){const hub=groups.get(hubForRoute(id))||groups.get('other');hub.items.push([id,label])}
+  for(const hub of groups.values()){
+    // Put the hub's designated "primary" route first (e.g. Staff defaults to Team, not whichever
+    // route happened to appear first in the original flat nav array) — falls back to original order
+    // if that route isn't present for this particular workspace.
+    if(hub.primary){const i=hub.items.findIndex(([id])=>id===hub.primary);if(i>0){const [p]=hub.items.splice(i,1);hub.items.unshift(p)}}
+  }
+  return [...groups.values()].filter(h=>h.items.length);
+}
 export function allowedRoutes(roleKey){
   const role=ROLE_CONFIG[roleKey]||ROLE_CONFIG.personal;
   const businessPeople=['ewayBills','invoices','invoiceNew','invoiceDetail','workforce','dutyBoard','payroll','khata','tripSettlement','addStaff','inviteSent','staffDetail','staffReview','roles','staffAccess','hiring','postOpening','findWorkers','openingDetail','applications','ownerCover','offboarding','candidateReview','employmentChange'];

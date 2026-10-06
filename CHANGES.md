@@ -118,7 +118,35 @@ see "no exact matches" rather than crash or show wrong results — but there's n
 individual/personal-hiring track. The posting→applicant→hire *mechanism* is now real and tested; the
 *supply* of retail-capable independent candidates in the mock data is still thin.
 
-## 7. What was deliberately NOT done (and why)
+## 7. Desktop sidebar now groups into hubs instead of a flat 21+ item list
+
+**Files:** `js/config.js`, `js/app.js`, `css/components.css`
+
+This is the full hub redesign discussed throughout the conversation, built the safest way possible:
+**zero changes to any route, permission, or screen-rendering function.** Every single existing
+`data-route` button still exists, still points at the exact same route, still does exactly what it
+did before — this only changes how those buttons are grouped and which ones are visible by default.
+
+- New `HUBS` + `HUB_OF_ROUTE` map in `config.js` groups routes into Home, Orders, Catalog, Staff,
+  Money, Business (plus an automatic "More" bucket for anything the map doesn't recognize yet, so a
+  route can never silently disappear).
+- New `groupNavByHub(nav)` — pure function, takes a workspace's existing flat nav array and returns
+  it grouped. Each hub has a designated **primary** route (e.g. Staff's primary is Team, not "Staff
+  (easy)", even though "Staff (easy)" appears earlier in the original flat list) so clicking into a
+  hub lands somewhere sensible.
+- `renderDesktopNav()` in `app.js` now renders hub headers; only the hub containing the current route
+  expands to show its children. Collapsing 21-22 flat items down to 6-7 top-level entries.
+- Verified this also works cleanly for logistics workspaces (goods/transporter/etc.), not just the
+  retail verticals it was built for — "Messages" correctly falls into the "More" bucket since it
+  doesn't belong in any of the six hubs, which is the intended fallback behavior.
+
+**What this does NOT include yet:** the mobile "More" screen (`renderMore()`) still shows its own flat
+list rather than the same hub grouping — it uses a different, separate code path from the desktop
+sidebar. Grouping it the same way would be a quick follow-up using the exact same `groupNavByHub()`
+helper, just not done in this pass since the request was specifically about the desktop sidebar shown
+in the screenshot.
+
+## 8. What was deliberately NOT done (and why)
 
 - **General vs. Specialized role tiers** (the "anyone can hire a cleaner, but only a restaurant can
   hire a chef" design) was discussed and designed but not implemented in code — no `tier` field
@@ -136,13 +164,14 @@ individual/personal-hiring track. The posting→applicant→hire *mechanism* is 
 No browser or bundler is available in this environment, so testing was: `node --check` for syntax on
 every touched file; real `import()` of every touched module in Node to catch missing exports/broken
 references; and executing the actual edited functions against realistic mock state objects with
-explicit pass/fail assertions (not just "it ran without crashing"). **107 assertions total, across 7
+explicit pass/fail assertions (not just "it ran without crashing"). **129 assertions total, across 8
 suites**, covering: role-list correctness per vertical, emergency-contact optionality, the suspend
 action and its two follow-on bugs, cross-store identity reuse in both directions (logistics↔retail),
 the full picker onboarding lifecycle including the correction path, the two retail-hiring blockers
-(branch-source crash and vertical-aware hiring), and `hireIntoStaff()` directly (retail picker,
-retail manager, and logistics hire paths, plus duplicate-hire protection). All 107 pass as of this
-commit.
+(branch-source crash and vertical-aware hiring), `hireIntoStaff()` directly (retail picker, retail
+manager, and logistics hire paths, plus duplicate-hire protection), and the hub-grouping logic across
+all four retail workspace types plus a logistics workspace (confirming no route is ever lost or
+duplicated after grouping). All 129 pass as of this commit.
 
 One known gap in the testing itself: the one-line wiring in `app.js`'s `change-application-status`
 `onchange` handler that calls `PC.hireIntoStaff()` is only syntax-checked, not executed — driving a

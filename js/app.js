@@ -1,4 +1,4 @@
-import {ROLE_CONFIG,ROUTES,ICONS,PUBLIC_ROUTES,routeTitle} from './config.js';
+import {ROLE_CONFIG,ROUTES,ICONS,PUBLIC_ROUTES,routeTitle,groupNavByHub,hubForRoute} from './config.js';
 import * as Easy from './easy-mode.js';
 import * as Hub from './worker-hub.js';
 import * as LC from './ledger-core.js';
@@ -82,7 +82,28 @@ function activePersona(key=state.currentWorkspace){
   return seeded||{name:'Mock User',role:roleForWorkspace(key).subtitle,initials:'MU'};
 }
 function renderWorkspace(){const r=currentRole(),p=activePersona(),filter=state.branchFilter?.[state.currentWorkspace]||'all';$('workspace-icon').textContent=r.icon;$('workspace-name').textContent=r.label;$('workspace-role').textContent=`${p.name} · ${p.role}`;$('page-context').textContent=`${r.label} · ${p.role}`;$('profile-avatar').textContent=p.initials||initials(p.name);$('profile-name').textContent=p.name;$('profile-role').textContent=`${p.role} · Mock user`;$('branch-button').hidden=!r.branches;$('branch-button').textContent=filter==='all'?'All branches':filter}
-function renderDesktopNav(){const badges=state.badges?.[state.currentWorkspace]||{};$('desktop-nav').innerHTML=navFor(state.currentWorkspace).map(([id,label])=>navButton(id,label,badges[id])).join('');markActive()}
+// Groups the flat nav list into hubs for the desktop sidebar. Every route still renders with the
+// exact same navButton() output and the same data-route attribute as before — this only changes
+// how many buttons are visible before you click into a hub. A hub with just one route (Home) still
+// renders as a single flat button, same as always.
+function renderDesktopNav(){
+  const badges=state.badges?.[state.currentWorkspace]||{};
+  const groups=groupNavByHub(navFor(state.currentWorkspace));
+  const activeHub=hubForRoute(state.currentRoute);
+  $('desktop-nav').innerHTML=groups.map(h=>{
+    if(h.items.length===1){const [id,label]=h.items[0];return navButton(id,label,badges[id])}
+    const isOpen=h.id===activeHub;
+    const [primaryId,primaryLabel]=h.items[0];
+    const rest=isOpen?h.items.slice(1):[];
+    return `<div class="nav-hub${isOpen?' open':''}">`
+      +`<button type="button" class="nav-hub-header" data-route="${primaryId}" aria-expanded="${isOpen}" aria-label="${h.label}">`
+      +`<span class="nav-icon" aria-hidden="true">${h.icon}</span><span class="nav-label">${h.label}</span>`
+      +`<span class="nav-hub-chevron" aria-hidden="true">${isOpen?'⌄':'›'}</span></button>`
+      +(isOpen?`<div class="nav-hub-children">${rest.map(([id,label])=>navButton(id,label,badges[id])).join('')}</div>`:'')
+      +`</div>`;
+  }).join('');
+  markActive();
+}
 function renderMobileNav(){const {shown,more}=mobileNavigation(activeProduct,state.currentWorkspace,navFor(state.currentWorkspace));$('mobile-nav').innerHTML=shown.map(([id,label])=>navButton(id,label,0,true)).join('')+(more.length?navButton('more','More',0,true):'');markActive()}
 function renderMore(){const {more}=mobileNavigation(activeProduct,state.currentWorkspace,navFor(state.currentWorkspace));$('more-list').innerHTML=more.map(([id,label])=>`<button type="button" class="more-option" data-route="${id}"><span class="workspace-icon" aria-hidden="true">${ICONS[id]||'□'}</span><span class="workspace-copy"><b>${label}</b><small>Open ${label}</small></span><span aria-hidden="true">›</span></button>`).join('')+`<button type="button" class="more-option" data-route="states"><span class="workspace-icon">◇</span><span class="workspace-copy"><b>Screen states</b><small>P0 test lab</small></span><span>›</span></button>`}
 function markActive(){document.querySelectorAll('[data-route]').forEach(b=>b.classList.toggle('active',b.dataset.route===state.currentRoute))}
