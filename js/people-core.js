@@ -7,6 +7,7 @@
 // Built on top of the existing records (peopleByWorkspace, pickerStaff, storeManagers) without changing them.
 import {esc, pill} from './ops.js';
 import {clock} from './pay.js';
+import {ROLE_TEMPLATES} from './people-rules.js';
 
 const today = () => new Date(clock()).toISOString().slice(0, 10);
 const stamp = () => new Date(clock()).toLocaleString('en-IN', {day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit'});
@@ -91,6 +92,27 @@ export function reusableIdentity(s, mobile, excludeBusiness) {
     }
   }
   return null;
+}
+// Vertical-aware hire: creates the new staff record in whichever array that business's own screens
+// actually read (pickerStaff/storeManagers for retail, peopleByWorkspace for logistics) — extracted
+// out of app.js's inline DOM handler so this decision is unit-testable on its own, not only reachable
+// by driving a real click event. Returns true if a record was created, false if one already existed.
+const RETAIL_HIRE_VERTICALS = ['grocery', 'groceryFresh', 'electrical', 'fashion'];
+export function hireIntoStaff(s, ws, job, candidate, applicationId) {
+  if (RETAIL_HIRE_VERTICALS.includes(ws)) {
+    if (job.role === 'manager') {
+      if ((s.storeManagers || []).some(m => m.store === ws && m.mobile === candidate.mobile && m.status !== 'removed')) return false;
+      (s.storeManagers ||= []).push({id: `MGR-${Date.now().toString().slice(-4)}`, store: ws, name: candidate.name, mobile: candidate.mobile, branchIds: [job.branchId], status: 'invited', permissions: ['orders', 'schedule', 'timecards'], invitedAt: new Date().toISOString(), sourceApplicationId: applicationId});
+      return true;
+    }
+    if ((s.pickerStaff || []).some(p => p.store === ws && p.mobile === candidate.mobile && p.status !== 'removed')) return false;
+    (s.pickerStaff ||= []).push({id: `PICK-${Date.now().toString().slice(-4)}`, store: ws, name: candidate.name, mobile: candidate.mobile, role: job.role, branchIds: [job.branchId], status: 'profile_pending', documentsStatus: 'pending_staff', bankStatus: 'pending_staff', emergencyStatus: 'pending_staff', invitedAt: new Date().toISOString(), sourceApplicationId: applicationId});
+    return true;
+  }
+  const ownerPeople = (s.peopleByWorkspace ||= {})[ws] ||= [];
+  if (ownerPeople.some(x => x.mobile === candidate.mobile)) return false;
+  ownerPeople.push({id: `STAFF-${Date.now().toString().slice(-4)}`, staffId: null, name: candidate.name, mobile: candidate.mobile, role: job.role, designation: ROLE_TEMPLATES[job.role]?.label || job.role, branchIds: [job.branchId], services: s.businessProfiles?.[ws]?.services || [], payType: job.payType, payAmount: candidate.expectedPay, status: 'profile_pending', documentsStatus: 'pending_staff', bankStatus: 'pending_staff', emergencyStatus: 'pending_staff', activeAssignments: [], vehicleAssignments: [], dues: 0, sourceApplicationId: applicationId});
+  return true;
 }
 export function inviteNote(s, mobile, b) {
   const p = findPerson(s, mobile); if (!p) return 'New to MoveAI — they will create a profile with an OTP and verify once.';

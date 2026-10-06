@@ -83,24 +83,50 @@ already had:
   (see item 6).
 - A "Review joining details" button now appears on the Store team screen when a picker has submitted.
 
-## 6. What was deliberately NOT done (and why)
+## 6. Open hiring (post-and-apply marketplace) now works for retail businesses too
 
-- **Open hiring (post-and-apply marketplace) is still logistics-only.** Retail owners still can't
-  post an opening and have strangers apply — `hiringScreen`/`postOpeningScreen`/`applicationsScreen`
-  read and write `state.peopleByWorkspace`, while retail staff live in `state.pickerStaff` /
-  `state.storeManagers`. Granting the routes without reconciling this would create a second,
-  invisible staff list for retail owners. A partial attempt was made and reverted; see the comment
-  left in `config.js`'s `allowedRoutes()` for the two ways to resolve it. **This is the main
-  remaining piece** from the "can I get staff from the platform" conversation — it needs the hire
-  action to create a `pickerStaff`/`storeManagers` record (not `peopleByWorkspace`) when the hiring
-  business is retail, plus fixing `postOpeningScreen`'s branch dropdown and its form submit handler,
-  which currently assume `state.businessProfiles[ws].branches` and would error for retail (retail
-  branches live in `state.sellerBranches` instead). This was identified but not yet fixed.
+**Files:** `js/people-core.js`, `js/app.js`, `js/people.js`, `js/config.js`
+
+This closes the blocker described in item 6 of the previous version of this changelog. Two separate
+problems had to be fixed before it was safe to grant retail owners these routes:
+
+- **The hire action is now vertical-aware.** Extracted out of an inline DOM event handler in `app.js`
+  into a real, standalone, exported function — `PC.hireIntoStaff(state, workspace, job, candidate,
+  applicationId)` in `people-core.js`. For retail verticals it creates the new hire in `pickerStaff`
+  (role = picker/packer/cashier, starting at `profile_pending` so they go through the picker
+  onboarding lifecycle from item 5) or `storeManagers` (role = manager) — never in
+  `peopleByWorkspace`, which would have been a second, invisible staff list. For logistics it behaves
+  exactly as before, pushing into `peopleByWorkspace`. Doing this as a real exported function (rather
+  than inline in the event handler) made it possible to write direct, pass/fail tests against the
+  actual code path the app runs, not a hand-written replica of its logic.
+- **`postOpeningScreen`'s branch source no longer assumes the logistics shape.** It previously read
+  `state.businessProfiles[ws].branches`, which doesn't exist for retail (retail branches live in
+  `state.sellerBranches`) — this would have thrown on render for a retail owner. Both the screen's
+  branch dropdown and the form's submit handler in `app.js` now use `PC.branchesFor(state, ws)`,
+  which already correctly handles both branch structures.
+- **Routes re-granted, narrowly.** `grocery`, `groceryFresh`, `electrical`, `fashion` and their
+  manager roles now have `hiring`, `postOpening`, `findWorkers`, `applications`, `openingDetail` —
+  and a `Hiring` nav item was added back to all eight of those workspaces' sidebars. Deliberately
+  **not** granted: `roles`, `staffAccess`, `ownerCover`, `employmentChange` — those remain owner-only
+  concepts built against `peopleByWorkspace`-shaped records and weren't touched.
+
+**Known remaining limitation:** the worker-side candidate pool (`state.candidates`, used by
+`findWorkersScreen`'s matching) is currently seeded only with logistics-capable workers
+(driver/helper/operations/documents). A retail owner posting a Picker opening today will correctly
+see "no exact matches" rather than crash or show wrong results — but there's no independent
+"picker/cashier looking for work" candidate persona yet, the same gap noted for the
+individual/personal-hiring track. The posting→applicant→hire *mechanism* is now real and tested; the
+*supply* of retail-capable independent candidates in the mock data is still thin.
+
+## 7. What was deliberately NOT done (and why)
+
 - **General vs. Specialized role tiers** (the "anyone can hire a cleaner, but only a restaurant can
   hire a chef" design) was discussed and designed but not implemented in code — no `tier` field
   exists on `ROLE_TEMPLATES` yet.
 - **Individual/personal users hiring staff** (not just registered businesses) was explicitly scoped
-  out per the most recent instruction — only business-side hiring was worked on this session.
+  out per instruction — only business-side hiring was worked on this session.
+- **A restaurant vertical** (Chef, Waiter, Kitchen helper) doesn't exist in `config.js`/seed data at
+  all yet — it was discussed as a worked example, not built.
 - **Full nav hub/grid restructure** (Home/Orders/Catalog/Staff/Money/Business) was out of scope from
   the start — it touches far more surface area than could be verified through static analysis alone
   in this environment (no browser/bundler available, see below).
@@ -110,9 +136,17 @@ already had:
 No browser or bundler is available in this environment, so testing was: `node --check` for syntax on
 every touched file; real `import()` of every touched module in Node to catch missing exports/broken
 references; and executing the actual edited functions against realistic mock state objects with
-explicit pass/fail assertions (not just "it ran without crashing"). 78 assertions total, across 5
-suites, covering: role-list correctness per vertical, emergency-contact optionality, the suspend
+explicit pass/fail assertions (not just "it ran without crashing"). **107 assertions total, across 7
+suites**, covering: role-list correctness per vertical, emergency-contact optionality, the suspend
 action and its two follow-on bugs, cross-store identity reuse in both directions (logistics↔retail),
-and the full picker onboarding lifecycle including the correction path. All 78 pass as of this
-commit. This is not a substitute for manual/browser testing before a real deploy — it verifies logic
-and markup output, not actual rendering, CSS, or click-through UX.
+the full picker onboarding lifecycle including the correction path, the two retail-hiring blockers
+(branch-source crash and vertical-aware hiring), and `hireIntoStaff()` directly (retail picker,
+retail manager, and logistics hire paths, plus duplicate-hire protection). All 107 pass as of this
+commit.
+
+One known gap in the testing itself: the one-line wiring in `app.js`'s `change-application-status`
+`onchange` handler that calls `PC.hireIntoStaff()` is only syntax-checked, not executed — driving a
+real DOM `onchange` event isn't possible without a browser or `jsdom` (not installable here, no
+network access). `hireIntoStaff()` itself is fully tested directly; the one line that calls it from
+the real event handler is not. This is not a substitute for manual/browser testing before a real
+deploy — it verifies logic and markup output, not actual rendering, CSS, or click-through UX.
