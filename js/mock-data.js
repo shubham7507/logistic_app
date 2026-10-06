@@ -40,7 +40,22 @@ export const SEED={
   pickerShifts:[],pickerPayRuns:[],
   storeManagers:[{id:'MGR-001',store:'grocery',name:'Maya Manager',mobile:'9876501201',status:'active',permissions:['orders','schedule','timecards']},{id:'MGR-002',store:'groceryFresh',name:'Farah Manager',mobile:'9876501202',status:'active',permissions:['orders','schedule','timecards']},{id:'MGR-003',store:'electrical',name:'Nisha Manager',mobile:'9876501203',status:'active',permissions:['orders','schedule','timecards']},{id:'MGR-004',store:'fashion',name:'Ritu Manager',mobile:'9876501204',status:'active',permissions:['orders','schedule','timecards']}],
   activeStoreManager:{groceryManager:'MGR-001',groceryFreshManager:'MGR-002',electricalManager:'MGR-003',fashionManager:'MGR-004'},pickerSchedules:[],pickerTimeCorrections:[],
-  deliveryPartners:{deliveryPartner:{id:'DP-001',name:'Ravi Delivery',status:'approved',available:true,payoutAccount:{accountNumber:'1234567801'}},deliveryPartner2:{id:'DP-002',name:'Sana Delivery',status:'approved',available:true,payoutAccount:{accountNumber:'1234567802'}}},
+  // Ravi is already fully onboarded and approved — demonstrates the normal day-to-day experience.
+  // Sana starts mid-pipeline (profile_pending, nothing submitted yet) so the self-registration flow
+  // itself — vehicle, documents, optional emergency contact, payout, platform review — can be walked
+  // through end to end without needing a third demo slot.
+  deliveryPartners:{
+    deliveryPartner:{id:'DP-001',name:'Ravi Delivery',mobile:'9876506001',status:'approved',available:true,
+      vehicle:{type:'two_wheeler',number:'KA05AB1234'},
+      documents:{licence:{number:'DL-14-2019-0012345',expiry:'2029-05-31'},rc:{documentName:'rc-ravi.pdf'},insurance:{documentName:'insurance-ravi.pdf'}},
+      identity:{idType:'Driving licence',idLast4:'2345',dob:'1994-02-10',address:'Whitefield, Bangalore',documentName:'rc-ravi.pdf'},
+      bank:{accountName:'Ravi Delivery',accountNumber:'1234567801',masked:'••••7801',ifsc:'HDFC0001234',upi:'ravi@upi'},
+      documentsStatus:'complete',bankStatus:'complete',emergencyStatus:'skipped',emergency:null,
+      payoutAccount:{accountNumber:'1234567801'}},
+    deliveryPartner2:{id:'DP-002',name:'Sana Delivery',mobile:'9876506002',status:'profile_pending',available:false,
+      documentsStatus:'pending_staff',bankStatus:'pending_staff',emergencyStatus:'pending_staff',
+      payoutAccount:{accountNumber:'1234567802'}},
+  },
   badges:{transporter:{work:3,messages:4},vehicle:{work:2,messages:5},goods:{work:3,messages:2},movers:{work:4},admin:{approvals:7}},
   branches:{goods:['All branches','Patna Warehouse','Bihta Plant','Ranchi Depot'],transporter:['All branches','Noida HQ','Jaipur Branch'],vehicle:['All branches','Patna Yard'],movers:['All branches','Noida Moving Branch','Gurugram Branch']},
   knownIdentities:[{mobile:'9876543210',personId:'PER-1001',name:'Shubham Kumar',workspaces:['personal','goods','vehicle']}],

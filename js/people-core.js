@@ -35,14 +35,20 @@ export function ensureCore(s) {
   const add = (b, kind, rec, role) => {
     if (!rec?.mobile || seen.has(`${kind}:${rec.id}`)) return; seen.add(`${kind}:${rec.id}`);
     const p = person(rec.mobile, rec.name), hr = s.staffHR?.[rec.id];
-    if (rec.status === 'active' && p.kyc !== 'verified') p.kyc = rec.documentsStatus === 'verified' || hr?.kyc?.status === 'verified' || kind !== 'people' ? 'verified' : p.kyc;
+    // Delivery partners use 'approved' as their terminal status instead of 'active' (that vocabulary
+    // predates this shared model and matching logic elsewhere already depends on it — not changed here).
+    const terminal = ['active', 'approved'].includes(rec.status);
+    if (terminal && p.kyc !== 'verified') p.kyc = rec.documentsStatus === 'verified' || hr?.kyc?.status === 'verified' || kind !== 'people' ? 'verified' : p.kyc;
     if (rec.bankStatus === 'verified' || hr?.payout?.verified) p.payoutVerified = true;
     const ids = rec.branchIds?.length ? rec.branchIds : [branchesFor(s, b)[0]?.id];
-    s.employments.push({id: `EMP-${rec.id}`, personId: p.id, business: b, role: role || rec.role, designation: rec.designation || '', type: rec.employmentType || 'permanent', status: rec.status === 'active' ? 'active' : rec.status === 'offboarded' ? 'ended' : rec.status || 'invited', start: rec.joinedAt || rec.startDate || today(), end: null, homeBranch: hr?.homeBranch || ids[0], cover: hr?.cover || ids.slice(1), payPlan: rec.payPlan || (rec.payType ? {type: rec.payType, rate: rec.payAmount} : null), source: {kind, id: rec.id}, history: [{at: today(), text: 'Linked to shared profile'}]});
+    s.employments.push({id: `EMP-${rec.id}`, personId: p.id, business: b, role: role || rec.role, designation: rec.designation || '', type: rec.employmentType || 'permanent', status: terminal ? 'active' : rec.status === 'offboarded' ? 'ended' : rec.status || 'invited', start: rec.joinedAt || rec.startDate || today(), end: null, homeBranch: hr?.homeBranch || ids[0], cover: hr?.cover || ids.slice(1), payPlan: rec.payPlan || (rec.payType ? {type: rec.payType, rate: rec.payAmount} : null), source: {kind, id: rec.id}, history: [{at: today(), text: 'Linked to shared profile'}]});
   };
   for (const b of BUSINESS) for (const r of s.peopleByWorkspace?.[b] || []) add(b, 'people', r);
   for (const r of s.pickerStaff || []) add(r.store, 'picker', r, s.staffHR?.[r.id]?.role || 'picker');
   for (const r of s.storeManagers || []) add(r.store, 'manager', r, 'manager');
+  // Delivery partners are platform-wide, not tied to one seller — 'platform' is a nominal business tag,
+  // not a real seller lookup, so reusableIdentity() below shows its own label rather than bizName(s,...).
+  for (const r of Object.values(s.deliveryPartners || {})) add('platform', 'delivery', r, 'delivery');
   if (!s.teamsSeeded) { s.teamsSeeded = true; seedTeams(s); }
   return s;
 }
@@ -79,16 +85,24 @@ export function findPerson(s, mobile) { return s.persons?.[`P-${String(mobile).r
 // of this same person — only 'people' (peopleByWorkspace) records carry real identity/bank data today;
 // picker/manager records have no onboarding form at all, so there is nothing to reuse from those.
 // Returns null if nothing complete and reusable is found.
-const SOURCE_ARRAY = {people: 'peopleByWorkspace', picker: 'pickerStaff', manager: 'storeManagers'};
+// Each source kind has its own storage shape: peopleByWorkspace is a dict of arrays (one per
+// business), pickerStaff/storeManagers are flat arrays, deliveryPartners is a dict of individual
+// records (one per demo slot, not an array) — findRecord() resolves each correctly.
+function findRecord(s, kind, business, id) {
+  if (kind === 'people') return (s.peopleByWorkspace?.[business] || []).find(x => x.id === id);
+  if (kind === 'picker') return (s.pickerStaff || []).find(x => x.id === id);
+  if (kind === 'manager') return (s.storeManagers || []).find(x => x.id === id);
+  if (kind === 'delivery') return Object.values(s.deliveryPartners || {}).find(x => x.id === id);
+  return null;
+}
 export function reusableIdentity(s, mobile, excludeBusiness) {
   const p = findPerson(s, mobile); if (!p) return null;
   const candidates = s.employments.filter(e => e.personId === p.id && e.business !== excludeBusiness && e.status === 'active');
   for (const e of candidates) {
-    const key = SOURCE_ARRAY[e.source.kind]; if (!key) continue;
-    const pool = key === 'peopleByWorkspace' ? (s[key]?.[e.business] || []) : (s[key] || []);
-    const rec = pool.find(x => x.id === e.source.id);
+    const rec = findRecord(s, e.source.kind, e.business, e.source.id);
     if (rec?.identity && rec?.bank && ['verified', 'complete'].includes(rec.documentsStatus) && ['verified', 'complete'].includes(rec.bankStatus)) {
-      return {business: e.business, businessName: bizName(s, e.business), identity: rec.identity, bank: rec.bank, emergency: rec.emergency || null};
+      const businessName = e.source.kind === 'delivery' ? 'delivery partner work' : bizName(s, e.business);
+      return {business: e.business, businessName, identity: rec.identity, bank: rec.bank, emergency: rec.emergency || null};
     }
   }
   return null;

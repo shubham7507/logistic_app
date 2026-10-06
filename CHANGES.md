@@ -146,7 +146,81 @@ sidebar. Grouping it the same way would be a quick follow-up using the exact sam
 helper, just not done in this pass since the request was specifically about the desktop sidebar shown
 in the screenshot.
 
-## 8. What was deliberately NOT done (and why)
+## 8. Delivery partner self-registration (new file: `js/delivery-onboarding.js`)
+
+Delivery partners were previously not invited by anyone — `deliveryProfile` was entirely read-only
+("Status: X · ID: Y"), with no submission form at all. This adds the missing self-registration
+lifecycle, deliberately shaped differently from staff/picker onboarding because a delivery partner
+isn't an employee of any one business:
+
+- **Self-registration, not an invite** — a new "Become a delivery partner" entry point on the
+  purpose screen (`fix-screens.js`), reachable by anyone, landing on whichever demo delivery-partner
+  slot is still mid-pipeline.
+- **Lifecycle**: `profile_pending → submitted → approved` (plus `correction_required` / `rejected`).
+  Deliberately reuses `'approved'` as the terminal status — the value every existing job-matching
+  function already checks — instead of introducing a new `'active'` status, so zero other files
+  needed to change to make approved delivery partners eligible for job offers.
+- **Onboarding form**: vehicle type/registration, licence + RC + insurance, optional emergency
+  contact (same rule as everywhere else — skippable, never blocks approval), payout destination.
+- **Reviewed by the platform (admin) only, never a seller** — extends the existing `commercePartners`
+  admin screen with a "Review joining details" button that appears only once someone has submitted;
+  the old generic approve/suspend toggle now only shows for already-approved or suspended partners,
+  closing a real gap where admin could previously approve an unsubmitted applicant by clicking the
+  generic button, bypassing review entirely.
+- **Identity reuse works in both directions.** Extended `ensureCore()` (`people-core.js`) to also
+  build employment records for delivery partners (`source.kind: 'delivery'`), and extended
+  `reusableIdentity()`'s record lookup to handle delivery partners' actual storage shape (a dict of
+  individual records, not an array like pickers/managers, not a dict-of-arrays like logistics staff).
+  Tested: a delivery partner who's already a verified Picker gets the reuse banner; a picker
+  onboarding also correctly reuses an already-verified delivery partner's identity.
+- **Deliberately not a growable list.** `state.deliveryPartners` stays a fixed 2-slot dict, same shape
+  as before — not converted into an array like `pickerStaff`. ~20 call sites across 8 files assume
+  `s.deliveryPartners[workspace]` resolves directly to one person; converting that would have meant
+  touching all of them without a real browser to verify the result, which is exactly the kind of
+  foundational, widely-coupled change this session has avoided throughout. The two-slot demo
+  (one already-approved, one starting from scratch) is enough to test the real flow end to end.
+
+## 9. Delivery tracking — three issues found, not yet fixed (next task)
+
+While investigating this, a related but separate set of problems was found in `geo.js`'s per-order
+live tracking: (1) a courier can manually stop sharing location mid-delivery — the same flaw
+deliberately closed for logistics trips earlier, never applied here; (2) starting tracking is
+optional, so a courier could simply never turn it on; (3) a real correctness bug — a single shared
+`watchId` variable (not keyed per order) means a courier carrying two orders at once (the platform's
+own `capacityPerCourier` setting already allows this) can have the wrong order's GPS watch cleared
+when stopping tracking on the other one. None of these three are fixed yet — flagged here, scoped,
+and agreed as the next piece of work, not done in this pass.
+
+## 10. Full end-to-end test, new people throughout — found and fixed a real money-handling bug
+
+Ran a complete simulation from scratch: a brand-new customer (Priya Nair) places a real order against
+the actual seed catalog; a brand-new staff member (Meena Iyer) is invited, onboarded, approved, has a
+pick task assigned to her, sees it in her own view, and completes it; a brand-new delivery partner
+(Vikram Singh) self-registers, gets platform-approved, receives the delivery request, accepts, picks
+up with the real pickup code, and delivers with the real delivery code; COD cash gets reconciled;
+the platform settles the seller (correctly blocked until the reserve period passes, exactly as
+designed) and pays the delivery partner; the owner gives Meena a salary advance; both are offboarded
+at the end. All of it via the actual exported functions, not a parallel simulation — 54 steps, all
+now passing.
+
+**One real bug found along the way, not caused by anything in this session:** `giveAdvance()` in
+`store-hr.js` called `payOut()` but discarded its return value entirely. `payOut()` already correctly
+returns `{error: "...has not added a verified UPI/bank account..."}` when UPI/bank isn't verified —
+but `giveAdvance` ignored that and always reported success, meaning an owner choosing UPI for someone
+without a verified account would see "Advance given," while no money actually moved and no record
+explained why. Fixed by checking `payOut()`'s result before recording the advance as given, and
+reordered so a failed payout never leaves a misleading "successful" advance record behind. Confirmed
+with a real test: the UPI-blocked case leaves **no** advance record at all now, matching what actually
+happened (nothing was paid).
+
+**Not independently testable here:** the generic order-level DOM actions (pick-check, pack, remit,
+settle, etc.) are all called correctly from this test, but the specific `#business-start-form` and
+checkout-UI submit handlers in `app.js` are inline DOM event handlers rather than separable functions
+— the underlying `placeOrder()` function they ultimately call was tested directly and for real, but
+the literal form-to-state wiring around business onboarding specifically wasn't driven through a form
+submit event (no browser available here, consistent with every other gap noted throughout this file).
+
+## 11. What was deliberately NOT done (and why)
 
 - **General vs. Specialized role tiers** (the "anyone can hire a cleaner, but only a restaurant can
   hire a chef" design) was discussed and designed but not implemented in code — no `tier` field
@@ -164,14 +238,17 @@ in the screenshot.
 No browser or bundler is available in this environment, so testing was: `node --check` for syntax on
 every touched file; real `import()` of every touched module in Node to catch missing exports/broken
 references; and executing the actual edited functions against realistic mock state objects with
-explicit pass/fail assertions (not just "it ran without crashing"). **129 assertions total, across 8
+explicit pass/fail assertions (not just "it ran without crashing"). **213 assertions total, across 11
 suites**, covering: role-list correctness per vertical, emergency-contact optionality, the suspend
 action and its two follow-on bugs, cross-store identity reuse in both directions (logistics↔retail),
 the full picker onboarding lifecycle including the correction path, the two retail-hiring blockers
 (branch-source crash and vertical-aware hiring), `hireIntoStaff()` directly (retail picker, retail
-manager, and logistics hire paths, plus duplicate-hire protection), and the hub-grouping logic across
-all four retail workspace types plus a logistics workspace (confirming no route is ever lost or
-duplicated after grouping). All 129 pass as of this commit.
+manager, and logistics hire paths, plus duplicate-hire protection), the hub-grouping logic across all
+four retail workspace types plus a logistics workspace, the full delivery-partner onboarding lifecycle
+including bidirectional identity reuse (picker↔delivery), `ensureCore()` run against the actual real
+seed data, and a 54-step full end-to-end simulation with brand-new people at every role (customer,
+staff, delivery partner) from first contact through to offboarding, which is what caught the
+giveAdvance payout bug described above. All 213 pass as of this commit.
 
 One known gap in the testing itself: the one-line wiring in `app.js`'s `change-application-status`
 `onchange` handler that calls `PC.hireIntoStaff()` is only syntax-checked, not executed — driving a

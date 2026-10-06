@@ -133,8 +133,16 @@ export function giveAdvance(s, ws, pid, v) {
   if (amount + advanceLeft(s, pid) > cap) return `Advances are limited to about one month's pay (${inr(cap)}).`;
   if (!String(v.reason || '').trim()) return 'Add a reason.';
   const status = a.kind === 'owner' ? 'active' : 'pending_approval';
+  // Attempt the real payout BEFORE recording the advance as given. Previously payOut()'s result was
+  // discarded entirely — an owner choosing UPI for someone with no verified account would see
+  // "Advance given" even though the money never moved, with an advance record left behind claiming
+  // otherwise. Now a failed payout (unverified UPI/bank, gateway decline) is reported back and
+  // nothing is recorded, instead of silently succeeding.
+  if (status === 'active') {
+    const payoutResult = payOut(s, a.store, pid, amount, v.method || 'upi', `Salary advance · ${v.reason.trim()}`, 'advance');
+    if (payoutResult?.error) return payoutResult.error;
+  }
   (s.staffAdvances ||= []).push({id: uid('ADV'), store: a.store, personId: pid, amount, balance: amount, instalment: inst, reason: v.reason.trim(), method: v.method || 'upi', status, at: stamp(), by: a.name});
-  if (status === 'active') payOut(s, a.store, pid, amount, v.method || 'upi', `Salary advance · ${v.reason.trim()}`, 'advance');
   return status === 'active' ? '' : 'sent';
 }
 export function approveAdvance(s, ws, id) { const a = actor(s, ws), x = (s.staffAdvances || []).find(y => y.id === id); if (a.kind !== 'owner') return 'Only the owner approves advances.'; if (!x || x.status !== 'pending_approval') return 'Nothing to approve.'; x.status = 'active'; x.approvedBy = a.name; payOut(s, x.store, x.personId, x.amount, x.method, `Salary advance · ${x.reason}`, 'advance'); return ''; }
