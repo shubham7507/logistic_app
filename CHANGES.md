@@ -390,7 +390,72 @@ click processes everyone, not one person at a time.
   each person's **actual resulting balance** matches what the result claims. A held or failed person's
   balance is confirmed completely unchanged, not just reported as such.
 
-## 16. What was deliberately NOT done (and why)
+## 16. Critical fix: three routes were completely unreachable in the real app — and why 347 passing tests never caught it
+
+Found from real screenshots, not from testing: `unifiedPay`, `monthlyPayroll`, and `pickerReview`
+silently fell through to a generic "planned screen" placeholder for an actual store owner, despite
+every one of the underlying functions being correctly tested and passing. This is the most important
+finding of this entire session, and worth explaining honestly.
+
+**The actual bug:** `commerce.js`'s route dispatcher is one very large function with several
+different `if(...)` blocks, each scoped to a different kind of workspace (`storeOperator(ws)`,
+`pickerRole(ws)`, `driverRole(ws)`, `ws==='admin'`). Inside each block, the same variable names (`p`,
+`store`) mean completely different things — in the admin block, `p` doesn't exist as a business
+record at all; in the delivery-driver block, `p` means the delivery partner, not the seller.
+`unifiedPay` and `monthlyPayroll` were added inside the `ws==='admin'` block — meaning they could only
+ever render for platform admin, never for an actual store owner. `pickerReview` was added inside the
+`pickerRole(ws)` block but internally required `sellerRole(ws) || managerRole(ws)` — two conditions
+that can never both be true at once, since a workspace can't simultaneously be a picker's own
+workspace and the owner's. The route could never fire for anyone.
+
+**Why automated testing never caught this:** every test written this session — all 332 of them at the
+time — called the underlying functions directly (`Payroll.payPersonScreen(...)`,
+`pickerReviewScreen(...)`), which is correct for testing business logic, but completely bypasses the
+actual dispatcher a real browser click goes through. The business logic was never wrong; the wiring
+connecting a button to that logic was silently broken, and nothing short of actually clicking through
+the real app (or testing the dispatcher itself) could have caught it.
+
+**Fixed**: all three moved into the `storeOperator(ws)` block, the same scope `shopTeam` already
+correctly uses (which is why `shopTeam` always rendered fine). `unifiedPay` also now shows a clear
+"open this from a specific person's Pay button" message if navigated to directly without a person
+selected, instead of silently falling through to the placeholder.
+
+**New, permanent testing practice added**: a dedicated `route-reachability` test suite that calls
+`Commerce.screen(state, route, ws)` — the actual dispatcher — against the real seed data, for every
+route added this session, confirming each renders its real content and not the placeholder. This is a
+genuinely different category from every other test in this file, specifically designed to catch this
+class of bug going forward. The end-to-end simulation (item 10, originally 54 steps) was also extended
+with two dispatcher-level reachability checks at the end, using the exact state built up over the
+whole 54-step journey — tying real business-logic correctness and real reachability together in one
+pass, now 56 steps.
+
+## 17. Old Payroll tab retired — one real payment path, not two
+
+Confirmed from a screenshot: the pre-existing "Payroll" tab inside "People & pay" had its own
+separate "Pay" button and method dropdown, calling `store-hr.js`'s own `payOut()` directly —
+completely bypassing `payroll-core.js`. Tracing it further: the *payment* itself would eventually
+reconcile into the unified ledger (migration re-scans on every call), but the *amount shown as owed*
+on that screen came from an entirely separate attendance-based calculation that never feeds into
+`payroll-core.js` at all — meaning the old tab and the new unified screen could genuinely show two
+different numbers for the same person at the same moment, exactly the problem this whole
+consolidation was meant to prevent.
+
+**Fixed**: the old tab's method dropdown + "Pay" button are gone, replaced with the same `data-unified-pay`
+button used everywhere else in the app — one real payment action, reachable from multiple screens,
+instead of two independent ones. The attendance-based breakdown (base/meal/cover/advance recovery)
+stays visible as reference information, since that's still useful and isn't itself duplicated
+anywhere — only the actual money-moving button was.
+
+## 18. Minor fix: error messages were positionally ambiguous
+
+A validation error (e.g. "Take a photo (JPG or PNG)") always renders in the same fixed spot at the
+bottom of the picker onboarding form, regardless of which section actually failed — so any error
+visually looked like a complaint about whichever field happened to sit just above it (the Emergency
+Mobile field, in the screenshot that surfaced this). Fixed by prefixing each error with which section
+it's actually about ("Aadhaar: ...", "Photo: ...", "Bank account: ...") rather than repositioning the
+message itself, which would have been a larger, riskier layout change for a cosmetic problem.
+
+## 19. What was deliberately NOT done (and why)
 
 - **General vs. Specialized role tiers** (the "anyone can hire a cleaner, but only a restaurant can
   hire a chef" design) was discussed and designed but not implemented in code — no `tier` field
@@ -408,7 +473,7 @@ click processes everyone, not one person at a time.
 No browser or bundler is available in this environment, so testing was: `node --check` for syntax on
 every touched file; real `import()` of every touched module in Node to catch missing exports/broken
 references; and executing the actual edited functions against realistic mock state objects with
-explicit pass/fail assertions (not just "it ran without crashing"). **332 assertions total, across 19
+explicit pass/fail assertions (not just "it ran without crashing"). **347 assertions total, across 20
 suites**, covering: role-list correctness per vertical, emergency-contact optionality, the suspend
 action and its two follow-on bugs, cross-store identity reuse in both directions (logistics↔retail),
 the full picker onboarding lifecycle including the correction path, the two retail-hiring blockers
@@ -416,16 +481,27 @@ the full picker onboarding lifecycle including the correction path, the two reta
 manager, and logistics hire paths, plus duplicate-hire protection), the hub-grouping logic across all
 four retail workspace types plus a logistics workspace, the full delivery-partner onboarding lifecycle
 including bidirectional identity reuse (picker↔delivery), `ensureCore()` run against the actual real
-seed data, a 54-step full end-to-end simulation with brand-new people at every role (customer, staff,
-delivery partner) from first contact through to offboarding (which caught the giveAdvance payout bug),
+seed data, a 56-step full end-to-end simulation with brand-new people at every role (customer, staff,
+delivery partner) from first contact through to offboarding (which caught the giveAdvance payout bug,
+and — extended at the end — the dispatcher-reachability checks that caught the critical routing bug),
 the unified payroll engine's migration correctness from all four old systems, the two-sided UPI
 confirmation flow (including the mismatch-detection bug caught and fixed mid-build), owner/worker
 balance consolidation tested directly rather than assumed, easy-mode's rewiring to the unified engine,
 the Aadhaar verification retrofit including real-OTP rejection, bank penny-drop rejection, and both
 self and assisted verification paths with correct labeling, the bank-gateway fix (including the exact
-bad-account rejection case that had been silently slipping through), and the batch monthly payroll
-flow with real actual-balance verification for paid/held/failed people, not just checking the reported
-result. All 332 pass as of this commit.
+bad-account rejection case that had been silently slipping through), the batch monthly payroll flow
+with real actual-balance verification for paid/held/failed people, and — the newest and most
+important category — real dispatcher-reachability tests confirming `unifiedPay`, `monthlyPayroll`, and
+`pickerReview` actually render their real content through `Commerce.screen()` for a real store-owner
+workspace, not the generic placeholder they were silently falling back to before. All 347 pass as of
+this commit.
+
+**The honest lesson from this round**: a passing test suite proves the logic is correct; it does not
+by itself prove a real user can ever reach that logic by clicking something. This gap existed in every
+prior section of this file too, silently, until real screenshots exposed it. The new
+`route-reachability` test category exists specifically to close that gap for every route added going
+forward — but it was added *after* the bug, not as a standing practice from the start, which is worth
+being honest about rather than implying this was always covered.
 
 **One thing this testing cannot cover**: the UPI deep-link redirect and QR rendering require a real
 browser with internet access to actually exercise (mobile UPI app handoff, loading the QR library from

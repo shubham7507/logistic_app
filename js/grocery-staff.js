@@ -52,7 +52,7 @@ export function submitPickerOnboarding(s,ws,v){
  // either way — from the worker themself normally, or an explicit "I confirm they were present and
  // consented" from whoever is assisting, which is a materially different, more serious claim.
  const kyc=aadhaarEkyc({aadhaar:v.aadhaar,otp:v.otp,consent:v.consent==='1'});
- if(!kyc.ok)return kyc.reason;
+ if(!kyc.ok)return `Aadhaar: ${kyc.reason}`;
  if(!v.dob)return 'Enter the date of birth.';
  if(!v.selfie)return assisted?'Upload a photo of the worker or their Aadhaar card.':'Take a live selfie.';
  // faceMatch expects a file object with a real image extension — the owner/UI passes the selected
@@ -60,10 +60,13 @@ export function submitPickerOnboarding(s,ws,v){
  // everywhere else in the app (no real file storage exists anywhere), but the affordance itself — a
  // genuine camera-capable file picker — is the real fix for what was missing before.
  const fm=faceMatch({name:v.selfie},assisted?'assisted-reference':kyc.data?.masked);
- if(!fm.ok)return fm.reason;
+ // The error paragraph sits at the bottom of the form (after Emergency contact), regardless of which
+ // section actually failed — prefixing which section the error is about avoids it visually looking
+ // like a complaint about whichever field happens to sit right above the message.
+ if(!fm.ok)return `Photo: ${fm.reason}`;
  // Bank verified with a simulated ₹1 penny-drop, not just an IFSC regex check.
  const bankCheck=pennyDrop({account:v.accountNumber,ifsc:v.ifsc,name:v.accountName});
- if(!bankCheck.ok)return bankCheck.reason;
+ if(!bankCheck.ok)return `Bank account: ${bankCheck.reason}`;
  const emergencyProvided=Boolean(String(v.emergencyName||'').trim()||String(v.emergencyMobile||'').trim());
  if(emergencyProvided&&!/^[6-9]\d{9}$/.test(String(v.emergencyMobile||'').replace(/\D/g,'')))return 'Enter a valid 10-digit mobile for the emergency contact, or leave both fields blank to skip it.';
  p.identity={dob:v.dob,idType:'Aadhaar',idLast4:kyc.data.masked.slice(-4),address:kyc.data.address,documentName:v.selfie,aadhaarMasked:kyc.data.masked};
