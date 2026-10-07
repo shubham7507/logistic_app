@@ -130,7 +130,7 @@ function opsRoute(route){
   if(route==='applicationStatus'&&ws==='personal'){const a=currentApplication();return applicationStatusScreen(state)+draftPanel(state,a)}
   if(route==='account')return accountScreen(state);
   const plusScreen=Plus.screen(state,route,ws);if(plusScreen)return plusScreen;
-  if(route==='shopTeam'){const sh=Commerce.screen(state,route,ws);if(sh)return `<div class="info-banner"><b>Branches, ID checks, pay, advances and ledgers are in People & pay</b><span>Invite with a home branch, pay type and cover branches there.</span><button class="button primary compact" data-route="storeHR">Open People & pay</button></div>`+sh}
+  if(route==='shopTeam'){const sh=Commerce.screen(state,route,ws);if(sh)return `<div class="info-banner"><b>Branches and cover assignments are in People & pay</b><span>Pay, advances and balances now live on each person's own "Pay" button below, not here.</span><button class="button primary compact" data-route="storeHR">Open People & pay</button></div>`+sh}
   const shop=Commerce.screen(state,route,ws);if(shop)return route==='deliveryJobs'?shop+Plus.deliveryExtras(state,ws):shop;
   if(route==='productCheckout'&&ws==='personal')return PO.checkoutScreen(state);
   if(route==='productDetail'&&ws==='personal')return PO.productDetailScreen(state);
@@ -315,6 +315,17 @@ $('ai-no').onclick=()=>{aiPending=null;$('ai-confirm').hidden=true;$('ai-readbac
 document.addEventListener('click',e=>{if(e.target.closest('[data-close-ai]')||e.target.id==='ai-dialog')$('ai-dialog').hidden=true});
 $('branch-button').onclick=()=>{const branches=state.businessProfiles[state.currentWorkspace]?.branches||[];if(!branches.length)return;const values=['all',...branches.map(b=>b.id)],current=state.branchFilter?.[state.currentWorkspace]||'all',next=values[(values.indexOf(current)+1)%values.length];state.branchFilter={...(state.branchFilter||{}),[state.currentWorkspace]:next};saveState(state);renderWorkspace();renderRoute();toast(next==='all'?'Showing all branches':`Showing ${branches.find(b=>b.id===next)?.name||next}`)};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeOverlays()});window.addEventListener('hashchange',renderRoute);
+// Single always-on, lightweight poll for the Pay screen — checks a cheap counter (state.payVersion)
+// rather than diffing the whole ledger, and only re-renders when it actually changed and the user is
+// still sitting on a payroll-related screen. Within this one-browser prototype, confirming a payment
+// on one side already updates shared state instantly; this just means you don't have to navigate away
+// and back to see it. A real backend would swap this for an actual push/poll against the server —
+// same pattern, different source of truth, so this isn't throwaway code for the eventual integration.
+let __lastSeenPayVersion=state.payVersion||0;
+setInterval(()=>{
+  const v=state.payVersion||0;
+  if(v!==__lastSeenPayVersion){__lastSeenPayVersion=v;if(['unifiedPay'].includes(state.currentRoute))renderRoute();}
+},3500);
 
 function renderAll(){renderWorkspace();renderDesktopNav();renderMobileNav();if(!location.hash)location.hash=state.auth?.status==='authenticated'?'#/home':'#/welcome';renderRoute();app.setAttribute('aria-busy','false')}
 renderAll();

@@ -8,6 +8,7 @@ import {esc, inr} from './ops.js';
 import {record} from './pay.js';
 import * as PC from './people-core.js';
 import * as LC from './ledger-core.js';
+import * as Payroll from './payroll-core.js';
 import * as HR from './store-hr.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -86,7 +87,9 @@ export function markPresent(s, ws, row, date = today()) {
 }
 export function giveAdvance(s, ws, row, amount, instalment) {
   amount = Math.round(Number(amount)); instalment = Math.round(Number(instalment)); if (!(amount > 0) || !(instalment > 0)) return 'Enter the advance and how much to repay each month.';
-  if (isStore(row.e.business)) { const r = HR.giveAdvance(s, ws, row.key, {amount, instalment, reason: 'Advance (easy)', method: 'cash'}); return r === 'sent' ? '' : r; }
+  // Retail: goes through the unified payroll engine now, not store-hr.js's own ledger directly — same
+  // balance an owner sees on the "Pay" button and a worker sees on their own "My pay" screen.
+  if (isStore(row.e.business)) return Payroll.giveAdvance(s, row.e.business, row.e.personId, {amount, instalment, reason: 'Advance (easy)', method: 'cash'});
   const m = (s.peopleByWorkspace[row.e.business] || []).find(x => x.id === row.e.source.id); if (!m) return 'Not found.';
   if (m.loan?.balance) return `${m.name} still has ${inr(m.loan.balance)} advance left.`;
   m.loan = {total: amount, balance: amount, installment: instalment, reason: 'Advance (easy)', givenAt: today()};
@@ -98,7 +101,10 @@ export function pay(s, ws, row, amount, method) {
   if (method === 'cash') { const e = LC.payCash(s, ws, row, amount); if (!e) smsConfirm(s, row, amount); return e; }
   if (amount > row.balance) return `Balance due is only ${inr(row.balance)}.`;
   if (!s.persons[row.e.personId]?.payoutVerified) return `${row.p.name} has not added a verified UPI. Pay in cash or ask them to add UPI.`;
-  if (isStore(row.e.business)) { HR.post(s, {store: row.e.business, personId: row.key, branchId: row.e.homeBranch, type: 'payment', amount, note: 'Paid by UPI', method: 'upi', reference: `UPI-${Date.now().toString().slice(-6)}`}); return ''; }
+  // Retail UPI payments go through the same two-sided confirmation flow as the owner's "Pay" button —
+  // easy-mode's voice/text command shortcut shouldn't quietly skip that safeguard just because it's a
+  // faster way to get there.
+  if (isStore(row.e.business)) { const r = Payroll.payNow(s, row.e.business, row.e.personId, amount, 'upi', ''); return typeof r === 'string' ? r : ''; }
   record(s, {owner: row.e.business, sourceType: 'khata', sourceId: row.key, type: 'salary', direction: 'payable', payer: row.e.business, payee: row.key, responsible: row.e.business, amount, method: 'upi', reference: `UPI-${Date.now().toString().slice(-6)}`, status: 'paid', note: `Paid by UPI · ${row.p.name}`}, 'Owner'); return '';
 }
 function smsConfirm(s, row, amount) { (s.outbox ||= []).unshift({to: row.p.mobile, text: `MoveAI: ${PC.bizName(s, row.e.business)} paid you ${inr(amount)} in cash. Reply 1 if received, 2 if not, or tap the link.`, channels: ['SMS'], at: stamp()}); }

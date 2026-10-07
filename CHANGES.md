@@ -272,7 +272,125 @@ plain-language screen output) plus a separate pass rendering the real screen aga
 employment in the actual seed data (16 people, zero errors) and confirming idempotency against real
 data too.
 
-## 12. What was deliberately NOT done (and why)
+## 12. Payment consolidation: two-sided UPI confirmation, polling, and one real source of truth
+
+Three screens all claimed to be "where you handle staff pay" (the new Pay button, the old People &
+pay screen, easy-mode's own tiles) and a worker's own self-view was calculating balance independently
+from what the owner saw — the exact kind of drift this whole payroll unification was meant to prevent.
+
+- **UPI is no longer treated as instantly successful.** `payNow()` for UPI now returns a real deep link
+  (`upi://pay?pa=...`) instead of marking the payment paid — there's no gateway here to confirm the
+  transfer actually happened, so pretending otherwise would be dishonest. The payment sits as
+  `pending_confirmation` and does **not** count toward balance until someone confirms it.
+- **Two-sided confirmation, reusing the exact pattern already built for cash handovers** — owner sees
+  "Did this go through?", worker sees "Did you receive this?" on the same pending entry. Either side's
+  "yes" settles it; critically, the status is **recomputed fresh from both answers every time**, not
+  finalized irreversibly on the first response — a real bug caught while testing: without this, an
+  owner's instant "yes" would close the event before the worker could ever flag a genuine mismatch
+  ("paid" vs. "never received"), which is exactly the case this mechanism exists to catch.
+- **Device-aware handoff**: redirects straight to the UPI app on mobile; renders a QR code on desktop
+  (nothing on a desktop browser can catch a `upi://` link). Added a real QR library
+  (`qrcode@1.5.3` via CDN) to both business page shells — this is a real external library a real
+  browser can load; it could not be exercised live in this sandbox (no internet access here), so it
+  falls back to showing the raw link as text if the library isn't available, rather than silently
+  doing nothing.
+- **Lightweight polling** (`s.payVersion`, bumped on every mutation) so the Pay screen notices a
+  confirmation without the user navigating away and back. Honest limitation: within this one-browser
+  prototype this only matters if you're viewing both sides in the same session — real cross-device
+  sync needs an actual backend, which this explicitly isn't.
+- **The worker's own "My pay & details" screen (`store-hr.js`) now reads balance from the exact same
+  `payroll-core.js` function the owner's screen uses** — tested directly, not assumed, since an owner
+  and worker disagreeing on a number would make the whole consolidation pointless.
+- **Easy-mode's Give advance / Pay tiles** (the voice/text command interface) now call the unified
+  engine for retail businesses, so the same verified-UPI safeguard applies there too, not just on the
+  dedicated Pay button.
+- **The misleading banner is fixed** — it no longer claims pay/advances live in "People & pay" once
+  they don't.
+
+## 13. Aadhaar verification retrofit — replacing typed fields with the real verification that already existed
+
+Found mid-session: a complete, working Aadhaar OTP + live-selfie + bank penny-drop verification system
+(`verify-sim.js`, simulating DigiLocker/bank lookups) already existed in `store-hr.js`'s own
+self-service screen — and the picker onboarding form built earlier in this session duplicated the same
+job with plain text fields instead of finding and reusing it. That's a real miss on my part, corrected
+here.
+
+- **`submitPickerOnboarding` now calls the real functions** — `aadhaarEkyc()` for OTP verification
+  (wrong OTP is genuinely rejected, not just checked for digit count), `faceMatch()` for the live
+  selfie (now a real `<input type="file" accept="image/*" capture="user">`, not a filename text box),
+  and `pennyDrop()` for bank verification (a simulated ₹1 check that can catch a name mismatch, not
+  just an IFSC regex). The owner-review step this session already built stays in place — real
+  verification *and* the approval gate, not one or the other.
+- **Assisted verification for workers without a smartphone** — explicit toggle, not inferred: the
+  owner/manager enters the Aadhaar number and OTP (read aloud by the worker from their own SMS) and
+  uploads a photo of the worker or their card instead of a live selfie, behind a required consent
+  checkbox ("I confirm [name] was present and gave consent"). This is recorded as `verificationMode:
+  'assisted'` with who performed it (`assistedBy`), and both the onboarding screen and the owner's
+  review screen label it explicitly as assisted, not blended in as if it were self-verification.
+- **Compliance-aware display, not a card-image viewer**: the owner only ever sees a masked Aadhaar
+  number (`XXXX XXXX 1234`) and verified status — never the full number or a card photo. This matches
+  how Aadhaar eKYC is meant to work in India (private employers shouldn't hold the full number), and
+  was a deliberate design correction, not an oversight, from what was originally requested.
+- **Scoped to picker onboarding only** (`grocery-staff.js`) in this pass — logistics staff onboarding
+  (`people.js`) and delivery-partner onboarding (`delivery-onboarding.js`) still use the simpler
+  text-field pattern. Same retrofit, same shape, just not done yet — flagged, not silently left
+  inconsistent.
+
+## 14. Bank-transfer gateway gap — found while explaining GIRO-style payroll, then fixed
+
+While explaining how GIRO/bank-transfer payroll works in the real world, re-checking my own code
+surfaced a real gap: `payNow()`'s `bank` method never actually called the simulated bank gateway
+(`gateway.payout()`) — it just accepted a manually typed reference and marked the payment posted,
+identical to `cash`/`card_transfer`. The account number wasn't driving anything. The older
+`store-hr.js` payout function this replaced did call the gateway correctly; the unified replacement
+quietly dropped that while building the UPI confirmation flow.
+
+- **Fixed**: `bank` now resolves the person's real account number (same employment-lookup pattern as
+  UPI) and calls `gateway.payout({accountNumber}, amount)`. A rejected account (the simulated "ends in
+  000" test case) is genuinely rejected with the real reason, and no payment event is created.
+- **Bank posts immediately, unlike UPI** — confirmed this stays correct, not blurred: UPI has no
+  gateway here, so it needs the two-sided pending-confirmation dance; bank has a gateway that resolves
+  pass/fail on the spot, so it never needs that step, batch or single payment.
+- The owner is no longer asked to type a reference for bank transfers — the gateway generates one.
+  Only `card_transfer` (which has no simulated gateway at all) still asks for one.
+- Extracted the account/UPI lookup into one shared `resolveBankRecord()` helper instead of two copies
+  of the same kind-switch logic drifting apart between the UPI and bank branches.
+- **12 new direct tests**, specifically targeting the exact gap: good-account success with a
+  gateway-generated reference, bad-account rejection with zero event created, no-account-on-file
+  blocking, and confirming UPI's pending-confirmation behavior wasn't accidentally merged into bank's
+  immediate-post behavior. 308 total checks across 17 suites now, all passing.
+
+## 15. Batch monthly payroll — GIRO-style, one submission for the whole team
+
+Built on top of the bank-gateway fix above, since a batch run is only as correct as the single-person
+logic it repeats. A genuinely different shape of feature from everything else this session — one
+click processes everyone, not one person at a time.
+
+- **`runMonthlyPayroll(business, period)`** computes a draft — everyone with an active, monthly pay
+  plan in that business, their current balance, and whether they actually have a verified **bank
+  account specifically** (not just "payout verified" generally — a worker verified only for UPI can't
+  be included in a batch at all, since UPI needs a per-person interactive confirmation that genuinely
+  can't be done unattended, in this app or in reality; a real design correction caught while building
+  this, not an assumption carried over from the single-payment flow). Idempotent — reopening the same
+  month's draft never creates a duplicate.
+- **Hold, not block** — `toggleHold()` lets the owner pull any one person out before finalizing
+  (wrong hours, a pending dispute) without affecting anyone else, the same safeguard already built
+  into logistics' own payroll runs, now available here too.
+- **`approveMonthlyPayroll()` processes everyone not on hold through the exact same `payNow('bank')`
+  used for individual payments** — not a separate code path that could quietly drift from it. Each
+  result is categorized precisely: paid, held, skipped (nothing due), or failed (the real gateway
+  rejection reason, e.g. a bad account) — nothing is silently skipped or silently marked paid when it
+  wasn't.
+- **Named `s.unifiedPayrollRuns`**, deliberately not reusing `s.payrollRuns` — that field already
+  belongs to `workforce.js`'s own pre-existing logistics payroll-run system; reusing the name would
+  have silently collided two unrelated data structures.
+- **19 new tests**, including the specific scenario this exists to get right: five people in one
+  batch — one paid cleanly, one held, one with no bank account at all, one whose account the gateway
+  genuinely rejects — and verifying not just that the *results list* says the right thing, but that
+  each person's **actual resulting balance** matches what the result claims. A held or failed person's
+  balance is confirmed completely unchanged, not just reported as such.
+
+## 16. What was deliberately NOT done (and why)
 
 - **General vs. Specialized role tiers** (the "anyone can hire a cleaner, but only a restaurant can
   hire a chef" design) was discussed and designed but not implemented in code — no `tier` field
@@ -290,7 +408,7 @@ data too.
 No browser or bundler is available in this environment, so testing was: `node --check` for syntax on
 every touched file; real `import()` of every touched module in Node to catch missing exports/broken
 references; and executing the actual edited functions against realistic mock state objects with
-explicit pass/fail assertions (not just "it ran without crashing"). **247 assertions total, across 14
+explicit pass/fail assertions (not just "it ran without crashing"). **332 assertions total, across 19
 suites**, covering: role-list correctness per vertical, emergency-contact optionality, the suspend
 action and its two follow-on bugs, cross-store identity reuse in both directions (logistics↔retail),
 the full picker onboarding lifecycle including the correction path, the two retail-hiring blockers
@@ -300,9 +418,20 @@ four retail workspace types plus a logistics workspace, the full delivery-partne
 including bidirectional identity reuse (picker↔delivery), `ensureCore()` run against the actual real
 seed data, a 54-step full end-to-end simulation with brand-new people at every role (customer, staff,
 delivery partner) from first contact through to offboarding (which caught the giveAdvance payout bug),
-and the new unified payroll engine — migration correctness from all four old systems with exact sign
-verification, idempotency, every validation gate, and rendering the real screen against all 16 real
-active employments in the actual seed data with zero errors. All 247 pass as of this commit.
+the unified payroll engine's migration correctness from all four old systems, the two-sided UPI
+confirmation flow (including the mismatch-detection bug caught and fixed mid-build), owner/worker
+balance consolidation tested directly rather than assumed, easy-mode's rewiring to the unified engine,
+the Aadhaar verification retrofit including real-OTP rejection, bank penny-drop rejection, and both
+self and assisted verification paths with correct labeling, the bank-gateway fix (including the exact
+bad-account rejection case that had been silently slipping through), and the batch monthly payroll
+flow with real actual-balance verification for paid/held/failed people, not just checking the reported
+result. All 332 pass as of this commit.
+
+**One thing this testing cannot cover**: the UPI deep-link redirect and QR rendering require a real
+browser with internet access to actually exercise (mobile UPI app handoff, loading the QR library from
+a CDN) — neither is available in this sandbox. The logic generating the link and deciding mobile vs.
+desktop is tested directly; the actual redirect/QR-paint behavior is not, and is the one piece of this
+session's work that most needs a real click-through before trusting it in production.
 
 One known gap in the testing itself: the one-line wiring in `app.js`'s `change-application-status`
 `onchange` handler that calls `PC.hireIntoStaff()` is only syntax-checked, not executed — driving a
