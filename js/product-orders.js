@@ -71,7 +71,22 @@ export function placeOrder(state, v) {
   const payAtStore=v.fulfilment==='pickup'&&String(v.method).startsWith('store_');
   if(payAtStore&&!['store_cash','store_upi','store_card'].includes(v.method))return {error:'Choose a valid store payment method.'};
   const branchByStore={};for(const name of stores){const store=Object.keys(state.shopPartners||{}).find(k=>state.shopPartners[k].name===name),own=lines.filter(i=>i.product.fulfilmentPartner===name);own.forEach(i=>Inventory.ensureProductBranches(state,i.product));const chosen=routeBranch(state,store,own,v.fulfilment==='pickup'?'':v.address,Inventory.available);if(!chosen)return {error:`${name} has no active branch with all items in stock. Review your cart.`};branchByStore[store]=chosen.id;}
-  const gatewayResult = v.method === 'cod'||payAtStore ? null : gateway.collect({method:v.method, vpa:v.vpa, card:v.card, amount:q.total});
+  // Real UPI checkout: hand off to the customer's own UPI app via a real deep link, same principle as
+  // staff payouts — there is no real gateway here to confirm the transfer synchronously, so this
+  // doesn't pretend to charge the customer instantly. The three sentinel VPAs below are existing test
+  // fixtures (fail@upi / pending@upi / pendingfail@upi) and keep their original, pre-baked-outcome
+  // behavior unchanged — only a genuinely normal VPA goes through the new redirect flow.
+  const upiTestVpa = ['fail@upi', 'pending@upi', 'pendingfail@upi'].includes(String(v.vpa || '').toLowerCase());
+  let gatewayResult, upiLink = null;
+  if (v.method === 'cod' || payAtStore) {
+    gatewayResult = null;
+  } else if (v.method === 'upi' && !upiTestVpa) {
+    if (!/^[\w.-]+@[a-z]{2,}$/i.test(String(v.vpa || ''))) return {error: 'Enter a valid UPI ID, e.g. name@okaxis.'};
+    gatewayResult = {ok: true, pending: true, ref: `pay_${Math.random().toString(36).slice(2, 12)}`};
+    upiLink = `upi://pay?pa=${encodeURIComponent(v.vpa)}&am=${q.total}&tn=${encodeURIComponent('MoveAI order payment')}&cu=INR`;
+  } else {
+    gatewayResult = gateway.collect({method: v.method, vpa: v.vpa, card: v.card, amount: q.total});
+  }
   if (gatewayResult && !gatewayResult.ok) return {error:gatewayResult.reason};
   const reserveError=Inventory.reserve(state,lines,branchByStore);if(reserveError)return {error:reserveError};
   const checkoutId = `CHK-${Date.now().toString().slice(-5)}${Math.random().toString(36).slice(2,5).toUpperCase()}`;
@@ -88,13 +103,24 @@ export function placeOrder(state, v) {
   state.customerOrders.unshift(...orders);Plus.afterPlace(state,orders,plusAdj,v,lines);
   if (v.fromCart) state.productCart = [];
   state.latestCheckoutId=checkoutId;
-  return {ok:true,order:orders[0],orders,checkoutId,total:q.total};
+  return {ok:true,order:orders[0],orders,checkoutId,total:q.total,upiLink};
 }
 const orderPayments = (state, o) => state.ledger.filter(x => x.orderId === o.id);
+// Existing mechanism, unchanged: resolves a pending payment that already has a predetermined test
+// outcome baked in (gatewayFinal), from the pending@upi / pendingfail@upi test fixtures.
 export function checkPayment(state, o) {
   const x = orderPayments(state, o).find(e => e.status === 'pending'); if (!x) return 'Nothing pending.';
+  if (x.gatewayFinal == null) return 'ask'; // no predetermined outcome — this is a real redirect order; the UI must ask the customer directly and call confirmCustomerPayment with their answer, not guess.
   const group=state.customerOrders.filter(y=>y.checkoutId===o.checkoutId),success=x.gatewayFinal==='success';
   group.forEach(y=>{const p=orderPayments(state,y).find(e=>e.status==='pending');if(!p)return;p.status=success?'held':'failed';y.status=success?'paid':'cancelled';y.paymentStatus=success?'paid':'failed';if(!success){y.cancelReason='Payment failed — nothing was charged';Inventory.release(state,y)}y.history.push({at:stamp(),text:success?'Payment confirmed by the bank':y.cancelReason});});return '';
+}
+// New: for the real UPI-redirect flow, where there is no pre-baked outcome to check — the customer is
+// the only one who knows whether they actually completed the payment in their own UPI app, so this
+// resolves the pending order from their direct answer instead of guessing or assuming success.
+export function confirmCustomerPayment(state, o, succeeded) {
+  const x = orderPayments(state, o).find(e => e.status === 'pending'); if (!x) return 'Nothing pending to confirm.';
+  const group=state.customerOrders.filter(y=>y.checkoutId===o.checkoutId);
+  group.forEach(y=>{const p=orderPayments(state,y).find(e=>e.status==='pending');if(!p)return;p.status=succeeded?'held':'failed';y.status=succeeded?'paid':'cancelled';y.paymentStatus=succeeded?'paid':'failed';if(!succeeded){y.cancelReason='Payment not completed — nothing was charged';Inventory.release(state,y)}y.history.push({at:stamp(),text:succeeded?'Payment confirmed by customer':y.cancelReason});});return '';
 }
 function refund(state, o, amount, why) {
   const src = orderPayments(state, o).find(e => e.type === 'customer_payment' && e.status === 'held'); if (!src) return;
@@ -263,5 +289,36 @@ export function bindOrders(root, api) {
     if (f.dataset.poForm === 'return') return done(Commerce.requestReturn(s, f.dataset.id, fd.reason, fd.destination), 'Return requested · under review');
     const b = readBilling(root); if (b.error) { const el = root.querySelector('#po-error'); el.textContent = b.error; el.hidden = false; return; }
     const r = placeOrder(s, {productId: s.checkoutProductId, fromCart: s.checkoutFromCart, ...fd, billing: b.billing}); if (r.error) { const el = root.querySelector('#po-error'); el.textContent = r.error; el.hidden = false; return; }
-    if(r.order.fulfilment!=='pickup')s.deliveryAddress = r.order.address; api.save(); api.navigate('orders'); api.toast(r.order.status === 'payment_pending' ? 'Payment processing — we will confirm shortly' : r.order.cod ? `${r.orders.length} store order(s) placed · pay on delivery` : r.order.payAtStore?`${r.orders.length} pickup order(s) placed · pay at store` : `Paid ${inr(r.total)} · ${r.orders.length} store order(s) placed`); });
+    if(r.order.fulfilment!=='pickup')s.deliveryAddress = r.order.address; api.save(); api.navigate('orders');
+    if(r.upiLink){
+      // Real UPI handoff: redirect on mobile (a UPI app can catch this), show a QR on desktop (nothing
+      // on a desktop browser can catch a upi:// link). The order stays "payment processing" until the
+      // customer comes back and confirms via the Check status button — never marked paid on the spot.
+      const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent||'');
+      api.toast('Opening your UPI app — come back here once it\'s done and confirm from "Check status".');
+      if(isMobile){location.href=r.upiLink;}
+      else if(typeof QRCode!=='undefined'){
+        const overlay=document.createElement('div');overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+        const box=document.createElement('div');box.style.cssText='background:#fff;border-radius:16px;padding:24px;text-align:center;max-width:300px';
+        box.innerHTML='<p style="margin:0 0 12px;font-weight:600">Scan with any UPI app</p><div id="order-upi-qr"></div><p style="margin:12px 0 0;font-size:12px;color:#666">Then return here and confirm via "Check status" on your order.</p><button type="button" style="margin-top:12px" class="button secondary compact">Close</button>';
+        overlay.appendChild(box);document.body.appendChild(overlay);
+        box.querySelector('button').onclick=()=>overlay.remove();overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+        QRCode.toCanvas(box.querySelector('#order-upi-qr'),r.upiLink,{width:220},e=>{if(e)box.querySelector('#order-upi-qr').textContent=r.upiLink;});
+      } else { alert('Scan or open this UPI link on your phone:\n'+r.upiLink); }
+      return;
+    }
+    api.toast(r.order.status === 'payment_pending' ? 'Payment processing — we will confirm shortly' : r.order.cod ? `${r.orders.length} store order(s) placed · pay on delivery` : r.order.payAtStore?`${r.orders.length} pickup order(s) placed · pay at store` : `Paid ${inr(r.total)} · ${r.orders.length} store order(s) placed`); });
+  root.querySelectorAll('[data-po="check"]').forEach(b=>b.onclick=()=>{
+    const s = S(), o = (s.customerOrders||[]).find(x=>x.id===b.dataset.id); if(!o)return;
+    const result = checkPayment(s, o);
+    if(result === 'ask'){
+      const ok = confirm('Did the UPI payment actually go through on your phone?');
+      const err = confirmCustomerPayment(s, o, ok);
+      if(err)return api.toast(err);
+      api.save();api.render();api.toast(ok?'Payment confirmed — order placed':'Marked as not completed — nothing was charged');
+      return;
+    }
+    if(result)return api.toast(result);
+    api.save();api.render();api.toast('Status updated');
+  });
 }

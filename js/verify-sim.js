@@ -46,6 +46,17 @@ export function pennyDrop({account, ifsc, name}) {
   return {ok: true, data: {masked: maskTail(acc), ifsc: code, bankName: code.slice(0, 4), holder: name, source: '₹1 penny-drop'}};
 }
 
+// A real NPCI-style "verify VPA" check, equivalent in spirit to pennyDrop() for bank accounts — not
+// just a format check. Previously setPayout() marked any VPA that merely *looked* like an email as
+// instantly "verified", with no check it was real or belonged to that person at all.
+export function upiVerify({vpa, name}) {
+  const v = String(vpa || '').trim();
+  if (!/^[\w.-]+@[a-z]{2,}$/i.test(v)) return {ok: false, reason: 'Enter a valid UPI ID, e.g. name@okaxis.'};
+  if (/^unknown@/i.test(v)) return {ok: false, reason: 'This UPI ID could not be found. Check it and try again, or use a bank account instead.'};
+  const [handlePart] = v.split('@');
+  return {ok: true, data: {masked: `${handlePart.slice(0, 2)}***@${v.split('@')[1]}`, holder: name}};
+}
+
 export function faceMatch(file, reference) {
   if (!reference) return {ok: false, reason: 'Verify your licence or Aadhaar first so we have a photo to match.'};
   if (!file?.name) return {ok: false, reason: 'Take a live selfie.'};

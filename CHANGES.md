@@ -455,7 +455,79 @@ Mobile field, in the screenshot that surfaced this). Fixed by prefixing each err
 it's actually about ("Aadhaar: ...", "Photo: ...", "Bank account: ...") rather than repositioning the
 message itself, which would have been a larger, riskier layout change for a cosmetic problem.
 
-## 19. What was deliberately NOT done (and why)
+## 19. Customer checkout UPI payment — real redirect, not simulated success
+
+Checked directly: customer checkout was purely simulated — typing a VPA into a text field just
+validated the *string format* and instantly returned "paid," with zero real handoff to any UPI app.
+Ironically, this was the opposite of the staff-payout flow built earlier, which already does the real
+redirect/QR handoff — the more realistic payment experience in the whole app was the one paying
+workers, not the one customers actually use to buy things.
+
+- **`placeOrder()`** now generates a real `upi://pay?pa=...&am=...` deep link for a normal UPI ID and
+  marks the order `payment_pending` instead of instantly `paid` — same principle as staff payouts:
+  there's no real gateway here to confirm the transfer synchronously, so it doesn't pretend to.
+- **Found and fixed a second dead-button bug while building this**: a "Check status" button already
+  existed on pending orders, but had no click handler at all — clicking it did nothing. Wired it to
+  the already-existing `checkPayment()` function, and added a new `confirmCustomerPayment()` for the
+  case `checkPayment()` itself was never built to handle: a *real* redirect order has no predetermined
+  outcome baked in, so the customer is asked directly whether the payment actually went through,
+  instead of the system guessing or assuming success.
+- **The three existing test fixtures (`fail@upi`, `pending@upi`, `pendingfail@upi`) are completely
+  unchanged** — they still resolve through the original pre-baked-outcome mechanism, verified directly;
+  only a genuinely normal VPA goes through the new real-redirect path. Card payments are also
+  unaffected — those still go through the existing synchronous mock gateway, since a real card payment
+  needs an actual gateway integration (Razorpay, Stripe, etc.) this prototype can't simulate the same
+  way a UPI deep link can be.
+- **16 new tests**, including explicit regression checks confirming all three old test fixtures and
+  card payments behave exactly as before, plus the new flow's pending→confirmed and
+  pending→cancelled-with-inventory-released paths.
+
+## 20. The deepest bug found this session: store-hr-originated money was invisible to the unified ledger, always
+
+Started from a much smaller question — "who verifies a picker's UPI details, and does their self-service
+advance request go through the unified engine" — and uncovered something that had been silently wrong
+since the unified payroll engine was first built in item 11: **no payment or advance originating from
+`store-hr.js`'s own functions (`post()`, `payOut()`, `giveAdvance()`) had ever correctly reduced the
+right person's balance in the unified ledger — not once, regardless of how many times the migration
+re-ran.** This affected both owner-given and picker-self-requested advances, and ordinary salary
+payments made through the old screens.
+
+**Three separate, compounding causes, found by actually tracing a real advance through its full
+lifecycle rather than trusting that passing tests meant it worked:**
+
+1. **Wrong ID entirely.** `store-hr.js` always keys its own records by the raw picker/manager id (e.g.
+   `'PICK-1'`) — never the shared cross-business personId (`'P-9900022222'`) the rest of the unified
+   engine uses. The migration compared `employments[].personId === e.personId`, which compares a
+   shared id against a raw one — these can never match. This affected *both* the advances migration
+   and the general ledger migration (ordinary salary payments too, not just advances).
+2. **`advance_paid` entries were being silently skipped** — correctly, as it turns out, but not for a
+   reason anyone had verified: migrating that ledger entry *in addition to* the advance's own declining
+   balance would have double-counted the same money leaving. Worth stating explicitly now that it's
+   understood, rather than leaving it as an accidental side effect of an unrelated filter.
+3. **Stale copies.** Once the first two were fixed and tested with a real request-then-approve
+   sequence, the test *still* failed — because the migration copies an advance once and never updates
+   it. A picker's advance migrated while `pending_approval`, then the owner approved it (changing its
+   status to `active` at the source), but the already-migrated copy never picked up the change,
+   because the migration's own de-duplication check skipped it as "already seen." Fixed by syncing
+   mutable fields (status, balance, approver) on every pass instead of copying once and forgetting.
+
+**Separately, real UPI verification was added** (`verify-sim.js`'s new `upiVerify()`): previously, any
+VPA that merely matched an email-shaped regex was marked `verified: true` — no actual check that it
+was real, unlike bank accounts, which already went through a genuine simulated penny-drop. Now UPI
+goes through an equivalent check before anything can be paid to it.
+
+**This is the clearest illustration yet of why real end-to-end tracing matters more than trusting a
+green test suite**: `payroll-core-test.mjs`'s own advance tests passed throughout, because they
+constructed test fixtures using the correct shared personId directly — never exercising the actual
+translation step real store-hr.js data requires. The bug was invisible to every test until a real
+request was walked through its real, full lifecycle: request → approve → pay → check.
+
+**13 new tests** across two suites, confirming: the real UPI verification check and its rejection
+case; the advance correctly staying invisible to balance while merely requested; the advance correctly
+appearing only after real owner approval, for the real shared person, with the real amount; and that
+the migration keeps staying correct on repeated calls rather than freezing a stale snapshot.
+
+## 21. What was deliberately NOT done (and why)
 
 - **General vs. Specialized role tiers** (the "anyone can hire a cleaner, but only a restaurant can
   hire a chef" design) was discussed and designed but not implemented in code — no `tier` field
@@ -473,8 +545,11 @@ message itself, which would have been a larger, riskier layout change for a cosm
 No browser or bundler is available in this environment, so testing was: `node --check` for syntax on
 every touched file; real `import()` of every touched module in Node to catch missing exports/broken
 references; and executing the actual edited functions against realistic mock state objects with
-explicit pass/fail assertions (not just "it ran without crashing"). **347 assertions total, across 20
-suites**, covering: role-list correctness per vertical, emergency-contact optionality, the suspend
+explicit pass/fail assertions (not just "it ran without crashing"). **387 assertions total, across 23
+suites** (the final additions covering the real customer-checkout UPI redirect, real UPI payout
+verification, and — the most important of this round — tracing a picker's self-requested advance
+through its complete real lifecycle and confirming it actually, correctly reduces the right person's
+balance, which it had never done before despite every prior advance-related test passing), covering: role-list correctness per vertical, emergency-contact optionality, the suspend
 action and its two follow-on bugs, cross-store identity reuse in both directions (logistics↔retail),
 the full picker onboarding lifecycle including the correction path, the two retail-hiring blockers
 (branch-source crash and vertical-aware hiring), `hireIntoStaff()` directly (retail picker, retail

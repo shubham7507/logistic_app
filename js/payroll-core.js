@@ -57,11 +57,19 @@ export function ensurePayrollCore(s) {
   const personFor = (kind, id) => s.employments?.find(e => e.source.kind === kind && e.source.id === id)?.personId;
 
   // Source 1: store-hr.js's ledger (already has personId directly on each entry)
+  // store-hr.js's post()/payOut() always write personId as the raw picker/manager id (e.g. 'PICK-1'),
+  // never the shared cross-business personId — a real bug found while tracing a picker's own advance
+  // request: comparing against employments[].personId (the shared id) could never match, so every
+  // store-hr-originated payment or earning was silently invisible to the unified balance, regardless
+  // of how many times this migration re-ran. Fixed by resolving through business + raw id instead.
+  // 'advance_paid' is deliberately excluded (not just absent from SIGN by coincidence) — the advance's
+  // own declining balance (migrated separately, below) already accounts for that reduction; adding it
+  // again here would double-count the same money leaving.
   for (const e of s.ledger || []) {
-    if (!e.personId || !(e.type in SIGN)) continue;
-    const emp = s.employments?.find(x => x.personId === e.personId);
+    if (!e.personId || !e.store || !(e.type in SIGN)) continue;
+    const emp = s.employments?.find(x => x.business === e.store && ['picker', 'manager'].includes(x.source.kind) && x.source.id === e.personId);
     if (!emp) continue; // not a real staff employment (e.g. a customer/business-level ledger entry)
-    add(e.personId, emp.business, e.type === 'payment' ? 'payment' : e.type, SIGN[e.type] * Math.abs(e.amount), e.status === 'disputed' ? 'disputed' : 'posted', e.at, e.note, 'monthly', {system: 'store-hr', id: e.id});
+    add(emp.personId, emp.business, e.type === 'payment' ? 'payment' : e.type, SIGN[e.type] * Math.abs(e.amount), e.status === 'disputed' ? 'disputed' : 'posted', e.at, e.note, 'monthly', {system: 'store-hr', id: e.id});
   }
   // Source 2: workforce.js's accruals (amount is already signed; workerKey needs resolving to a person)
   for (const a of s.accruals || []) {
@@ -85,8 +93,22 @@ export function ensurePayrollCore(s) {
   // Advances: store-hr.js's s.staffAdvances already has the right shape (declining balance +
   // instalment plan) — reused as-is rather than flattened, since it models a loan correctly and
   // flattening it into simple ledger entries would lose the "how much is still outstanding" concept.
+  // store-hr.js's own advances are keyed by the raw picker/manager id (a.personId is literally the
+  // staffId, not a shared personId) — a real bug found while tracing this: without resolving it
+  // through the matching employment, Payroll.balance() would never find this advance for the correct
+  // person, no matter how many times migration re-runs. Advances whose employment can't be found
+  // (e.g. the person was later removed) are skipped rather than migrated with a broken reference.
+  // Advances are mutable at the source (pending_approval -> active as the owner approves, balance
+  // declines as instalments are recovered) — a one-time copy-and-forget would leave the migrated
+  // record permanently stale the moment the source changes after its first migration, exactly what
+  // happened here: an advance migrated while still pending_approval never picked up becoming active.
+  // Existing migrated copies are updated in place on every pass instead of being skipped outright.
   for (const a of s.staffAdvances || []) {
-    if (!advances(s).some(x => x.migratedFrom?.id === a.id)) advances(s).push({...a, migratedFrom: {system: 'store-hr-advance', id: a.id}});
+    const existing = advances(s).find(x => x.migratedFrom?.id === a.id);
+    if (existing) { existing.status = a.status; existing.balance = a.balance; existing.approvedBy = a.approvedBy; continue; }
+    const emp = s.employments.find(e => e.business === a.store && ['picker', 'manager'].includes(e.source.kind) && e.source.id === a.personId);
+    if (!emp) continue;
+    advances(s).push({...a, personId: emp.personId, migratedFrom: {system: 'store-hr-advance', id: a.id}});
   }
   return s;
 }

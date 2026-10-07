@@ -9,7 +9,7 @@
 import {esc, pill, inr} from './ops.js';
 import {gateway, record, clock} from './pay.js';
 import {STORE_BY_MANAGER, STORE_BY_WORKER, SELLER_WORKSPACES} from './seller-roles.js';
-import {gstLookup, pennyDrop, aadhaarEkyc} from './verify-sim.js';
+import {gstLookup, pennyDrop, aadhaarEkyc, upiVerify} from './verify-sim.js';
 import * as Payroll from './payroll-core.js';
 
 const DAY = 86400000;
@@ -85,7 +85,9 @@ export function verifyStaff(s, pid, v) {
 }
 export function setPayout(s, pid, v) {
   const h = s.staffHR[pid]; if (!h) return 'Not found.';
-  if (v.method === 'upi') { if (!/^[\w.-]+@[a-z]{2,}$/i.test(String(v.upi || ''))) return 'Enter a valid UPI ID.'; h.payout = {method: 'upi', upi: v.upi, verified: true, at: stamp()}; return ''; }
+  // UPI now goes through an actual verification check (upiVerify), the same spirit as pennyDrop()
+  // for bank accounts — a syntactically valid-looking VPA is no longer treated as automatically real.
+  if (v.method === 'upi') { const r = upiVerify({vpa: v.upi, name: v.name}); if (!r.ok) return r.reason; h.payout = {method: 'upi', upi: v.upi, verified: true, at: stamp()}; return ''; }
   if (v.method === 'bank') { const r = pennyDrop({account: v.account, ifsc: v.ifsc, name: v.name}); if (!r.ok) return r.reason; h.payout = {method: 'bank', account: `••••${String(v.account).slice(-4)}`, ifsc: v.ifsc, verified: true, at: stamp()}; return ''; }
   if (v.method === 'cash') { h.payout = {method: 'cash', verified: true, at: stamp()}; return ''; }
   return 'Choose UPI, bank or cash.';
