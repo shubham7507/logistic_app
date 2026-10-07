@@ -527,7 +527,34 @@ case; the advance correctly staying invisible to balance while merely requested;
 appearing only after real owner approval, for the real shared person, with the real amount; and that
 the migration keeps staying correct on repeated calls rather than freezing a stale snapshot.
 
-## 21. What was deliberately NOT done (and why)
+## 21. Complete advance-payment inventory — a third, fully isolated silo found, and the one real duplicate removed
+
+A full audit (not a guess) of every place in the app that can give a staff advance turned up **three
+separate storage systems**, not two: the unified engine (`s.payAdvances`), retail's original
+`s.staffAdvances` (already reconciling correctly as of item 20), and a completely separate convention
+in logistics — a single `m.loan` object sitting directly on a worker's own record, created via
+easy-mode's "Give advance" tile for a logistics business. This third one **never reconciled into the
+unified engine at all** — a logistics owner giving an advance through the exact same-looking button a
+retail owner uses produced a result invisibly stuck in its own silo, with the unified Pay screen never
+aware it existed.
+
+- **Fixed**: the logistics loan is now migrated the same way store-hr's advances are — synced on every
+  pass (not copied once), so its balance stays current as `workforce.js`'s own recovery mechanism pays
+  it down, and correctly marked `repaid` once fully paid off rather than sitting at zero forever still
+  labeled active.
+- **The one genuine duplicate found — not three — was removed**: the "Ledgers & advances" tab's own
+  "Give advance" button, for an *owner*, did the exact same thing as the unified Pay screen's "Give
+  advance" action, one screen apart, with no reason for both to exist. Replaced it with a direct link
+  to the same unified action. **A picker's own self-request ("Ask for an advance") was explicitly left
+  untouched** — tracing it confirmed it's a genuinely separate component and use case (self-request
+  needing owner approval), not a duplicate of anything, and conflating the two would have removed real
+  functionality while trying to remove redundancy.
+- **13 new tests**, including walking the full lifecycle (advance given → partially recovered →
+  fully repaid) to confirm the migrated figure tracks the real one at every stage, not just at
+  creation, and confirming the owner/non-owner views render correctly after the dedup — a manager or
+  picker requesting approval still sees exactly what they did before.
+
+## 22. What was deliberately NOT done (and why)
 
 - **General vs. Specialized role tiers** (the "anyone can hire a cleaner, but only a restaurant can
   hire a chef" design) was discussed and designed but not implemented in code — no `tier` field
@@ -545,11 +572,11 @@ the migration keeps staying correct on repeated calls rather than freezing a sta
 No browser or bundler is available in this environment, so testing was: `node --check` for syntax on
 every touched file; real `import()` of every touched module in Node to catch missing exports/broken
 references; and executing the actual edited functions against realistic mock state objects with
-explicit pass/fail assertions (not just "it ran without crashing"). **387 assertions total, across 23
+explicit pass/fail assertions (not just "it ran without crashing"). **399 assertions total, across 25
 suites** (the final additions covering the real customer-checkout UPI redirect, real UPI payout
-verification, and — the most important of this round — tracing a picker's self-requested advance
-through its complete real lifecycle and confirming it actually, correctly reduces the right person's
-balance, which it had never done before despite every prior advance-related test passing), covering: role-list correctness per vertical, emergency-contact optionality, the suspend
+verification, tracing a picker's self-requested advance through its complete real lifecycle, finding
+and fixing the fully-isolated logistics loan silo, and confirming the one genuine duplicate button was
+removed without disturbing the picker's own, genuinely different self-request flow), covering: role-list correctness per vertical, emergency-contact optionality, the suspend
 action and its two follow-on bugs, cross-store identity reuse in both directions (logistics↔retail),
 the full picker onboarding lifecycle including the correction path, the two retail-hiring blockers
 (branch-source crash and vertical-aware hiring), `hireIntoStaff()` directly (retail picker, retail

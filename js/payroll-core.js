@@ -90,6 +90,24 @@ export function ensurePayrollCore(s) {
     const personId = personFor('manager', r.managerId); if (!personId) continue;
     add(personId, r.store, 'earning', Math.abs(r.amount), 'posted', r.paidAt ? new Date(r.paidAt).toLocaleString('en-IN') : stamp(), `${r.period} manager pay`, 'monthly', {system: 'manager-pay-run', id: r.id});
   }
+  // Logistics' own salary-advance convention — a single m.loan object per worker on their
+  // peopleByWorkspace record (not an array, no id of its own, no method field — the recovery itself
+  // stays inside workforce.js's own payroll, this migration only mirrors it for display/balance
+  // purposes). Found to be a completely separate, unreconciled silo: a logistics owner giving an
+  // advance via easy-mode created this and nothing else ever saw it. Synced the same way as
+  // staffAdvances — a stable synthetic id so repeated passes update the same record rather than
+  // creating duplicates, and the balance is kept current as workforce.js's own recovery reduces it.
+  for (const business of Object.keys(s.peopleByWorkspace || {})) {
+    for (const m of s.peopleByWorkspace[business] || []) {
+      if (!m.loan) continue;
+      const loanId = `LOAN-${business}-${m.id}`;
+      const existing = advances(s).find(x => x.migratedFrom?.id === loanId);
+      if (existing) { existing.balance = m.loan.balance; existing.status = m.loan.balance > 0 ? 'active' : 'repaid'; continue; }
+      const emp = s.employments.find(e => e.business === business && e.source.kind === 'people' && e.source.id === m.id);
+      if (!emp) continue;
+      advances(s).push({id: uid('ADV'), personId: emp.personId, business, amount: m.loan.total, balance: m.loan.balance, instalment: m.loan.installment, reason: m.loan.reason, method: 'cash', status: m.loan.balance > 0 ? 'active' : 'repaid', at: m.loan.givenAt || stamp(), migratedFrom: {system: 'workforce-loan', id: loanId}});
+    }
+  }
   // Advances: store-hr.js's s.staffAdvances already has the right shape (declining balance +
   // instalment plan) — reused as-is rather than flattened, since it models a loan correctly and
   // flattening it into simple ledger entries would lose the "how much is still outstanding" concept.
