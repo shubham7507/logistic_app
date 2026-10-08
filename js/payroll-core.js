@@ -65,7 +65,12 @@ export function ensurePayrollCore(s) {
   // 'advance_paid' is deliberately excluded (not just absent from SIGN by coincidence) — the advance's
   // own declining balance (migrated separately, below) already accounts for that reduction; adding it
   // again here would double-count the same money leaving.
-  for (const e of s.ledger || []) {
+  // Was reading s.ledger — a real, pre-existing array, but the wrong one. pay.js uses s.ledger for
+  // marketplace payments (customer payments, refunds, settlements); store-hr.js's own post()/balance()/
+  // advanceLeft() all read and write s.staffLedger specifically. This migration found "0 entries" in
+  // every test because it was checking an empty shelf, not because there was nothing to migrate — a
+  // real bug, not a quiet edge case, caught only by tracing the actual array name store-hr.js uses.
+  for (const e of s.staffLedger || []) {
     if (!e.personId || !e.store || !(e.type in SIGN)) continue;
     const emp = s.employments?.find(x => x.business === e.store && ['picker', 'manager'].includes(x.source.kind) && x.source.id === e.personId);
     if (!emp) continue; // not a real staff employment (e.g. a customer/business-level ledger entry)
@@ -132,13 +137,18 @@ export function ensurePayrollCore(s) {
 }
 
 // ---------- unified balance + history ----------
+// Separated out from balance() so callers that specifically need "how much advance is still
+// outstanding" (not the net balance) have a real primitive to call, instead of each reimplementing
+// the same filter over advances() themselves.
+export function advanceOutstanding(s, personId) {
+  return advances(s).filter(a => a.personId === personId && a.status === 'active').reduce((sum, a) => sum + a.balance, 0);
+}
 export function balance(s, personId) {
   // A pending_confirmation UPI payment deliberately does NOT reduce the counted balance yet — until
   // someone actually confirms the money moved, treating it as settled would be an assumption, not a
   // fact, and could show "settled up" to a worker who was never actually paid.
   const ledgerTotal = events(s).filter(e => e.personId === personId && !['disputed', 'waived', 'pending_confirmation', 'cancelled'].includes(e.status)).reduce((sum, e) => sum + e.amount, 0);
-  const advanceOutstanding = advances(s).filter(a => a.personId === personId && a.status === 'active').reduce((sum, a) => sum + a.balance, 0);
-  return ledgerTotal - advanceOutstanding;
+  return ledgerTotal - advanceOutstanding(s, personId);
 }
 export function history(s, personId) {
   const own = events(s).filter(e => e.personId === personId).map(e => ({...e, kind: 'event'}));

@@ -8,6 +8,7 @@ import * as PC from './people-core.js';
 import * as WF from './workforce.js';
 import * as HR from './store-hr.js';
 import * as Pay from './pay.js';
+import * as Payroll from './payroll-core.js';
 
 const roleName = r => ({picker: 'Picker', packer: 'Packer', cashier: 'Cashier', manager: 'Manager', helper: 'Khalasi / helper', driver: 'Driver', accounts: 'Accounts', operations: 'Operations'})[r] || r;
 const head = (t, x, a = '') => `<div class="page-header"><div><h1>${esc(t)}</h1><p>${esc(x)}</p></div>${a}</div>`;
@@ -51,9 +52,16 @@ export function whoAmI(s, ws) {
 // ---------- jobs, money, partner roles ----------
 export function jobs(s, person) {
   const emps = s.employments.filter(e => e.personId === person.id).map(e => {
-    let money;
-    if (PC.STORES.includes(e.business)) money = {balance: HR.balance(s, e.source.id), advance: HR.advanceLeft(s, e.source.id), cashToConfirm: (s.staffLedger || []).filter(x => x.personId === e.source.id && x.status === 'pending_ack')};
-    else { const w = WF.workforceOf(s, e.business).find(v => v.id === e.source.id || v.key === `staff:${e.source.id}` || (v.keys || []).includes(`staff:${e.source.id}`)); const k = w ? WF.khata(s, e.business, w) : {balance: 0}; const loan = (s.peopleByWorkspace?.[e.business] || []).find(m => m.id === e.source.id)?.loan; money = {balance: k.balance, advance: loan?.balance || 0, cashToConfirm: (s.ledger || []).filter(x => x.ack === 'pending' && w && (w.keys || [w.key]).includes(x.payee))}; }
+    // One calculation regardless of vertical — e.personId is already the real shared id, no resolution
+    // needed. Previously retail and logistics each had their own separate computation here (HR.balance
+    // / WF.khata), neither going through the unified engine — this card and the screen it links to
+    // (ledger-core.js's rows()) were two of several places silently reading the old numbers directly.
+    Payroll.ensurePayrollCore(s);
+    const money = {
+      balance: Payroll.balance(s, e.personId),
+      advance: Payroll.advanceOutstanding(s, e.personId),
+      cashToConfirm: Payroll.history(s, e.personId).filter(h => ['pending_confirmation', 'pending_ack', 'pending_handoff'].includes(h.status)),
+    };
     return {kind: 'employment', e, employer: PC.bizName(s, e.business), branch: PC.branchesFor(s, e.business).find(b => b.id === e.homeBranch)?.name || '', teams: (s.teams || []).filter(t => t.members.includes(e.id) && !t.ended).map(t => t.name), money, home: e.role === 'picker' || e.source.kind === 'picker' ? 'pickTasks' : ['driver', 'helper'].includes(e.role) ? 'myJobs' : 'work'};
   });
   const dp = Object.entries(s.deliveryPartners || {}).find(([, d]) => d.mobile === person.mobile);

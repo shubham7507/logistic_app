@@ -7,6 +7,7 @@ import {record} from './pay.js';
 import * as PC from './people-core.js';
 import * as WF from './workforce.js';
 import * as HR from './store-hr.js';
+import * as Payroll from './payroll-core.js';
 
 const stamp = () => new Date().toLocaleString('en-IN', {day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit'});
 const head = (t, x, a = '') => `<div class="page-header"><div><h1>${esc(t)}</h1><p>${esc(x)}</p></div>${a}</div>`;
@@ -32,10 +33,14 @@ export function rows(s, ws) {
   const sc = PC.scopeOf(s, ws); if (!sc) return [];
   return s.employments.filter(e => e.business === sc.business && e.status === 'active' && (sc.kind === 'owner' || e.homeBranch === sc.branch || e.cover.includes(sc.branch))).map(e => {
     const p = s.persons[e.personId], teams = (s.teams || []).filter(t => t.members.includes(e.id) && !t.ended).map(t => t.name);
-    if (isStore(e.business)) return {e, p, teams, balance: HR.balance(s, e.source.id), advance: HR.advanceLeft(s, e.source.id), engine: 'store', key: e.source.id};
-    const w = wfWorker(s, e.business, e); if (!w) return {e, p, teams, balance: 0, advance: 0, engine: 'business', key: null};
-    const k = WF.khata(s, e.business, w), loan = (s.peopleByWorkspace?.[e.business] || []).find(m => m.id === e.source.id)?.loan;
-    return {e, p, teams, balance: k.balance, advance: loan?.balance || 0, engine: 'business', key: w.key, w};
+    // Same fix as worker-hub.js's jobs() — e.personId is already the real shared id. 'engine'/'key'
+    // are kept as before since entries() below still needs them to read the right underlying history
+    // for display; only the balance/advance figures themselves now come from the unified engine.
+    Payroll.ensurePayrollCore(s);
+    const unifiedBalance = Payroll.balance(s, e.personId), unifiedAdvance = Payroll.advanceOutstanding(s, e.personId);
+    if (isStore(e.business)) return {e, p, teams, balance: unifiedBalance, advance: unifiedAdvance, engine: 'store', key: e.source.id};
+    const w = wfWorker(s, e.business, e); if (!w) return {e, p, teams, balance: unifiedBalance, advance: unifiedAdvance, engine: 'business', key: null};
+    return {e, p, teams, balance: unifiedBalance, advance: unifiedAdvance, engine: 'business', key: w.key, w};
   });
 }
 export function entries(s, r) {

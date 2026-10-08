@@ -651,7 +651,77 @@ verification mode with required consent and separate labeling — to both remain
   21 already covering that file), all passing — plus fixing the existing fixtures in three different
   test files whose old plain-field submission shape the retrofit correctly rejects.
 
-## 27. What was deliberately NOT done (and why)
+## 27. The real root cause, found and fixed: a one-array-name mistake that silently undid item 20
+
+Item 20 claimed to fix "the deepest bug found this session" — store-hr-originated money being
+invisible to the unified ledger. That fix itself had a bug. The migration loop read `s.ledger`, but
+`store-hr.js`'s own `post()`/`balance()`/`advanceLeft()` all read and write a **different** array,
+`s.staffLedger` — confirmed directly: `const L = s => (s.staffLedger ||= [])`. `s.ledger` is a real,
+separate array `pay.js` uses for marketplace payments (customer payments, refunds, settlements) — not
+staff pay at all. The migration was checking an empty shelf, not finding nothing because there was
+nothing there.
+
+**Why this went undetected through an entire previous round of testing**: the test fixtures built for
+that fix used `ledger: [...]` as the field name — matching the bug, not the real app. The real-seed
+test showed "0 entries migrated," which was read as "no historical data exists yet" when the honest
+reading should have been "this proves nothing, since zero is what you'd see whether the array name
+was right or wrong." Both of these are now fixed for real: the migration reads `s.staffLedger`, and a
+new test actually posts a real earning first (via the real `postEarnings()`/`markDay()` functions,
+both against a hand-built fixture and the actual seed data) and confirms the unified balance reflects
+it — ₹522, not zero, and not because the test says so, because the real calculation produces it.
+
+## 28. Four more places found reading the old, disconnected balance directly — all fixed the same way
+
+A deliberate, exhaustive search (not waiting for another screenshot to reveal the next one) for every
+remaining place that computes a staff balance outside `payroll-core.js` turned up four more, beyond
+the ones already fixed in items 17 and 22:
+
+- `store-hr.js`'s own **Payslip popup** and the **"Ledgers & advances" roster header** (`· balance ₹X`
+  above each person) — both still called the original `balance()`/`advanceLeft()` directly, in the
+  very same file that already has the correct unified version for its own self-service screen.
+- `worker-hub.js`'s **"My work & pay" cross-business card** — computed its own number via
+  `HR.balance()` for retail or `WF.khata()` for logistics, never touching `payroll-core.js` at all.
+- `ledger-core.js`'s `rows()` — feeds the "Pay & khata" detail screen that card links to, with the
+  identical duplicated calculation in a second file.
+
+All four now go through a shared `unifiedBalanceFor()`/`unifiedAdvanceLeftFor()` resolver added to
+`store-hr.js` (falling back to the original calculation only if no employment exists yet, never
+silently returning zero or throwing), or call `Payroll.balance()`/`Payroll.advanceOutstanding()`
+directly where the employment's real `personId` was already sitting right there in scope. A new
+`advanceOutstanding()` was split out of `balance()` in `payroll-core.js` itself, since several of
+these call sites specifically needed "how much advance is still outstanding," not the net balance —
+a real primitive now exists for that instead of each caller reimplementing the same filter.
+
+**Verified by actually posting a real earning and confirming all four surfaces show the identical
+figure** — not by checking each one in isolation and assuming agreement, which is exactly the mistake
+that let this go unnoticed through two previous rounds.
+
+## 29. One more found, deliberately left unfixed — because fixing it the same way would make it worse
+
+`workforce.js`'s `khataView`/`selfKhataPanel` (logistics staff's own "Money" self-service screen) looked
+like a fifth instance of the same pattern. It isn't, and swapping it to `Payroll.balance()` right now
+would introduce a real bug rather than fix one: `khata()` combines accrual records (`state.accruals`,
+which the existing migration already correctly captures) *with actual payment records* pulled from
+`state.ledger` (entries typed `salary`/`advance`/`reimbursement`/`freight`) that nothing currently
+migrates. Pointing this screen at the unified balance today would show an inflated number — missing
+the subtraction for money already paid out — which is a worse outcome than the current, merely
+unreconciled-but-internally-correct state. This needs its own dedicated piece of work (extending the
+migration to also capture those payment records) before it can be safely unified, not a rushed swap
+done under the same pass as everything else. Flagged honestly rather than either forcing a fix that
+would make things worse or silently leaving it off the list.
+
+## 30. Two smaller, independent fixes found while reviewing the uploaded screenshots
+
+- **Offboarding list showed a contradiction**: "Sanju Kumar · offboarded" in the header, "Last day: Not
+  set · Active" in the body — the fallback defaulted to "Active" whenever a sub-record was missing,
+  without checking the person's actual top-level status first. Now falls back to the real status
+  instead of blindly assuming active.
+- **Schedule screen showed raw, unstyled status text run directly into the time range** (e.g.
+  `17:00cover_requested`, no spacing, no formatting) on both the owner's "Staff schedule" screen and
+  the worker's own "My schedule" view. Now uses the same `pill()` component every other status in this
+  app already uses, with a space separating it from the time range.
+
+## 31. What was deliberately NOT done (and why)
 
 - **General vs. Specialized role tiers** (the "anyone can hire a cleaner, but only a restaurant can
   hire a chef" design) was discussed and designed but not implemented in code — no `tier` field
@@ -669,13 +739,18 @@ verification mode with required consent and separate labeling — to both remain
 No browser or bundler is available in this environment, so testing was: `node --check` for syntax on
 every touched file; real `import()` of every touched module in Node to catch missing exports/broken
 references; and executing the actual edited functions against realistic mock state objects with
-explicit pass/fail assertions (not just "it ran without crashing"). **457 assertions total, across 31
-suites** (the final additions covering the Products & Stock page redesign — including an explicit
-HTML-balance check given how easy a surgical template edit is to get subtly wrong — and the Aadhaar
-verification retrofit extended to the two onboarding flows it hadn't reached yet, logistics staff and
-delivery partners, with the one remaining honest limitation being that logistics staff's submit logic
-lives as inline code in `app.js` rather than a separable function, so it couldn't be unit-tested with
-quite the same direct rigor as the other two), covering: role-list correctness per vertical, emergency-contact optionality, the suspend
+explicit pass/fail assertions (not just "it ran without crashing"). **474 assertions total, across 35
+suites.** The final and most important additions this round directly address a real failure mode in
+how this file's own claims had been verified before: item 20 claimed to fix the deepest bug of the
+session, but the fix itself read the wrong array (`s.ledger` instead of `s.staffLedger`), undetected
+because the tests built for it used fixtures matching the bug rather than the real app. The new tests
+specifically avoid that mistake — they post a real earning through the real `postEarnings()`/
+`markDay()` functions (against both a hand-built fixture and the actual seed data) and confirm the
+unified engine reflects it, rather than constructing a pre-shaped ledger entry and assuming the
+migration would find it. A further four places reading the old, disconnected balance directly were
+found by deliberately searching the whole codebase for the pattern, rather than waiting for the next
+screenshot to reveal one — all four verified to show the identical real figure after the fix, not
+checked in isolation and assumed to agree., covering: role-list correctness per vertical, emergency-contact optionality, the suspend
 action and its two follow-on bugs, cross-store identity reuse in both directions (logistics↔retail),
 the full picker onboarding lifecycle including the correction path, the two retail-hiring blockers
 (branch-source crash and vertical-aware hiring), `hireIntoStaff()` directly (retail picker, retail
