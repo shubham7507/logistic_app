@@ -721,7 +721,62 @@ would make things worse or silently leaving it off the list.
   the worker's own "My schedule" view. Now uses the same `pill()` component every other status in this
   app already uses, with a space separating it from the time range.
 
-## 31. What was deliberately NOT done (and why)
+## 31. Delivery partner wallet, with real on-demand instant cash-out
+
+Researched how Grab, Blinkit, and foodpanda actually pay their delivery partners before building
+anything: all three converge on the same two-part shape — a default free scheduled payout, plus an
+optional instant cash-out for a small flat fee, backed by a real wallet balance the partner can see
+accumulate after every job. Our delivery partners had neither — `payDelivery()` only ever moved money
+when the platform/admin manually triggered it, with no running balance a partner could see or draw
+from themselves.
+
+- **Found genuinely reusable, already-tested infrastructure**: `pay.js` already has a complete wallet
+  system (`wallet()`, `payout()`, a flat ₹10 instant-payout fee) built for the logistics marketplace's
+  own partners. This reuses that exact mechanism rather than building a second one — there is now
+  exactly one function anywhere in this app that actually moves wallet money (`payout()`), called from
+  either the free scheduled path or the new instant one.
+- **A delivery completes → the earning goes straight into the wallet, split correctly for COD risk.**
+  A prepaid order credits the wallet immediately. A COD order's earning is deliberately *not* credited
+  at delivery — the cash is still physically with the courier — only once `reconcileCash()` actually
+  confirms it was handed over correctly. A disputed cash count (mismatch) correctly never credits
+  anything.
+- **The no-double-pay guarantee was the one thing that had to be airtight**: once an order's earning is
+  wallet-credited, `payDelivery()`'s own existing status gate (`deliveryPayoutStatus !== 'pending'`)
+  now naturally and permanently refuses to act on it — not a new check added defensively, but the
+  existing one doing exactly its job once the status is simply never `'pending'` for wallet-tracked
+  money. Verified directly, for both the COD and non-COD paths.
+- **14 new tests**, including the two that mattered most: a disputed COD count never credits the
+  wallet, and `payDelivery()` genuinely refuses to touch money that's already in the wallet — tested
+  by actually attempting it, not just by reasoning that it should.
+- The full end-to-end simulation needed updating here too — its own direct `payDelivery()` call on
+  Vikram's delivery now correctly fails, since that earning had already gone into his wallet via COD
+  reconciliation earlier in the same walkthrough. Confirmed that refusal is the right behavior, not a
+  regression, and updated the test to check the wallet balance directly instead.
+
+## 32. Seller settlement tier — made visible, not changed
+
+Checked how Amazon and Flipkart handle this: neither offers an instant cash-out for sellers, and
+deliberately so — a product sale carries live return/dispute risk for days after delivery, in a way a
+completed delivery job simply doesn't. Flipkart's real contribution here isn't speed, it's
+**transparency** — sellers are explicitly told which performance tier they're on (Platinum/Gold/Silver/
+Bronze) and what moves them to a faster one.
+
+- `holdDays()` itself is completely unchanged — it was already doing the right calculation (a
+  category-specific base, keyed to that category's actual return window, plus an optional new-seller
+  penalty). The gap was that no seller could see any of this reasoning; they just saw a date.
+- The Store money screen now shows a seller their real standing — completed orders against the
+  5-order threshold, exactly how many extra days (if any) the platform has configured for new sellers,
+  and in plain language why a given category's hold is the length it is.
+- **Also found while checking this**: `newSellerExtraHoldDays` defaults to **0** — meaning, right now,
+  there is no actual settlement-speed difference between a brand-new seller and an established one
+  unless an admin has explicitly configured it otherwise. Worth knowing, not something this change
+  silently corrects — the visibility is accurate either way, including correctly saying so when the
+  setting is at its default.
+- 4 new tests, covering a new seller, an established one, and a seller under an explicitly configured
+  extra-hold setting, confirming the screen explains each case correctly rather than showing the same
+  generic text regardless of the real numbers behind it.
+
+## 33. What was deliberately NOT done (and why)
 
 - **General vs. Specialized role tiers** (the "anyone can hire a cleaner, but only a restaurant can
   hire a chef" design) was discussed and designed but not implemented in code — no `tier` field
@@ -739,18 +794,15 @@ would make things worse or silently leaving it off the list.
 No browser or bundler is available in this environment, so testing was: `node --check` for syntax on
 every touched file; real `import()` of every touched module in Node to catch missing exports/broken
 references; and executing the actual edited functions against realistic mock state objects with
-explicit pass/fail assertions (not just "it ran without crashing"). **474 assertions total, across 35
-suites.** The final and most important additions this round directly address a real failure mode in
-how this file's own claims had been verified before: item 20 claimed to fix the deepest bug of the
-session, but the fix itself read the wrong array (`s.ledger` instead of `s.staffLedger`), undetected
-because the tests built for it used fixtures matching the bug rather than the real app. The new tests
-specifically avoid that mistake — they post a real earning through the real `postEarnings()`/
-`markDay()` functions (against both a hand-built fixture and the actual seed data) and confirm the
-unified engine reflects it, rather than constructing a pre-shaped ledger entry and assuming the
-migration would find it. A further four places reading the old, disconnected balance directly were
-found by deliberately searching the whole codebase for the pattern, rather than waiting for the next
-screenshot to reveal one — all four verified to show the identical real figure after the fix, not
-checked in isolation and assumed to agree., covering: role-list correctness per vertical, emergency-contact optionality, the suspend
+explicit pass/fail assertions (not just "it ran without crashing"). **496 assertions total, across 37
+suites.** Beyond the root-cause fix and the four duplicate-balance locations (the previous round's
+most important findings), this round added a real delivery-partner wallet with on-demand instant
+cash-out — reusing already-tested infrastructure rather than building a parallel one, with the
+no-double-pay guarantee specifically verified by actually attempting the old payout path against
+wallet-credited money and confirming it refuses, not just reasoning that it should — and a seller
+settlement-tier visibility screen, built only after confirming via research that real platforms
+(Amazon, Flipkart) deliberately don't offer sellers the same instant-cashout option delivery partners
+get, since a product sale carries live return risk a completed delivery simply doesn't., covering: role-list correctness per vertical, emergency-contact optionality, the suspend
 action and its two follow-on bugs, cross-store identity reuse in both directions (logistics↔retail),
 the full picker onboarding lifecycle including the correction path, the two retail-hiring blockers
 (branch-source crash and vertical-aware hiring), `hireIntoStaff()` directly (retail picker, retail
