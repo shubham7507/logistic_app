@@ -115,7 +115,12 @@ export function deliveryAction(s,ws,id,action,code='',bagCount='',cashHandover={
  const a=o.deliveryAssignment,actor=driver(s,ws).name;
  if(action==='accept'&&a.status==='offered'){a.status='accepted';log(s,o,actor,'Delivery offer accepted');return '';}
  if(action==='decline'&&a.status==='offered'){a.status='declined';for(const n of s.notifications||[])if(n.ref===id&&n.to===ws&&/New delivery offer/.test(n.text))n.read=true;log(s,o,actor,'Delivery offer declined');o.deliveryAssignment=null;const choices=Object.values(s.deliveryPartners||{}).filter(p=>p.id!==driver(s,ws).id&&p.available&&p.status==='approved');if(choices[0])assign(s,id,choices[0].id);else log(s,o,'MoveAI','Waiting for an available delivery partner');return '';}
- if(action==='pickup'&&a.status==='accepted'&&o.status==='ready_for_pickup'){{const g=Geo.pickupCheck(s,o);if(g)return g;}if(String(code)!==o.pickupCode)return 'Enter the pickup code shown to the store.';if(Number(bagCount)!==(o.bagCount||1))return `Confirm ${o.bagCount||1} sealed bag(s) with the store.`;a.status='picked_up';a.bagsCollected=o.bagCount||1;o.status='out_for_delivery';log(s,o,actor,'Package collected from store');return '';}
+ if(action==='pickup'&&a.status==='accepted'&&o.status==='ready_for_pickup'){
+   // Live location sharing is no longer a separate, skippable step — this is where "optional" became a
+   // real precondition instead, since geolocation permission itself can only be requested from a
+   // genuine user click, not silently auto-started on accept.
+   if(!o.geo?.everStarted)return 'Share your live location before confirming pickup — tap "Share live location" above.';
+   {const g=Geo.pickupCheck(s,o);if(g)return g;}if(String(code)!==o.pickupCode)return 'Enter the pickup code shown to the store.';if(Number(bagCount)!==(o.bagCount||1))return `Confirm ${o.bagCount||1} sealed bag(s) with the store.`;a.status='picked_up';a.bagsCollected=o.bagCount||1;o.status='out_for_delivery';log(s,o,actor,'Package collected from store');return '';}
  if(action==='deliver'&&a.status==='picked_up'&&o.status==='out_for_delivery'){if(Plus.podRequired(o))return 'Add a proof-of-delivery photo when leaving the order at the door or with a guard.';if(String(code)!==o.deliveryCode)return 'Enter the delivery code shown to the customer.';a.status='delivered';o.status='delivered';o.deliveredAt=clock();Inventory.consume(s,o);Plus.consumeBatches(s,o);Geo.onDelivered(s,o);Plus.onDelivered(s,o);o.settlementEligibleAt=clock()+Plus.holdDays(s,o)*DAY;o.settlementStatus=o.directStorePaid?'direct_store_paid':'pending';o.paymentStatus=o.cod?'cod_collected':'paid';log(s,o,actor,'Delivered with customer code');
    if(o.cod){o.codCash={status:'collected',amount:o.total,partnerId:a.partnerId,collectedAt:clock()};record(s,{owner:'personal',orderId:o.id,sourceType:'order',sourceId:o.id,type:'customer_payment',purpose:'order',payer:'personal',payee:'moveai',responsible:a.partnerId,amount:o.total,method:'cash',channel:'cash',reference:`COD-${o.id}`,status:'confirmed',note:`COD collected by ${actor}`},actor);}
    else{const pay=s.ledger.find(x=>x.orderId===o.id&&x.type==='customer_payment'&&x.status==='held');if(pay)pay.status='captured';}
@@ -455,7 +460,28 @@ export function bind(root,api){
      }
      return;
    }
-   else if(act==='give-advance'){const amount=prompt('Advance amount (₹)?');if(amount===null)return;const instalment=prompt('Monthly instalment to recover it (₹)?');if(instalment===null)return;const reason=prompt('Reason for this advance:');if(reason===null)return;const method=prompt('Method: upi, bank or cash?','cash')||'cash';err=Payroll.giveAdvance(st,biz,pid,{amount,instalment,reason,method});}
+   else if(act==='give-advance'){
+     const amount=prompt('Advance amount (₹)?');if(amount===null)return;
+     const instalment=prompt('Monthly instalment to recover it (₹)?');if(instalment===null)return;
+     const reason=prompt('Reason for this advance:');if(reason===null)return;
+     const method=prompt('Method: upi, bank or cash?','cash')||'cash';
+     const result=Payroll.giveAdvance(st,biz,pid,{amount,instalment,reason,method});
+     if(typeof result==='string'){if(result)return api.toast(result);api.save();api.render();return api.toast('Advance given');}
+     // UPI advance: same real redirect/QR handoff as a normal payment — this used to just mark the
+     // advance instantly "given" with no handoff at all.
+     api.save();api.render();
+     const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent||'');
+     if(isMobile){api.toast('Opening your UPI app — come back here once it\'s done to confirm.');location.href=result.upiLink;}
+     else if(typeof QRCode!=='undefined'){
+       const overlay=document.createElement('div');overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+       const box=document.createElement('div');box.style.cssText='background:#fff;border-radius:16px;padding:24px;text-align:center;max-width:300px';
+       box.innerHTML='<p style="margin:0 0 12px;font-weight:600">Scan with any UPI app</p><div id="adv-upi-qr-holder"></div><p style="margin:12px 0 0;font-size:12px;color:#666">Come back here once it\'s done to confirm.</p><button type="button" style="margin-top:12px" class="button secondary compact">Close</button>';
+       overlay.appendChild(box);document.body.appendChild(overlay);
+       box.querySelector('button').onclick=()=>overlay.remove();overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+       QRCode.toCanvas(box.querySelector('#adv-upi-qr-holder'),result.upiLink,{width:220},e=>{if(e)box.querySelector('#adv-upi-qr-holder').textContent=result.upiLink;});
+     } else { alert('Scan or open this UPI link on your phone:\n'+result.upiLink); }
+     return;
+   }
    else if(act==='add-reimbursement'){const amount=prompt('Reimbursement amount (₹)?');if(amount===null)return;const note=prompt('What is this reimbursement for?');if(note===null)return;err=Payroll.addReimbursement(st,biz,pid,{amount,note});}
    else if(act==='add-deduction'){const amount=prompt('Deduction amount (₹)?');if(amount===null)return;const note=prompt('Reason for this deduction:');if(note===null)return;err=Payroll.addDeduction(st,biz,pid,{amount,note});}
    if(err)return api.toast(err);api.save();api.render();api.toast('Done');
@@ -473,6 +499,14 @@ export function bind(root,api){
  root.querySelectorAll('[data-payroll-confirm]').forEach(b=>b.onclick=()=>{
    const st=api.getState(),err=Payroll.confirmPayment(st,b.dataset.payrollConfirm,b.dataset.side,b.dataset.ok==='1');
    if(err)return api.toast(err);api.save();api.render();api.toast(b.dataset.ok==='1'?'Confirmed':'Marked as not received/failed');
+ });
+ root.querySelectorAll('[data-payroll-advance-confirm]').forEach(b=>b.onclick=()=>{
+   const st=api.getState(),err=Payroll.confirmAdvanceUpi(st,b.dataset.payrollAdvanceConfirm,b.dataset.side,b.dataset.ok==='1');
+   if(err)return api.toast(err);api.save();api.render();api.toast(b.dataset.ok==='1'?'Confirmed':'Marked as not received/failed');
+ });
+ root.querySelectorAll('[data-payroll-advance-ack]').forEach(b=>b.onclick=()=>{
+   const st=api.getState(),err=Payroll.confirmAdvanceCash(st,b.dataset.payrollAdvanceAck,b.dataset.ok==='1');
+   if(err)return api.toast(err);api.save();api.render();api.toast(b.dataset.ok==='1'?'Confirmed received':'Marked as not received');
  });
  root.querySelector('#delivery-onboarding-form')?.addEventListener('submit',e=>{e.preventDefault();const s=api.getState(),ws=s.currentWorkspace,v=Object.fromEntries(new FormData(e.currentTarget));const err=submitDeliveryOnboarding(s,ws,v);const el=root.querySelector('#delivery-onboarding-error');if(err){if(el){el.textContent=err;el.hidden=false}return}if(el)el.hidden=true;api.save();api.render();api.toast('Sent to the platform for review')});
  const preview=root.querySelector('[data-counter-preview]');if(preview){const fields=['[data-counter-discount]','[data-counter-method]','[data-counter-amount]','[data-counter-tendered]','[data-counter-method-2]','[data-counter-amount-2]','[data-counter-tendered-2]'];const update=()=>{const q=sel=>root.querySelector(sel)?.value,lines=Inventory.counterLines(api.getState(),api.getState().currentWorkspace),subtotal=lines.reduce((n,x)=>n+x.product.price*x.quantity,0),due=subtotal-Number(q(fields[0])||0),first=Number(q(fields[2])||0),second=q(fields[4])?Number(q(fields[5])||0):0,change=(q(fields[1])==='cash'?Math.max(0,Number(q(fields[3])||0)-first):0)+(q(fields[4])==='cash'?Math.max(0,Number(q(fields[6])||0)-second):0);preview.textContent=`Amount due ${inr(due)} · tender allocation ${inr(first+second)} · change ${inr(change)}`};for(const sel of fields)root.querySelector(sel)?.addEventListener?.('input',update);}

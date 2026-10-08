@@ -142,11 +142,17 @@ export function balance(s, personId) {
 }
 export function history(s, personId) {
   const own = events(s).filter(e => e.personId === personId).map(e => ({...e, kind: 'event'}));
-  const adv = advances(s).filter(a => a.personId === personId).map(a => ({id: a.id, at: a.at, amount: -a.amount, type: 'advance', status: a.status, note: `Advance: ${a.reason}`, kind: 'advance'}));
+  const adv = advances(s).filter(a => a.personId === personId).map(a => ({id: a.id, at: a.at, amount: -a.amount, type: 'advance', status: a.status, note: `Advance: ${a.reason}`, kind: 'advance', method: a.method, ownerConfirmed: a.ownerConfirmed, workerConfirmed: a.workerConfirmed}));
   return [...own, ...adv].sort((x, y) => new Date(y.at) - new Date(x.at));
 }
 
 // ---------- unified actions ----------
+// Returns a plain error string on failure; {ok:true, advanceId, upiLink?} on success. Matches payNow()'s
+// treatment exactly — an advance given via UPI is just as real a payment as any other, and had no
+// business being treated as instantly "done" when payNow() already wasn't. Bank goes through the real
+// gateway (resolves immediately, like payNow); UPI gets a real deep link and sits pending until
+// confirmed; cash needs the worker's own acknowledgment, the same existing pattern salary cash
+// payments already use, rather than being marked given the moment the owner clicks a button.
 export function giveAdvance(s, business, personId, v) {
   ensurePayrollCore(s);
   const amount = Math.round(Number(v.amount)), instalment = Math.round(Number(v.instalment));
@@ -156,7 +162,57 @@ export function giveAdvance(s, business, personId, v) {
   if (['upi', 'bank'].includes(method) && !payoutVerified(s, personId)) {
     return `${personName(s, personId)} has not added a verified UPI/bank account. Pay in cash or ask them to add it first.`;
   }
-  advances(s).push({id: uid('ADV'), personId, business, amount, balance: amount, instalment, reason: v.reason.trim(), method, status: 'active', at: stamp()});
+  const base = {id: uid('ADV'), personId, business, amount, balance: amount, instalment, reason: v.reason.trim(), method, at: stamp()};
+  if (method === 'bank') {
+    const bank = resolveBankRecord(s, personId);
+    if (!bank?.accountNumber) return `${personName(s, personId)} does not have a bank account on file. Give it via UPI or cash instead.`;
+    const g = gateway.payout({accountNumber: bank.accountNumber}, amount);
+    if (!g.ok) return g.reason;
+    advances(s).push({...base, status: 'active', reference: g.ref});
+    touch(s);
+    return '';
+  }
+  if (method === 'upi') {
+    const bank = resolveBankRecord(s, personId);
+    if (!bank?.upi) return `${personName(s, personId)} has a verified bank account but no UPI ID on file. Give it via bank transfer or cash instead.`;
+    advances(s).push({...base, status: 'pending_handoff', ownerConfirmed: null, workerConfirmed: null});
+    touch(s);
+    const upiLink = `upi://pay?pa=${encodeURIComponent(bank.upi)}&pn=${encodeURIComponent(personName(s, personId))}&am=${amount}&tn=${encodeURIComponent('Salary advance')}&cu=INR`;
+    return {ok: true, advanceId: base.id, upiLink};
+  }
+  // cash: not counted until the worker acknowledges actually receiving it in hand
+  advances(s).push({...base, status: 'pending_ack'});
+  touch(s);
+  return '';
+}
+
+// side is 'owner' or 'worker' — same two-sided, recompute-fresh-every-time logic as confirmPayment(),
+// for the UPI advance handoff specifically.
+function recomputeAdvanceUpiStatus(a) {
+  if (a.ownerConfirmed === false || a.workerConfirmed === false) {
+    return (a.ownerConfirmed === true || a.workerConfirmed === true) ? 'disputed' : 'cancelled';
+  }
+  if (a.ownerConfirmed === true || a.workerConfirmed === true) return 'active';
+  return 'pending_handoff';
+}
+export function confirmAdvanceUpi(s, advanceId, side, confirmed) {
+  ensurePayrollCore(s);
+  const a = advances(s).find(x => x.id === advanceId && x.method === 'upi' && ['pending_handoff', 'active'].includes(x.status));
+  if (!a) return 'Nothing to confirm for this advance — it may already be disputed and needs manual review.';
+  if (!['owner', 'worker'].includes(side)) return 'Invalid confirmation side.';
+  a[side === 'owner' ? 'ownerConfirmed' : 'workerConfirmed'] = !!confirmed;
+  a.status = recomputeAdvanceUpiStatus(a);
+  touch(s);
+  return '';
+}
+
+// Single-sided — the worker is the only one who knows whether cash physically changed hands, same as
+// the existing salary-cash acknowledgment pattern this reuses the spirit of.
+export function confirmAdvanceCash(s, advanceId, received) {
+  ensurePayrollCore(s);
+  const a = advances(s).find(x => x.id === advanceId && x.method === 'cash' && x.status === 'pending_ack');
+  if (!a) return 'Nothing pending to confirm for this advance.';
+  a.status = received ? 'active' : 'cancelled';
   touch(s);
   return '';
 }
@@ -349,11 +405,15 @@ export function payPersonScreen(s, personId, business, viewerSide = 'owner') {
   const owedLine = bal > 0 ? `<b class="amount in">You owe ${esc(name)} ${inr(bal)}</b>` : bal < 0 ? `<b class="amount out">${esc(name)} owes you ${inr(Math.abs(bal))}</b>` : `<b>Settled up with ${esc(name)}</b>`;
   const activeAdvances = advances(s).filter(a => a.personId === personId && a.status === 'active');
   const pendingUpi = events(s).filter(e => e.personId === personId && e.method === 'upi' && ['pending_confirmation', 'posted'].includes(e.status) && (viewerSide === 'owner' ? e.ownerConfirmed === null : e.workerConfirmed === null));
+  const pendingUpiAdvances = advances(s).filter(a => a.personId === personId && a.method === 'upi' && ['pending_handoff', 'active'].includes(a.status) && (viewerSide === 'owner' ? a.ownerConfirmed === null : a.workerConfirmed === null));
+  const pendingCashAdvances = viewerSide === 'worker' ? advances(s).filter(a => a.personId === personId && a.method === 'cash' && a.status === 'pending_ack') : [];
   return `<section class="panel">
     <h2>${esc(name)} · Pay</h2>
     <div class="info-banner">${owedLine}<span>${verified ? 'UPI/bank verified — can be paid directly from here.' : 'No verified UPI/bank yet — pay in cash, or ask them to add one.'}</span></div>
     ${activeAdvances.length ? `<p><b>Outstanding advance(s):</b> ${activeAdvances.map(a => `${inr(a.balance)} of ${inr(a.amount)} (${esc(a.reason)})`).join(', ')}</p>` : ''}
     ${pendingUpi.length ? `<section class="panel nc-actions"><h2>Confirm UPI payment${pendingUpi.length>1?'s':''}</h2>${pendingUpi.map(e => `<div class="ledger-row static"><span><b>${inr(Math.abs(e.amount))}</b><small>${esc(e.at)} · ${viewerSide==='owner'?'Did this go through?':'Did you receive this?'}</small></span><span class="row-actions"><button class="button primary compact" data-payroll-confirm="${esc(e.id)}" data-side="${viewerSide}" data-ok="1">${viewerSide==='owner'?'Yes, paid':'Yes, received'}</button><button class="button secondary compact" data-payroll-confirm="${esc(e.id)}" data-side="${viewerSide}" data-ok="">${viewerSide==='owner'?'No, failed':'Not received'}</button></span></div>`).join('')}</section>` : ''}
+    ${pendingUpiAdvances.length ? `<section class="panel nc-actions"><h2>Confirm advance (UPI)</h2>${pendingUpiAdvances.map(a => `<div class="ledger-row static"><span><b>${inr(a.amount)}</b><small>${esc(a.reason)} · ${viewerSide==='owner'?'Did this go through?':'Did you receive this?'}</small></span><span class="row-actions"><button class="button primary compact" data-payroll-advance-confirm="${esc(a.id)}" data-side="${viewerSide}" data-ok="1">${viewerSide==='owner'?'Yes, paid':'Yes, received'}</button><button class="button secondary compact" data-payroll-advance-confirm="${esc(a.id)}" data-side="${viewerSide}" data-ok="">${viewerSide==='owner'?'No, failed':'Not received'}</button></span></div>`).join('')}</section>` : ''}
+    ${pendingCashAdvances.length ? `<section class="panel nc-actions"><h2>Confirm cash advance</h2>${pendingCashAdvances.map(a => `<div class="ledger-row static"><span><b>${inr(a.amount)}</b><small>${esc(a.reason)} · Did you receive this in cash?</small></span><span class="row-actions"><button class="button primary compact" data-payroll-advance-ack="${esc(a.id)}" data-ok="1">I received it</button><button class="button secondary compact" data-payroll-advance-ack="${esc(a.id)}" data-ok="">Not received</button></span></div>`).join('')}</section>` : ''}
     <div class="form-actions">
       ${viewerSide==='owner' ? `<button class="button primary compact" data-payroll-action="pay-now" data-person="${esc(personId)}" data-business="${esc(business)}">Pay now</button>
       <button class="button secondary compact" data-payroll-action="give-advance" data-person="${esc(personId)}" data-business="${esc(business)}">Give advance</button>
@@ -361,6 +421,6 @@ export function payPersonScreen(s, personId, business, viewerSide = 'owner') {
       <button class="button secondary compact" data-payroll-action="add-deduction" data-person="${esc(personId)}" data-business="${esc(business)}">Add deduction</button>` : ''}
     </div>
     <h3>History</h3>
-    <div class="review-checklist">${h.length ? h.map(e => `<div class="market-row"><span><b>${esc(e.note || e.type)}</b><small class="block muted">${esc(e.at)} · ${esc(e.type)}${e.status === 'disputed' ? ' · disputed, under review' : e.status === 'pending_confirmation' ? ' · pending confirmation' : e.status === 'cancelled' ? ' · cancelled' : ''}</small></span><b class="${e.amount >= 0 ? 'amount in' : 'amount out'}">${e.amount >= 0 ? '+' : '−'}${inr(Math.abs(e.amount))}</b></div>`).join('') : '<p class="muted">No pay history yet.</p>'}</div>
+    <div class="review-checklist">${h.length ? h.map(e => `<div class="market-row"><span><b>${esc(e.note || e.type)}</b><small class="block muted">${esc(e.at)} · ${esc(e.type)}${e.status === 'disputed' ? ' · disputed, under review' : e.status === 'pending_confirmation' ? ' · pending confirmation' : e.status === 'pending_handoff' ? ' · waiting for UPI confirmation' : e.status === 'pending_ack' ? ' · waiting for cash acknowledgment' : e.status === 'cancelled' ? ' · cancelled' : ''}</small></span><b class="${e.amount >= 0 ? 'amount in' : 'amount out'}">${e.amount >= 0 ? '+' : '−'}${inr(Math.abs(e.amount))}</b></div>`).join('') : '<p class="muted">No pay history yet.</p>'}</div>
   </section>`;
 }

@@ -554,7 +554,59 @@ aware it existed.
   creation, and confirming the owner/non-owner views render correctly after the dedup — a manager or
   picker requesting approval still sees exactly what they did before.
 
-## 22. What was deliberately NOT done (and why)
+## 22. The last two old payment screens, retired the same way
+
+Following the exact pattern used for the old "Payroll" tab and "Ledgers & advances" tab: the original
+shift-based picker-pay-run screen (`grocery-picker-pay.js`) and manager-pay-run screen
+(`grocery-manager-pay.js`) each had their own separate "Record payment" action — a method dropdown and
+reference field that bypassed `payroll-core.js` entirely, honestly labeled ("this demo records your
+reference; it cannot initiate or verify a transfer") but still a fourth and fifth place the same action
+could happen differently. Both now point to the same unified "Pay" action everyone else uses. The
+shift/approval *calculation* these screens do (computing what's owed from approved shifts) is untouched
+— only the final payment step was duplicated, same as the other two. 4 new tests confirm both screens
+render correctly after the change.
+
+## 23. Advance payments now get the same real-redirect treatment as every other payment
+
+Found while checking all five advance-giving entry points: every one of them, regardless of method,
+marked an advance instantly "given" with no real handoff — even UPI, which `payNow()` and checkout had
+already been fixed to treat honestly. `giveAdvance()` now matches that standard exactly:
+
+- **Bank** goes through the real gateway and resolves immediately (a bad account is genuinely
+  rejected, same as a bank payment).
+- **UPI** generates a real deep link and sits `pending_handoff` until confirmed — two-sided, same
+  recompute-fresh-every-time logic as regular payments, so a genuine mismatch (owner says paid, worker
+  says not received) becomes `disputed` rather than silently resolved either way.
+- **Cash** now requires the worker's own acknowledgment before it counts — previously treated
+  identically to UPI (both instant), when cash specifically needed the same "pending until confirmed
+  in person" treatment salary cash payments already use.
+- Both the owner's unified Pay screen and the worker's own "My pay & details" screen show the new
+  pending-confirmation prompts for advances, not just regular payments.
+- 15 new tests, plus three existing tests (in `easy-mode-payroll-test.mjs` and `payroll-core-test.mjs`)
+  updated to reflect that a cash advance no longer instantly reduces balance — a genuine behavior
+  change, not a bug fix to an existing test.
+
+## 24. Delivery tracking — the three bugs flagged early in this session, now fixed
+
+- **Shared `watchId` collision fixed**: replaced the single module-level variable with a `Map` keyed by
+  order id, so a courier carrying two orders at once (already allowed by `capacityPerCourier`) can never
+  have the wrong order's GPS watch cleared when stopping tracking on the other one.
+- **Manual "Stop sharing" is now hard-blocked while a delivery is genuinely in progress** (`accepted`,
+  `picked_up`, `out_for_delivery`) — both the button itself and the underlying click handler refuse the
+  action regardless of how it's triggered. It only still auto-clears, as before, once the order reaches
+  a real end state.
+- **"Starting is optional" was fixed honestly, not by faking an auto-start.** Real geolocation
+  permission can only ever be requested from a genuine user click — silently auto-triggering it on
+  accept isn't actually possible in a real browser, so pretending to build that would have been
+  dishonest. Instead, confirming pickup now genuinely **requires** location sharing to have started at
+  least once — a real precondition enforced in the business logic, not a UI nudge that can be skipped.
+- Tested both with a hand-built fixture and by walking the complete real order lifecycle against the
+  actual seed data (accept → assign a picker → pick → pack → assign delivery → accept the job →
+  confirm pickup) — confirming the block, then confirming it clears correctly once sharing has
+  genuinely started. The full end-to-end simulation (now 57 steps) was updated to simulate this step
+  too, since it's a real precondition the test needed to satisfy, not an optional nicety.
+
+## 25. What was deliberately NOT done (and why)
 
 - **General vs. Specialized role tiers** (the "anyone can hire a cleaner, but only a restaurant can
   hire a chef" design) was discussed and designed but not implemented in code — no `tier` field
@@ -572,11 +624,12 @@ aware it existed.
 No browser or bundler is available in this environment, so testing was: `node --check` for syntax on
 every touched file; real `import()` of every touched module in Node to catch missing exports/broken
 references; and executing the actual edited functions against realistic mock state objects with
-explicit pass/fail assertions (not just "it ran without crashing"). **399 assertions total, across 25
-suites** (the final additions covering the real customer-checkout UPI redirect, real UPI payout
-verification, tracing a picker's self-requested advance through its complete real lifecycle, finding
-and fixing the fully-isolated logistics loan silo, and confirming the one genuine duplicate button was
-removed without disturbing the picker's own, genuinely different self-request flow), covering: role-list correctness per vertical, emergency-contact optionality, the suspend
+explicit pass/fail assertions (not just "it ran without crashing"). **436 assertions total, across 29
+suites** (the final additions covering the two remaining old payment screens retired the same way as
+the first two, the full real-redirect/acknowledgment treatment extended to advances across all three
+methods, and the three delivery-tracking bugs flagged early in this session — the watchId collision,
+the mid-delivery stop block, and the honest precondition-based fix for optional tracking, verified both
+with a hand-built fixture and by walking the complete real order lifecycle against actual seed data), covering: role-list correctness per vertical, emergency-contact optionality, the suspend
 action and its two follow-on bugs, cross-store identity reuse in both directions (logistics↔retail),
 the full picker onboarding lifecycle including the correction path, the two retail-hiring blockers
 (branch-source crash and vertical-aware hiring), `hireIntoStaff()` directly (retail picker, retail

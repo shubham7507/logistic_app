@@ -162,7 +162,7 @@ export function courierPanel(s, o) {
   const toStore = toStorePhase(o), target = toStore ? o.origin : o.dest, here = current(s, o);
   return `<div class="geo-courier">${mapSvg([{at: o.origin, icon: '🏪', label: 'Store'}, {at: o.dest, icon: '🏠', label: 'Customer'}, {at: here, icon: '🛵', label: 'You', fill: '#0b6655'}], {path: (o.track || []).map(p => [p.lat, p.lng]), plan: [o.origin, o.dest], label: 'Your route'})}
   <small class="block"><b>${esc(PHASE[o.geo?.phase || (toStore ? 'to_store' : 'to_customer')] || '')}</b> · ${roadKm(here, target).toFixed(1)} km to ${toStore ? 'the store' : 'the customer'} · about ${etaMin(s, o)} min ${o.geo?.live ? '· <b class="live-dot">● Location on</b>' : ''}</small>
-  <div class="row-actions"><a class="button secondary compact" target="_blank" rel="noopener" href="${gmaps(target[0], target[1])}">Navigate</a><button class="button ${o.geo?.live ? 'secondary' : 'primary'} compact" data-geo-live="${esc(o.id)}">${o.geo?.live ? 'Stop sharing' : 'Share live location'}</button><button class="button text compact" data-geo-step="${esc(o.id)}">Demo: move 400 m</button><button class="button text compact" data-geo-auto="${esc(o.id)}">Demo: auto-drive</button></div>${gateNote(s, o.dest) ? `<small class="block">📍 Entrance note: <b>${esc(gateNote(s, o.dest))}</b></small>` : ''}<form class="inline-form" data-geo-gate="${esc(o.id)}"><input name="note" placeholder="Entrance note for next time (e.g. Gate 2, Tower B lift)"><button class="button secondary compact">Save note</button></form></div>`;
+  <div class="row-actions"><a class="button secondary compact" target="_blank" rel="noopener" href="${gmaps(target[0], target[1])}">Navigate</a>${o.geo?.live && ACTIVE_DELIVERY_STATUSES.includes(o.status) ? `<span class="status-pill">Sharing location — stays on until delivered</span>` : `<button class="button ${o.geo?.live ? 'secondary' : 'primary'} compact" data-geo-live="${esc(o.id)}">${o.geo?.live ? 'Stop sharing' : 'Share live location'}</button>`}<button class="button text compact" data-geo-step="${esc(o.id)}">Demo: move 400 m</button><button class="button text compact" data-geo-auto="${esc(o.id)}">Demo: auto-drive</button></div>${gateNote(s, o.dest) ? `<small class="block">📍 Entrance note: <b>${esc(gateNote(s, o.dest))}</b></small>` : ''}<form class="inline-form" data-geo-gate="${esc(o.id)}"><input name="note" placeholder="Entrance note for next time (e.g. Gate 2, Tower B lift)"><button class="button secondary compact">Save note</button></form></div>`;
 }
 export function adminLive(s) {
   ensureGeo(s);
@@ -172,7 +172,15 @@ export function adminLive(s) {
 }
 
 // ---------- bindings ----------
-let watchId = null, autoTimer = null;
+// Keyed by order id, not a single shared variable — a courier can legitimately carry more than one
+// order at once (capacityPerCourier already allows this), and a single shared handle meant stopping
+// tracking on one order could silently clear the wrong order's GPS watch.
+const watchIds = new Map();
+let autoTimer = null;
+// Statuses where a delivery is genuinely in progress — manual "Stop sharing" is disabled here; it only
+// re-enables once the order reaches a real end state (the auto-clear in the position callback already
+// handles the normal case; this is specifically about a courier choosing to stop early).
+const ACTIVE_DELIVERY_STATUSES = ['accepted', 'picked_up', 'out_for_delivery'];
 let leafletState = 'none';
 function loadLeaflet(cb) {
   if (window.L) return cb(); if (leafletState === 'failed') return; if (leafletState === 'loading') return setTimeout(() => loadLeaflet(cb), 300);
@@ -203,9 +211,16 @@ export function bind(root, api) {
   root.querySelectorAll('[data-geo-step]').forEach(b => b.onclick = () => { const e = demoStep(S(), find(b.dataset.geoStep)); api.save(); api.render(); if (e) api.toast(e); });
   root.querySelectorAll('[data-geo-auto]').forEach(b => b.onclick = () => { if (autoTimer) { clearInterval(autoTimer); autoTimer = null; return api.toast('Auto-drive stopped'); } const id = b.dataset.geoAuto; autoTimer = setInterval(() => { const o = find(id); const e = o ? demoStep(S(), o) : 'stop'; api.save(); api.render(); if (e) { clearInterval(autoTimer); autoTimer = null; } }, 1200); api.toast('Auto-drive started (moves 400 m every second)'); });
   root.querySelectorAll('[data-geo-live]').forEach(b => b.onclick = () => { const s = S(), o = find(b.dataset.geoLive);
-    if (o.geo?.live) { stopTracking(o); if (watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(watchId); watchId = null; api.save(); api.render(); return api.toast('Location sharing stopped'); }
+    if (o.geo?.live) {
+      // Hard guard, not just a hidden button — stopping mid-delivery is blocked here regardless of how
+      // the click was triggered. It only ever auto-clears, inside the position callback below, once
+      // the order reaches a real end state.
+      if (ACTIVE_DELIVERY_STATUSES.includes(o.status)) return api.toast('Location sharing stays on until this delivery is complete.');
+      stopTracking(o); const wid = watchIds.get(o.id); if (wid != null && navigator.geolocation) navigator.geolocation.clearWatch(wid); watchIds.delete(o.id); api.save(); api.render(); return api.toast('Location sharing stopped');
+    }
     if (!navigator.geolocation) return api.toast('This browser cannot share location. Use the demo buttons.');
-    watchId = navigator.geolocation.watchPosition(p => { const x = find(o.id); if (!x || ['delivered', 'cancelled'].includes(x.status)) { navigator.geolocation.clearWatch(watchId); watchId = null; return; } recordPosition(S(), x, p.coords.latitude, p.coords.longitude, 'gps'); api.save(); api.render(); }, err => api.toast(`Location permission needed (${err.message})`), {enableHighAccuracy: true, maximumAge: 5000});
-    o.geo = {...(o.geo || {}), live: true, lastAt: Date.now()}; api.save(); api.render(); api.toast('Sharing live location for this delivery only'); });
+    const wid = navigator.geolocation.watchPosition(p => { const x = find(o.id); if (!x || ['delivered', 'cancelled'].includes(x.status)) { const w = watchIds.get(o.id); if (w != null) navigator.geolocation.clearWatch(w); watchIds.delete(o.id); return; } recordPosition(S(), x, p.coords.latitude, p.coords.longitude, 'gps'); api.save(); api.render(); }, err => api.toast(`Location permission needed (${err.message})`), {enableHighAccuracy: true, maximumAge: 5000});
+    watchIds.set(o.id, wid);
+    o.geo = {...(o.geo || {}), live: true, everStarted: true, lastAt: Date.now()}; api.save(); api.render(); api.toast('Sharing live location for this delivery only'); });
   root.querySelectorAll('[data-geo-share]').forEach(b => b.onclick = async () => { const url = `${location.origin}${location.pathname}#/orderTracking`; try { await navigator.clipboard.writeText(`Track my MoveAI order ${b.dataset.geoShare}: ${url}`); api.toast('Tracking link copied'); } catch { api.toast(url); } });
 }
