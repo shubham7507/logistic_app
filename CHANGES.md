@@ -606,7 +606,52 @@ already been fixed to treat honestly. `giveAdvance()` now matches that standard 
   genuinely started. The full end-to-end simulation (now 57 steps) was updated to simulate this step
   too, since it's a real precondition the test needed to satisfy, not an optional nicety.
 
-## 25. What was deliberately NOT done (and why)
+## 25. Products & Stock page — redesigned after researching real comparable products
+
+Checked how Amazon Seller Central and a published UX case study researching Blinkit/Zepto's own
+partner-app patterns actually handle this exact job, rather than relying on general design opinion.
+Both treat a product list as a dense, scannable summary (name, stock signal, price, status) with full
+detail living behind a drill-in, not permanently rendered per item. Our page did the opposite — every
+product rendered its complete ~12-field edit form inline, always present, for every item in the
+catalog.
+
+- Each product now shows a compact one-line summary by default — name, price, status — with the full
+  edit form, stock-adjustment controls, and detail breakdown collapsed behind "Manage," reusing the
+  exact `<details>`/`<summary>` pattern already used elsewhere on this same page.
+- **The "days of inventory left at current sales rate" figure already existed in the code** — it was
+  just buried as a throwaway sentence inside "Needs attention." It's now a visible, color-coded badge
+  on every product row (reusing the existing `status-pill`/`warning`/`danger` classes already defined
+  elsewhere in this app, not new ones invented for this), matching what the research found real
+  dark-store partner apps treat as the headline signal, not a footnote.
+- Done as a surgical wrap around the existing markup, not a rewrite — the add-product form, voice
+  panel, and all existing edit/stock-adjust/publish actions are completely unchanged underneath,
+  just collapsed by default. 10 new tests, including an explicit check that every `<section>` and
+  `<details>` tag in the generated HTML is correctly balanced, given how easy it is for a surgical
+  template-literal edit like this to silently produce malformed markup.
+
+## 26. Aadhaar verification retrofit extended to logistics staff and delivery partners
+
+Item 13 originally only covered picker onboarding, explicitly flagged as scoped that way at the time.
+Extended the identical retrofit — real Aadhaar OTP (`aadhaarEkyc`), a real live-selfie file picker
+(`faceMatch`), real bank penny-drop verification (`pennyDrop`), and the same explicit assisted-
+verification mode with required consent and separate labeling — to both remaining onboarding flows:
+
+- **Logistics staff** (`people.js` / `app.js`): this one lives as inline form-submission logic in
+  `app.js` rather than a separable exported function like the other two, so the validation itself
+  could not be unit-tested with quite the same direct rigor as picker and delivery-partner onboarding
+  — flagged here honestly rather than glossed over. The screen rendering, the assisted-mode toggle,
+  and the owner's review-screen labeling were all tested directly; the inline submit handler's
+  wiring to the real verification functions was checked for correct syntax and consistent logic
+  against the already-tested pattern, not independently exercised the same way.
+- **Delivery partners** (`delivery-onboarding.js`): a clean, self-contained module (built fresh this
+  session), so retrofitted and tested with the same direct rigor as picker onboarding — including the
+  one deliberate scope boundary: vehicle documents (licence, RC, insurance) stay as typed fields, since
+  there's no simulated verification for those specifically, only for personal identity and bank.
+- 9 new tests for logistics staff, 6 new tests for delivery partners (on top of the existing
+  21 already covering that file), all passing — plus fixing the existing fixtures in three different
+  test files whose old plain-field submission shape the retrofit correctly rejects.
+
+## 27. What was deliberately NOT done (and why)
 
 - **General vs. Specialized role tiers** (the "anyone can hire a cleaner, but only a restaurant can
   hire a chef" design) was discussed and designed but not implemented in code — no `tier` field
@@ -624,12 +669,13 @@ already been fixed to treat honestly. `giveAdvance()` now matches that standard 
 No browser or bundler is available in this environment, so testing was: `node --check` for syntax on
 every touched file; real `import()` of every touched module in Node to catch missing exports/broken
 references; and executing the actual edited functions against realistic mock state objects with
-explicit pass/fail assertions (not just "it ran without crashing"). **436 assertions total, across 29
-suites** (the final additions covering the two remaining old payment screens retired the same way as
-the first two, the full real-redirect/acknowledgment treatment extended to advances across all three
-methods, and the three delivery-tracking bugs flagged early in this session — the watchId collision,
-the mid-delivery stop block, and the honest precondition-based fix for optional tracking, verified both
-with a hand-built fixture and by walking the complete real order lifecycle against actual seed data), covering: role-list correctness per vertical, emergency-contact optionality, the suspend
+explicit pass/fail assertions (not just "it ran without crashing"). **457 assertions total, across 31
+suites** (the final additions covering the Products & Stock page redesign — including an explicit
+HTML-balance check given how easy a surgical template edit is to get subtly wrong — and the Aadhaar
+verification retrofit extended to the two onboarding flows it hadn't reached yet, logistics staff and
+delivery partners, with the one remaining honest limitation being that logistics staff's submit logic
+lives as inline code in `app.js` rather than a separable function, so it couldn't be unit-tested with
+quite the same direct rigor as the other two), covering: role-list correctness per vertical, emergency-contact optionality, the suspend
 action and its two follow-on bugs, cross-store identity reuse in both directions (logistics↔retail),
 the full picker onboarding lifecycle including the correction path, the two retail-hiring blockers
 (branch-source crash and vertical-aware hiring), `hireIntoStaff()` directly (retail picker, retail
