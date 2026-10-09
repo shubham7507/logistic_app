@@ -16,7 +16,17 @@ export const staffBranches=(s,p)=>p.branchIds?.length?p.branchIds:[defaultBranch
 export const staffAt=(s,p,id)=>staffBranches(s,p).includes(id);
 export function selectBranch(s,ws,id){const store=ownerStore(ws);if(!store||branch(s,store,id)?.status!=='active')return 'Branch unavailable.';if(STORE_BY_MANAGER[ws]){const m=(s.storeManagers||[]).find(x=>x.id===s.activeStoreManager?.[ws]&&x.status==='active');if(!m||!staffAt(s,m,id))return 'This manager is not assigned to that branch.';} (s.activeSellerBranch||={})[store]=id;return '';}
 export function addBranch(s,ws,name,address,serviceArea){if(!SELLER_WORKSPACES.includes(ws))return 'Seller owner access required.';name=String(name||'').trim();address=String(address||'').trim();serviceArea=String(serviceArea||'').trim();if(name.length<3||address.length<8||serviceArea.length<2)return 'Enter branch name, full pickup address and service area.';if(branchesFor(s,ws).some(b=>b.name.toLowerCase()===name.toLowerCase()))return 'Branch name already exists.';const b={id:`${ws}-B${Date.now()}`,store:ws,name,address,serviceArea,status:'active',open:true,priority:branchesFor(s,ws).length+1};(s.sellerBranches||={})[ws]??=seedBranches()[ws];s.sellerBranches[ws].push(b);return '';}
-export function assignStaffBranch(s,ws,id,branchId,enabled){if(!SELLER_WORKSPACES.includes(ws)||!branch(s,ws,branchId))return 'Store branch unavailable.';const p=[...(s.pickerStaff||[]),...(s.storeManagers||[])].find(x=>x.id===id&&x.store===ws&&x.status==='active');if(!p)return 'Active staff at this seller required.';const current=staffBranches(s,p);if(!enabled&&current.length===1&&current[0]===branchId)return 'Assign another branch before removing the last one.';p.branchIds=enabled?[...new Set([...current,branchId])]:current.filter(x=>x!==branchId);return '';}
+export function assignStaffBranch(s,ws,id,branchId,enabled){
+ if(!SELLER_WORKSPACES.includes(ws)||!branch(s,ws,branchId))return 'Store branch unavailable.';
+ const p=[...(s.pickerStaff||[]),...(s.storeManagers||[])].find(x=>x.id===id&&x.store===ws&&x.status==='active');if(!p)return 'Active staff at this seller required.';
+ const current=staffBranches(s,p),employment=(s.employments||[]).find(e=>e.business===ws&&e.source.id===id);
+ if(!enabled&&current.length===1&&current[0]===branchId)return 'Assign another branch before removing the last one.';
+ if(!enabled&&employment?.homeBranch===branchId)return 'Transfer the home branch in Branches & teams before removing it here.';
+ p.branchIds=enabled?[...new Set([...current,branchId])]:current.filter(x=>x!==branchId);
+ if(employment){employment.cover=p.branchIds.filter(x=>x!==employment.homeBranch);(employment.history||=[]).push({at:new Date().toLocaleString('en-IN'),text:`${enabled?'Added':'Removed'} cover at ${branch(s,ws,branchId).name}`});}
+ if(s.staffHR?.[id])s.staffHR[id].cover=p.branchIds.filter(x=>x!==(employment?.homeBranch||s.staffHR[id].homeBranch));
+ return '';
+}
 export function routeBranch(s,store,items,address,availableAt){const candidates=branchesFor(s,store).filter(b=>b.status==='active'&&b.open&&items.every(i=>availableAt(i.product,b.id)>=i.quantity));const area=String(address||'').toLowerCase();return candidates.sort((a,b)=>(Number(area.includes(b.serviceArea.toLowerCase()))-Number(area.includes(a.serviceArea.toLowerCase())))||a.priority-b.priority)[0]||null;}
 
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

@@ -1,5 +1,23 @@
 # MoveAI One vNext — Phases P5–P8 (complete application flow)
 
+## Current static demo (October 2026)
+
+Open `index.html` (customer), `seller.html` (grocery, electrical, fashion), `picker.html` (store staff), `delivery.html` (courier), or `admin.html` (operations). `business.html` and `partner.html` cover the other marketplace roles. Serve the folder over HTTP (for example `python3 -m http.server 8000`) rather than opening files directly. The pages can also be published together on GitHub Pages.
+
+Use **one browser profile on one device** for a cross-role walkthrough. All roles share a demo `localStorage` record on that device; other phones, profiles, or private windows do not receive these orders. Reset demo data if you want to start again.
+
+### Quick role walkthrough
+
+1. Customer → Shop: open three products from different sellers, add them to cart, review each seller's delivery charge, choose COD, and place the order. My orders shows separate store packages.
+2. Seller → Orders: switch between Grocery, Electricals, and Fashion. Accept each store's own order. Assign an active worker on shift or choose **Pick items myself**, confirm each item, then pack the bags.
+3. Store Staff → Tasks: if assigned, accept the offer, check every item and confirm quantities. A newly invited worker must first accept the invitation, submit joining details, and receive seller approval; a shift is required for automatic offers.
+4. Delivery → Deliveries: Ravi accepts an offered job, opens its tracking controls, selects **Use demo location** (or shares browser GPS), enters the store pickup code and bag count, then enters the customer's delivery code. Check COD cash handover separately.
+5. Customer → My orders: inspect the status and history for each package. Admin → Orders and Payments: review the same demo records.
+
+For UPI staff pay, the owner initiates a **simulated** payment, confirms their action, and the worker confirms receipt in their own pay screen. The ledger stays pending until both say yes; disagreement becomes disputed. Monthly bank payroll, card, receipts and refunds in this static demo do not transfer real money.
+
+Run `npm run test:demo` for the updated cross-role model test, and `npm run test:unit` for the unit suite. Several older commerce scripts still assume the previous immediate-payment, immediate-activation and no-tracking flow; see `DEMO_TEST_REPORT.md` before interpreting their failures.
+
 Phase P4 adds the goods and opportunity marketplace on the completed P0–P3 application. It also repairs the Commercial Driver availability, matching, application, withdrawal/reapplication and owner hiring pipeline. The v44 reference remains unchanged.
 
 ## Four apps (option C)

@@ -4,6 +4,8 @@ import {pill} from './ops.js';
 import {payPeriod,payRunFor,shiftsFor} from './grocery-picker-pay.js';
 import {SELLER_WORKSPACES,STORE_BY_MANAGER,WORKER_BY_STORE} from './seller-roles.js';
 import {selectedBranch,defaultBranch,staffAt,staffBranches,branch} from './seller-branches.js';
+import * as PC from './people-core.js';
+import * as Payroll from './payroll-core.js';
 
 const owner=ws=>SELLER_WORKSPACES.includes(ws);
 export const manager=ws=>!!STORE_BY_MANAGER[ws];
@@ -98,26 +100,31 @@ export function revokePickerAccess(s,ws,id){
  const p=person(s,ws,id);if(!p||!['active','invited'].includes(p.status))return 'Picker is not active.';
  const result=removePicker(s,ws,id);if(result)return result;
  p.offboarding={...p.offboarding,effectiveDate:today(),reason:p.offboarding?.reason||'Immediate access removal',status:'access_removed',revokedAt:stamp()};
+ PC.ensureCore(s);const employment=s.employments.find(e=>e.business===ws&&e.source.id===id);if(employment){employment.status='suspended';employment.history.push({at:stamp(),text:'Access revoked; final settlement pending'});}
  for(const x of s.pickerSchedules||[])if(x.pickerId===id&&x.date>=today()&&x.status!=='cancelled')x.status='cancelled';
  return '';
 }
 export function pickerExitChecklist(s,store,id){
  const p=person(s,store,id);if(!p)return null;
+ Payroll.ensurePayrollCore(s);const employment=s.employments.find(e=>e.business===store&&e.source.id===id),personId=employment?.personId;
  const tasks=(s.customerOrders||[]).filter(o=>o.pickerId===id&&['accepted','item_review'].includes(o.status)&&!o.pick?.completedAt);
  const shifts=(s.pickerShifts||[]).filter(x=>x.pickerId===id&&x.status!=='approved');
  const unpaid=(s.pickerPayRuns||[]).filter(r=>r.pickerId===id&&r.status!=='paid');
  const unbilled=(s.pickerShifts||[]).filter(x=>x.pickerId===id&&x.status==='approved'&&!((s.pickerPayRuns||[]).some(r=>r.pickerId===id&&r.shiftIds?.includes(x.id))));
  const corrections=(s.pickerTimeCorrections||[]).filter(c=>c.pickerId===id&&c.status==='pending');
- return {tasks,shifts,unpaid,unbilled,corrections};
+ const pendingMoney=personId?(s.payEvents||[]).filter(e=>e.personId===personId&&['pending_confirmation','pending_ack','disputed'].includes(e.status)):[];
+ const finalDue=personId&&Payroll.balance(s,personId)>0?[{amount:Payroll.balance(s,personId)}]:[];
+ const advances=personId?(s.payAdvances||[]).filter(a=>a.personId===personId&&['active','pending_ack','pending_handoff','disputed'].includes(a.status)&&a.balance>0):[];
+ return {tasks,shifts,unpaid,unbilled,corrections,pendingMoney,finalDue,advances};
 }
 export function finalizePickerOffboarding(s,ws,id){
  if(!owner(ws))return 'Store owner access required.';
  const p=person(s,ws,id),c=pickerExitChecklist(s,ws,id);
  if(!p?.offboarding||p.status==='offboarded')return 'Plan or revoke access before finalizing this exit.';
  if(p.offboarding.effectiveDate>today())return 'The planned last day has not arrived.';
- if(Object.values(c).some(xs=>xs.length))return 'Resolve open tasks, shifts, corrections and final pay first.';
+ if(Object.values(c).some(xs=>xs.length))return 'Resolve open tasks, shifts, corrections, pending payments and final dues first.';
  if(p.status==='active'){const error=revokePickerAccess(s,ws,id);if(error)return error;}
- p.status='offboarded';p.offboarding.status='completed';p.offboarding.completedAt=stamp();audit(s,ws,`Completed ${p.name} offboarding with final pay reviewed`);return '';
+ p.status='offboarded';p.offboarding.status='completed';p.offboarding.completedAt=stamp();const employment=s.employments?.find(e=>e.business===ws&&e.source.id===id);if(employment){employment.status='ended';employment.end=today();employment.history.push({at:stamp(),text:'Offboarded after final settlement'});}audit(s,ws,`Completed ${p.name} offboarding with final pay reviewed`);return '';
 }
 
 export function managerProfile(s,ws){
@@ -138,6 +145,6 @@ export function offboardingScreen(s,ws){
  if(!owner(ws))return '';
  return `<div class="page-header"><div><h1>Staff offboarding</h1><p>Set a last day, resolve work and pay, then complete the exit</p></div></div>${staffFor(s,ws).filter(p=>p.status!=='invited').map(p=>{
   const c=pickerExitChecklist(s,ws,p.id);
-  return `<section class="panel order-card"><h2>${esc(p.name)} · ${esc(p.status)}</h2><p>Last day: ${esc(p.offboarding?.effectiveDate||'Not set')} · ${esc(p.offboarding?.status||(p.status==='offboarded'?'Offboarded':p.status==='removed'?'Removed':'Active'))}</p><p>Open tasks ${c.tasks.length} · shifts awaiting approval ${c.shifts.length} · pending corrections ${c.corrections.length} · approved shifts without pay run ${c.unbilled.length} · unpaid pay runs ${c.unpaid.length}</p>${p.status==='active'?`<label>Last day <input class="form-control" data-exit-date="${esc(p.id)}" type="date" min="${today()}" value="${today()}"></label><label>Reason <input class="form-control" data-exit-reason="${esc(p.id)}" placeholder="e.g. resigned or end of seasonal work"></label><button class="button secondary compact" data-commerce="plan-picker-exit" data-id="${esc(p.id)}">Set last day</button><button class="button danger compact" data-commerce="revoke-picker-access" data-id="${esc(p.id)}">Remove access now</button>`:''}${p.offboarding&&p.status!=='offboarded'?`<button class="button primary compact" data-commerce="finalize-picker-exit" data-id="${esc(p.id)}">Complete exit</button>`:''}<p class="muted">Open work can be reassigned in Orders. Review shifts in Schedule and final dues in Staff pay.</p></section>`;
+  return `<section class="panel order-card"><h2>${esc(p.name)} · ${esc(p.status)}</h2><p>Last day: ${esc(p.offboarding?.effectiveDate||'Not set')} · ${esc(p.offboarding?.status||(p.status==='offboarded'?'Offboarded':p.status==='removed'?'Removed':'Active'))}</p><p>Open tasks ${c.tasks.length} · shifts awaiting approval ${c.shifts.length} · pending corrections ${c.corrections.length} · approved shifts without pay run ${c.unbilled.length} · unpaid pay runs ${c.unpaid.length} · payments to confirm ${c.pendingMoney.length} · final dues ${c.finalDue.length} · advances ${c.advances.length}</p><button class="button secondary compact" data-route="staffPay">Review final pay</button>${p.status==='active'?`<label>Last day <input class="form-control" data-exit-date="${esc(p.id)}" type="date" min="${today()}" value="${today()}"></label><label>Reason <input class="form-control" data-exit-reason="${esc(p.id)}" placeholder="e.g. resigned or end of seasonal work"></label><button class="button secondary compact" data-commerce="plan-picker-exit" data-id="${esc(p.id)}">Set last day</button><button class="button danger compact" data-commerce="revoke-picker-access" data-id="${esc(p.id)}">Remove access now</button>`:''}${p.offboarding&&p.status!=='offboarded'?`<button class="button primary compact" data-commerce="finalize-picker-exit" data-id="${esc(p.id)}">Complete exit</button>`:''}<p class="muted">Open work can be reassigned in Orders. Review shifts in Schedule and final dues in Staff pay.</p></section>`;
  }).join('')||'<section class="panel">No picker to offboard.</section>'}`;
 }

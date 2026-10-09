@@ -19,6 +19,7 @@ let r=O.placeOrder(s,{fromCart:true,address:'42 MG Road, Delhi 110001',method:'u
 assert.match(r.error,/declined/); assert.equal(s.productCart.length,2);
 r=O.placeOrder(s,{fromCart:true,address:'42 MG Road, Delhi 110001',method:'upi',vpa:'a@okaxis',substitution:'refund'});
 assert.equal(r.order.total,1448); assert.equal(r.order.items.length,2);assert.equal(r.order.substitution,'refund');assert.equal(s.productCart.length,0);
+assert.equal(r.order.status,'payment_pending');assert.equal(O.confirmCustomerPayment(s,r.order,true),'');
 assert.equal(O.advanceOrder(s,r.order),'');assert.equal(r.order.status,'accepted');
 assert.equal(O.cancelOrder(s,r.order),'');assert.equal(s.ledger.find(x=>x.orderId===r.order.id&&x.type==='refund').amount,1448);
 // One checkout can create two independently fulfilled store orders.

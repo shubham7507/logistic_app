@@ -3,7 +3,7 @@ import {ROLE_TEMPLATES,OWNER_ONLY,validateStaffInvite,accessAllows,validateOwner
 import {SEED} from '../js/mock-data.js';
 import {canOpen} from '../js/permissions.js';
 
-assert.deepEqual(Object.keys(ROLE_TEMPLATES),['manager','operations','accounts','driver','helper','documents','viewer']);
+assert.deepEqual(Object.keys(ROLE_TEMPLATES),['manager','operations','accounts','driver','helper','documents','viewer','picker','packer','cashier']);
 assert.ok(OWNER_ONLY.includes('bank.change'));
 assert.equal(validateStaffInvite({mobile:'9876509999',role:'driver',branchId:'BR-1',payType:'monthly'}),'');
 assert.equal(validateStaffInvite({mobile:'123',role:'driver',branchId:'BR-1',payType:'monthly'}),'Enter a valid 10-digit mobile number.');

@@ -86,6 +86,7 @@ export function markPresent(s, ws, row, date = today()) {
   s.attendance.push({id: uid('ATT'), memberId: row.e.source.id, workspace: row.e.business, date, branchId: row.e.homeBranch, checkIn: '09:00', source: 'easy'}); return '';
 }
 export function giveAdvance(s, ws, row, amount, instalment) {
+  if (PC.scopeOf(s, ws)?.kind !== 'owner' || row.e.business !== PC.scopeOf(s, ws)?.business) return 'Only the owner can give an advance. A manager can request approval in People & pay.';
   amount = Math.round(Number(amount)); instalment = Math.round(Number(instalment)); if (!(amount > 0) || !(instalment > 0)) return 'Enter the advance and how much to repay each month.';
   // Retail: goes through the unified payroll engine now, not store-hr.js's own ledger directly — same
   // balance an owner sees on the "Pay" button and a worker sees on their own "My pay" screen.
@@ -97,6 +98,7 @@ export function giveAdvance(s, ws, row, amount, instalment) {
   smsConfirm(s, row, amount); return '';
 }
 export function pay(s, ws, row, amount, method) {
+  if (PC.scopeOf(s, ws)?.kind !== 'owner' || row.e.business !== PC.scopeOf(s, ws)?.business) return 'Only the owner can pay staff.';
   amount = Math.round(Number(amount)); if (!(amount > 0)) return 'Enter the amount.';
   if (method === 'cash') { const e = LC.payCash(s, ws, row, amount); if (!e) smsConfirm(s, row, amount); return e; }
   if (amount > row.balance) return `Balance due is only ${inr(row.balance)}.`;
@@ -114,6 +116,17 @@ export const waLink = (row, s) => `https://wa.me/91${row.p.mobile}?text=${encode
 export function screen(s, route, ws) {
   if (route !== 'easyStaff') return ''; const sc = PC.scopeOf(s, ws); if (!sc || !['owner', 'manager'].includes(sc.kind)) return '';
   const b = sc.business, W = words(b), list = team(s, ws), act = s.easyAction || '', pend = s.easyPending;
+  const retail=isStore(b), cards=[
+    ['Add worker','➕',retail?'storeHR':'addStaff','Invite a person and set their home branch and pay plan'],
+    ["Today's work",'✅',retail?'shopSchedule':'dutyBoard','See shifts, attendance and assigned work'],
+    ['Pay workers','₹','staffPay',sc.kind==='owner'?'Review balances, advances and monthly pay':'Review branch balances; ask the owner to approve payment'],
+    ['Branches & team','⌘','branchesTeams','Home branch, dated cover and team membership']
+  ];
+  return `<div class="page-header"><div><h1>Staff</h1><p>${esc(PC.bizName(s,b))}${sc.kind==='manager'?' · Manager · your branch':' · Owner · all branches'}</p></div>${langButton(s)}</div>
+    <div class="easy-grid">${cards.map(([label,icon,target,desc])=>`<button class="easy-tile staff-hub-tile" data-easy-nav="${target}"${label==='Add worker'&&sc.kind!=='owner'?' disabled title="Ask the owner to invite staff"':''}><span>${icon}</span><b>${label}</b><small>${desc}</small></button>`).join('')}</div>
+    <section class="panel"><h2>People at this business</h2><p class="muted">Each worker has one profile. Choose a person to see the same balance and history they see in My pay.</p>${list.filter(r=>r.e.business===b&&r.e.status==='active').map(r=>`<div class="ledger-row static"><span><b>${esc(r.p.name)}</b><small>${esc(r.e.role)} · ${esc(PC.branchesFor(s,b).find(x=>x.id===r.e.homeBranch)?.name||'Branch not set')} · ${esc(r.e.status)}</small></span><span class="row-actions"><b>${inr(r.balance)}</b><button class="button secondary compact" data-easy-person="${esc(r.e.personId)}">View pay</button></span></div>`).join('')||'<p class="muted">No active workers. Invite someone to start.</p>'}</section>
+    <section class="panel easy-voice"><h2>Speak or type</h2><p class="muted">For example: “Pooja aaj present” or “Pooja ko 500 advance”. Check the person and amount before proceeding.</p><form data-easy-form="voice" class="easy-form"><label>Speak or type<input name="text" class="big" value="${esc(s.easyText||'')}" placeholder="Pooja ko 500 advance"></label><span class="row-actions"><button type="button" class="button secondary big" data-easy-mic>🎤 Speak</button><button class="button primary big">Understand</button></span></form>${pend?`<div class="easy-confirm"><b>${esc(pend.text)}</b><p>Confirm to open the correct form. No money is recorded by voice alone.</p><button class="button primary big" data-easy="confirm">Continue</button><button class="button secondary big" data-easy="cancel">Cancel</button></div>`:''}<p class="easy-msg muted">${esc(s.easyMsg||'')}</p></section>
+    <details class="panel"><summary>More staff options</summary><div class="row-actions"><button class="button secondary compact" data-route="${retail?'shopTeam':'people'}">Order team and work</button>${retail&&sc.kind==='owner'?'<button class="button secondary compact" data-route="shopTeam">Invite a manager</button>':''}<button class="button secondary compact" data-route="${retail?'shopOffboarding':'offboarding'}">Offboarding</button><button class="button secondary compact" data-route="${retail?'storeHR':'payLedgers'}">Attendance and approvals</button></div></details><p class="easy-err field-error" hidden></p>`;
   const sel = (n, opts) => `<select name="${n}" class="big">${opts.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>`;
   const people = `<select name="who" class="big">${list.map(r => `<option value="${r.e.id}">${esc(r.p.name)}</option>`).join('')}</select>`;
   const forms = {
@@ -133,12 +146,15 @@ export function bind(root, api) {
   const S = () => api.getState(), ws = () => S().currentWorkspace, err = m => { const e = root.querySelector('.easy-err'); if (e) { e.textContent = m; e.hidden = !m; } else api.toast(m); };
   const done = (e, ok) => { if (e) return err(e); api.save(); api.render(); if (ok) api.toast(ok); };
   const rowOf = id => team(S(), ws()).find(r => r.e.id === id);
+  root.querySelectorAll('[data-easy-nav]').forEach(b=>b.onclick=()=>{if(b.dataset.easyNav==='storeHR')S().hrTab='team';api.save();api.navigate(b.dataset.easyNav)});
+  root.querySelectorAll('[data-easy-person]').forEach(b=>b.onclick=()=>{const s=S(),sc=PC.scopeOf(s,ws());const emp=s.employments?.find(e=>e.personId===b.dataset.easyPerson&&e.business===sc?.business);if(!emp)return api.toast('Worker not found.');s.selectedPayPersonId=emp.personId;s.selectedPayBusiness=emp.business;api.save();api.navigate('unifiedPay')});
   root.querySelectorAll('[data-easy-lang]').forEach(b => b.onclick = () => { S().lang = S().lang === 'hi' ? 'en' : 'hi'; done(''); });
   root.querySelectorAll('[data-easy-act]').forEach(b => b.onclick = () => { S().easyAction = S().easyAction === b.dataset.easyAct ? '' : b.dataset.easyAct; done(''); });
   root.querySelector('[data-easy-mic]')?.addEventListener('click', () => { const R = window.SpeechRecognition || window.webkitSpeechRecognition; if (!R) return api.toast('Voice is not supported in this browser — type instead.'); const r = new R(); r.lang = S().lang === 'hi' ? 'hi-IN' : 'en-IN'; r.onresult = e => { const t = e.results[0][0].transcript; const i = root.querySelector('[data-easy-form="voice"] [name=text]'); if (i) i.value = t; }; r.onerror = () => api.toast('Could not hear — please type.'); r.start(); api.toast('Listening…'); });
   root.querySelectorAll('[data-easy]').forEach(b => b.onclick = () => { const s = S(), p = s.easyPending; if (b.dataset.easy === 'cancel' || !p) { s.easyPending = null; return done(''); }
     const row = rowOf(p.empId); let e = 'Person not found.';
-    if (row) e = p.intent === 'present' ? markPresent(s, ws(), row) : p.intent === 'advance' ? giveAdvance(s, ws(), row, p.amount, p.instalment) : pay(s, ws(), row, p.amount, p.method);
+    if(row&&p.intent!=='present'){s.selectedPayPersonId=row.e.personId;s.selectedPayBusiness=row.e.business;s.easyPending=null;s.easyText='';s.easyMsg=`Review ${p.text} in Pay workers. Choose a method and confirm there.`;api.save();api.navigate('unifiedPay');return;}
+    if (row) e = markPresent(s, ws(), row);
     if (!e) { s.easyPending = null; s.easyText = ''; s.easyMsg = `Done: ${p.text}${p.intent !== 'present' && p.method !== 'upi' ? ' — the worker gets an SMS to confirm the cash' : ''}`; }
     done(e, e ? '' : 'Done'); });
   root.querySelectorAll('form[data-easy-form]').forEach(f => f.onsubmit = e => { e.preventDefault(); const s = S(), fd = new FormData(f), v = Object.fromEntries(fd), k = f.dataset.easyForm;

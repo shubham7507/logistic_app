@@ -15,14 +15,18 @@ for(const [store,manager,worker,product] of [
 ]){
  assert.ok(PRODUCTS.seller.roles.includes(manager)&&PRODUCTS.picker.roles.includes(worker));
  assert.ok(canOpen(store,'shopTeam')&&canOpen(manager,'shopTeam')&&!canOpen(worker,'shopTeam'));
- assert.match(Commerce.screen(s,'shopTeam',store),/Invite a fulfilment worker/);
- assert.match(Commerce.screen(s,'shopTeam',manager),/Owners invite/);
+ assert.match(Commerce.screen(s,'shopTeam',store),/Open Staff/);
+ assert.match(Commerce.screen(s,'shopTeam',manager),/Staff invitations/);
  assert.match(Commerce.screen(s,'shopProfile',store),/Manage store team/);
  const invited=`987650${store==='electrical'?'3344':'4455'}`;
  ok(Staff.invitePicker(s,store,`${store} colleague`,invited));
  const p=s.pickerStaff.at(-1);assert.equal(p.store,store);assert.equal(p.status,'invited');
  assert.match(Staff.selectPicker(s,worker==='pickerElectrical'?'pickerFashion':'pickerElectrical',p.id),/unavailable/);
  ok(Staff.selectPicker(s,worker,p.id));ok(Staff.acceptPickerInvite(s,worker));
+ assert.equal(p.status,'profile_pending');
+ ok(Staff.submitPickerOnboarding(s,worker,{aadhaar:'234567891234',otp:'123456',consent:'1',dob:'1995-01-01',selfie:'staff-selfie.jpg',accountName:p.name,accountNumber:'1234567891',ifsc:'SBIN0001234'}));
+ assert.equal(p.status,'submitted');
+ ok(Staff.pickerReviewDecision(s,store,p.id,'approve'));
  assert.equal(p.status,'active');
  assert.match(Commerce.screen(s,'pickProfile',worker),new RegExp(`${store} colleague`));
  const managerId=`MGR-${store==='electrical'?'003':'004'}`;
@@ -42,6 +46,7 @@ for(const [store,manager,worker,product] of [
  ok(Commerce.sellerAction(s,manager,o.id,'pack',1));
  assert.equal(o.status,'ready_for_pickup');
  ok(Commerce.deliveryAction(s,'deliveryPartner',o.id,'accept'));
+ o.geo={...(o.geo||{}),live:true,everStarted:true,lastAt:Date.now()};
  ok(Commerce.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,1));
  ok(Commerce.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode));
  assert.equal(o.status,'delivered');

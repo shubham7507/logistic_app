@@ -147,7 +147,7 @@ export function balance(s, personId) {
   // A pending_confirmation UPI payment deliberately does NOT reduce the counted balance yet — until
   // someone actually confirms the money moved, treating it as settled would be an assumption, not a
   // fact, and could show "settled up" to a worker who was never actually paid.
-  const ledgerTotal = events(s).filter(e => e.personId === personId && !['disputed', 'waived', 'pending_confirmation', 'cancelled'].includes(e.status)).reduce((sum, e) => sum + e.amount, 0);
+  const ledgerTotal = events(s).filter(e => e.personId === personId && !['disputed', 'waived', 'pending_confirmation', 'pending_ack', 'cancelled'].includes(e.status)).reduce((sum, e) => sum + e.amount, 0);
   return ledgerTotal - advanceOutstanding(s, personId);
 }
 export function history(s, personId) {
@@ -202,7 +202,7 @@ function recomputeAdvanceUpiStatus(a) {
   if (a.ownerConfirmed === false || a.workerConfirmed === false) {
     return (a.ownerConfirmed === true || a.workerConfirmed === true) ? 'disputed' : 'cancelled';
   }
-  if (a.ownerConfirmed === true || a.workerConfirmed === true) return 'active';
+  if (a.ownerConfirmed === true && a.workerConfirmed === true) return 'active';
   return 'pending_handoff';
 }
 export function confirmAdvanceUpi(s, advanceId, side, confirmed) {
@@ -271,6 +271,11 @@ export function payNow(s, business, personId, amount, method, reference) {
   ensurePayrollCore(s);
   const amt = Math.round(Number(amount));
   if (!(amt > 0)) return 'Enter a valid amount to pay.';
+  const employment=s.employments?.find(e=>e.personId===personId&&e.business===business&&e.status==='active');
+  if(!employment)return 'Active worker at this business required.';
+  const due=balance(s,personId);
+  if(amt>due)return `Balance due is only ${inr(Math.max(0,due))}. Use an advance for more.`;
+  if(events(s).some(e=>e.personId===personId&&e.business===business&&e.type==='payment'&&['pending_confirmation','pending_ack'].includes(e.status)))return 'Resolve the pending payment before making another one.';
   if (['upi', 'bank'].includes(method) && !payoutVerified(s, personId)) {
     return `${personName(s, personId)} has not added a verified UPI/bank account. Pay in cash or ask them to add it first.`;
   }
@@ -284,9 +289,8 @@ export function payNow(s, business, personId, amount, method, reference) {
     return {ok: true, eventId: id, upiLink};
   }
   if (method === 'bank') {
-    // Bank transfers DO have a gateway here (unlike UPI), so they resolve immediately — success or
-    // failure — the same way a real batch payroll run would confirm back right away. No pending-
-    // confirmation step: that mechanism exists specifically for UPI's lack of a gateway, not for this.
+    // The prototype gateway generates a simulated transfer result immediately. A real bank result
+    // would require backend reconciliation; the UI identifies this as a demo payment.
     const bank = resolveBankRecord(s, personId);
     if (!bank?.accountNumber) return `${personName(s, personId)} does not have a bank account on file. Pay via UPI or cash instead.`;
     const g = gateway.payout({accountNumber: bank.accountNumber}, amt);
@@ -298,23 +302,26 @@ export function payNow(s, business, personId, amount, method, reference) {
   if (method === 'card_transfer' && !String(reference || '').trim()) {
     return 'Enter the payment reference or a signed receipt note.';
   }
-  events(s).push({id: uid('PE'), personId, business, type: 'payment', amount: -amt, status: 'posted', at: stamp(), note: `Paid via ${method}${reference ? ` · ${reference}` : ''}`, source: 'manual', method, reference});
+  events(s).push({id: uid('PE'), personId, business, type: 'payment', amount: -amt, status: method==='cash'?'pending_ack':'posted', at: stamp(), note: `${method==='cash'?'Cash handed over':'Paid via '+method}${reference ? ` · ${reference}` : ''}`, source: 'manual', method, reference});
   touch(s);
   return '';
 }
 
+export function confirmCashPayment(s,eventId,personId,received){
+  ensurePayrollCore(s);
+  const e=events(s).find(x=>x.id===eventId&&x.personId===personId&&x.method==='cash'&&x.status==='pending_ack');
+  if(!e)return 'No pending cash payment for this worker.';
+  e.status=received?'posted':'disputed';e.workerConfirmed=!!received;e.confirmedAt=stamp();touch(s);return '';
+}
+
 // side is 'owner' or 'worker'; confirmed is true ('I received it'/'yes, it went through') or false.
-// Either side's "yes" alone settles it (no need to wait for both) — but the status is recomputed fresh
-// from BOTH recorded answers every time, not finalized irreversibly on the first response. That's what
-// lets a genuine mismatch surface: if the owner says yes and the event settles, then the worker later
-// says they never received it, the status re-opens into 'disputed' instead of the worker's answer
-// having nowhere to go because the event already looked "done." Once disputed, it requires a human to
-// resolve it elsewhere (not more automatic confirm calls), same as the existing deduction-dispute flow.
+// The demo cannot verify a real UPI transfer. Keep the entry pending until both sides confirm it;
+// a disagreement is a dispute for human review and must never reduce the worker's due balance.
 function recomputeUpiStatus(e) {
   if (e.ownerConfirmed === false || e.workerConfirmed === false) {
     return (e.ownerConfirmed === true || e.workerConfirmed === true) ? 'disputed' : 'cancelled';
   }
-  if (e.ownerConfirmed === true || e.workerConfirmed === true) return 'posted';
+  if (e.ownerConfirmed === true && e.workerConfirmed === true) return 'posted';
   return 'pending_confirmation';
 }
 export function confirmPayment(s, eventId, side, confirmed) {
@@ -342,7 +349,6 @@ function runs(s) { return (s.unifiedPayrollRuns ||= []); }
 export function runMonthlyPayroll(s, business, period) {
   ensurePayrollCore(s);
   const existing = runs(s).find(r => r.business === business && r.period === period && r.status === 'draft');
-  if (existing) return existing;
   const emps = s.employments.filter(e => e.business === business && e.status === 'active' && e.payPlan?.type === 'monthly');
   const lines = emps.map(e => ({
     personId: e.personId, name: personName(s, e.personId),
@@ -355,6 +361,7 @@ export function runMonthlyPayroll(s, business, period) {
     verified: payoutVerified(s, e.personId) && !!resolveBankRecord(s, e.personId)?.accountNumber,
     hold: false,
   }));
+  if(existing){existing.lines=lines.map(line=>({...line,hold:existing.lines.find(x=>x.personId===line.personId)?.hold||false}));return existing;}
   const run = {id: uid('RUN'), business, period, status: 'draft', lines, createdAt: stamp()};
   runs(s).push(run);
   touch(s);
@@ -395,12 +402,14 @@ export function approveMonthlyPayroll(s, runId) {
 
 export function monthlyPayrollScreen(s, business, period) {
   ensurePayrollCore(s);
-  const run = runs(s).find(r => r.business === business && r.period === period) || runMonthlyPayroll(s, business, period);
+  const saved=runs(s).find(r=>r.business===business&&r.period===period);
+  if(period!==new Date().toISOString().slice(0,7)&&!saved)return `<section class="panel"><h2>${esc(period)}</h2><p>No saved pay run for this month. The demo prepares pay for the current month only.</p></section>`;
+  const run = saved?.status==='draft' ? runMonthlyPayroll(s,business,period) : saved || runMonthlyPayroll(s,business,period);
   const isDraft = run.status === 'draft';
   const totalDue = run.lines.filter(l => !l.hold).reduce((sum, l) => sum + l.amount, 0);
   const rows = isDraft ? run.lines.map(l => `<div class="ledger-row static"><span><b>${esc(l.name)}</b><small>${l.verified?'Bank verified':'⚠ No verified bank account — will be skipped'}${l.hold?' · on hold':''}</small></span><span class="row-actions"><b>${inr(l.amount)}</b><button type="button" class="button secondary compact" data-payroll-hold="${esc(run.id)}" data-person="${esc(l.personId)}">${l.hold?'Resume':'Hold'}</button></span></div>`).join('')
     : (run.results||[]).map(r => `<div class="ledger-row static"><span><b>${esc(r.name)}</b><small>${r.outcome==='paid'?`Paid ${inr(r.amount)}`:r.outcome==='held'?'Held — not processed this run':r.outcome==='skipped'?esc(r.reason):`Failed — ${esc(r.reason)}`}</small></span></div>`).join('');
-  return `<section class="panel"><h2>Monthly payroll · ${esc(period)}</h2><p class="muted">${isDraft?`Review before approving — ${inr(totalDue)} total across ${run.lines.filter(l=>!l.hold).length} ${run.lines.filter(l=>!l.hold).length===1?'person':'people'} not on hold.`:`Completed ${esc(run.completedAt)}.`}</p>
+  return `<section class="panel"><h2>Monthly payroll · ${esc(period)}</h2><p class="info-banner">Demo payroll: bank responses and ledger entries are simulated. No money is transferred.</p><p class="muted">${isDraft?`Review before approving — ${inr(totalDue)} total across ${run.lines.filter(l=>!l.hold).length} ${run.lines.filter(l=>!l.hold).length===1?'person':'people'} not on hold.`:`Completed ${esc(run.completedAt)}.`}</p>
   ${rows || '<p class="muted">No one with a monthly pay plan found for this business.</p>'}
   ${isDraft && run.lines.length ? `<button class="button primary full" data-payroll-approve-run="${esc(run.id)}">Approve and pay all (not on hold)</button>` : ''}
   </section>`;
@@ -414,16 +423,18 @@ export function payPersonScreen(s, personId, business, viewerSide = 'owner') {
   const verified = payoutVerified(s, personId);
   const owedLine = bal > 0 ? `<b class="amount in">You owe ${esc(name)} ${inr(bal)}</b>` : bal < 0 ? `<b class="amount out">${esc(name)} owes you ${inr(Math.abs(bal))}</b>` : `<b>Settled up with ${esc(name)}</b>`;
   const activeAdvances = advances(s).filter(a => a.personId === personId && a.status === 'active');
-  const pendingUpi = events(s).filter(e => e.personId === personId && e.method === 'upi' && ['pending_confirmation', 'posted'].includes(e.status) && (viewerSide === 'owner' ? e.ownerConfirmed === null : e.workerConfirmed === null));
-  const pendingUpiAdvances = advances(s).filter(a => a.personId === personId && a.method === 'upi' && ['pending_handoff', 'active'].includes(a.status) && (viewerSide === 'owner' ? a.ownerConfirmed === null : a.workerConfirmed === null));
+  const pendingUpi = viewerSide === 'manager' ? [] : events(s).filter(e => e.personId === personId && e.method === 'upi' && ['pending_confirmation', 'posted'].includes(e.status) && (viewerSide === 'owner' ? e.ownerConfirmed === null : e.workerConfirmed === null));
+  const pendingUpiAdvances = viewerSide === 'manager' ? [] : advances(s).filter(a => a.personId === personId && a.method === 'upi' && ['pending_handoff', 'active'].includes(a.status) && (viewerSide === 'owner' ? a.ownerConfirmed === null : a.workerConfirmed === null));
   const pendingCashAdvances = viewerSide === 'worker' ? advances(s).filter(a => a.personId === personId && a.method === 'cash' && a.status === 'pending_ack') : [];
+  const pendingCashPayments = viewerSide === 'worker' ? events(s).filter(e=>e.personId===personId&&e.method==='cash'&&e.status==='pending_ack') : [];
   return `<section class="panel">
     <h2>${esc(name)} · Pay</h2>
-    <div class="info-banner">${owedLine}<span>${verified ? 'UPI/bank verified — can be paid directly from here.' : 'No verified UPI/bank yet — pay in cash, or ask them to add one.'}</span></div>
+    <div class="info-banner">${owedLine}<span>Demo only: no real payout is sent. ${verified ? 'A simulated UPI/bank destination is on file.' : 'No simulated UPI/bank verification yet — record cash or ask the worker to add a destination.'} UPI remains pending until both people confirm it.</span></div>
     ${activeAdvances.length ? `<p><b>Outstanding advance(s):</b> ${activeAdvances.map(a => `${inr(a.balance)} of ${inr(a.amount)} (${esc(a.reason)})`).join(', ')}</p>` : ''}
     ${pendingUpi.length ? `<section class="panel nc-actions"><h2>Confirm UPI payment${pendingUpi.length>1?'s':''}</h2>${pendingUpi.map(e => `<div class="ledger-row static"><span><b>${inr(Math.abs(e.amount))}</b><small>${esc(e.at)} · ${viewerSide==='owner'?'Did this go through?':'Did you receive this?'}</small></span><span class="row-actions"><button class="button primary compact" data-payroll-confirm="${esc(e.id)}" data-side="${viewerSide}" data-ok="1">${viewerSide==='owner'?'Yes, paid':'Yes, received'}</button><button class="button secondary compact" data-payroll-confirm="${esc(e.id)}" data-side="${viewerSide}" data-ok="">${viewerSide==='owner'?'No, failed':'Not received'}</button></span></div>`).join('')}</section>` : ''}
     ${pendingUpiAdvances.length ? `<section class="panel nc-actions"><h2>Confirm advance (UPI)</h2>${pendingUpiAdvances.map(a => `<div class="ledger-row static"><span><b>${inr(a.amount)}</b><small>${esc(a.reason)} · ${viewerSide==='owner'?'Did this go through?':'Did you receive this?'}</small></span><span class="row-actions"><button class="button primary compact" data-payroll-advance-confirm="${esc(a.id)}" data-side="${viewerSide}" data-ok="1">${viewerSide==='owner'?'Yes, paid':'Yes, received'}</button><button class="button secondary compact" data-payroll-advance-confirm="${esc(a.id)}" data-side="${viewerSide}" data-ok="">${viewerSide==='owner'?'No, failed':'Not received'}</button></span></div>`).join('')}</section>` : ''}
     ${pendingCashAdvances.length ? `<section class="panel nc-actions"><h2>Confirm cash advance</h2>${pendingCashAdvances.map(a => `<div class="ledger-row static"><span><b>${inr(a.amount)}</b><small>${esc(a.reason)} · Did you receive this in cash?</small></span><span class="row-actions"><button class="button primary compact" data-payroll-advance-ack="${esc(a.id)}" data-ok="1">I received it</button><button class="button secondary compact" data-payroll-advance-ack="${esc(a.id)}" data-ok="">Not received</button></span></div>`).join('')}</section>` : ''}
+    ${pendingCashPayments.length?`<section class="panel nc-actions"><h2>Confirm cash pay</h2>${pendingCashPayments.map(e=>`<div class="ledger-row static"><span><b>${inr(Math.abs(e.amount))}</b><small>${esc(e.at)} · Did you receive this cash?</small></span><span class="row-actions"><button class="button primary compact" data-payroll-cash-ack="${esc(e.id)}" data-person="${esc(personId)}" data-ok="1">I received it</button><button class="button secondary compact" data-payroll-cash-ack="${esc(e.id)}" data-person="${esc(personId)}" data-ok="">Not received</button></span></div>`).join('')}</section>`:''}
     <div class="form-actions">
       ${viewerSide==='owner' ? `<button class="button primary compact" data-payroll-action="pay-now" data-person="${esc(personId)}" data-business="${esc(business)}">Pay now</button>
       <button class="button secondary compact" data-payroll-action="give-advance" data-person="${esc(personId)}" data-business="${esc(business)}">Give advance</button>

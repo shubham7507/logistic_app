@@ -15,7 +15,7 @@ assert.ok(!allowedRoutes('groceryManager').has('shopPickerPay'));
 assert.ok(!allowedRoutes('groceryManager').has('shopOffboarding'));
 assert.ok(allowedRoutes('picker').has('pickSchedule'));
 assert.deepEqual(mobileNavigation('seller','groceryManager',[['home','Home'],['shopOrders','Orders'],['shopSchedule','Schedule'],['managerTimecards','Timecards']]).shown.map(x=>x[0]),['home','shopOrders','shopSchedule','managerTimecards']);
-assert.match(C.screen(s,'shopTeam','grocery'),/Invite manager/);
+assert.match(C.screen(s,'shopTeam','grocery'),/Invite a branch manager/);
 assert.match(C.screen(s,'managerProfile','groceryManager'),/Maya Manager/);
 assert.match(C.screen(s,'shopSchedule','groceryManager'),/Publish shift/);
 assert.match(C.screen(s,'pickSchedule','picker'),/My schedule/);
