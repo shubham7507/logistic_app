@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import * as H from '../js/store-hr.js';
 import {invitePicker} from '../js/grocery-staff.js';
 import {SEED} from '../js/mock-data.js';
+import * as Payroll from '../js/payroll-core.js';
 import {ensurePlus} from '../js/commerce-plus.js';
 const fresh=()=>{const s=structuredClone(SEED);H.ensureBranchDocs(s);return s};
 let s=fresh();const B1='grocery-B1',B2='grocery-B2';
@@ -29,7 +30,9 @@ H.markDay(s,'grocery',priya.id,`${m}-01`,B2);H.markDay(s,'grocery',priya.id,`${m
 let l=H.payrollLines(s,'grocery').find(x=>x.p.id===priya.id);assert.equal(l.base,1350);assert.equal(l.meal,180);assert.equal(l.coverPay,100);assert.deepEqual(l.byBranch,{[B2]:2,[B1]:1});
 // advance with instalments (owner), manager can only request
 assert.equal(H.giveAdvance(s,'groceryManager',priya.id,{amount:1000,instalment:500,reason:'Rent'}),'sent');
-const adv=s.staffAdvances[0];assert.equal(adv.status,'pending_approval');assert.equal(H.approveAdvance(s,'grocery',adv.id),'');assert.equal(H.advanceLeft(s,priya.id),1000);
+const adv=s.staffAdvances[0];assert.equal(adv.status,'pending_approval');assert.equal(H.approveAdvance(s,'grocery',adv.id),'');assert.equal(H.advanceLeft(s,priya.id),0);
+const given=s.payAdvances.find(x=>x.migratedFrom?.id===adv.id);assert.equal(given.status,'pending_handoff');
+assert.equal(Payroll.confirmAdvanceUpi(s,given.id,'owner',true),'');assert.equal(Payroll.confirmAdvanceUpi(s,given.id,'worker',true),'');assert.equal(H.advanceLeft(s,priya.id),1000);
 assert.match(H.giveAdvance(s,'grocery',priya.id,{amount:999999,instalment:500,reason:'x'}),/limited/);
 // reimbursement (receipt, approval limit), deduction + dispute
 assert.match(H.addReimbursement(s,priya.id,{amount:200}),/receipt/);H.addReimbursement(s,priya.id,{amount:200,note:'Carry bags',receipt:'r.jpg'},true);

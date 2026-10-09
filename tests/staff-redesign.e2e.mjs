@@ -20,7 +20,9 @@ assert.match(Easy.screen(s,'easyStaff','fashion'),/Pay workers/);
 assert.match(Easy.screen(s,'easyStaff','fashionManager'),/Ask the owner/);
 assert.ok(canOpen('fashion','staffPay')&&canOpen('fashionManager','staffPay')&&!canOpen('pickerFashion','staffPay'));
 assert.ok(canOpen('fashionManager','myHR'));
+assert.ok(canOpen('fashion','monthlyPayroll')&&!canOpen('fashionManager','monthlyPayroll')&&canOpen('grocery','monthlyPayroll'));
 assert.match(StaffPay.screen(s,'staffPay','fashion'),/Pooja/);
+assert.match(StaffPay.screen(s,'staffPay','fashion'),/GIRO monthly payroll/);
 assert.doesNotMatch(Pay.payPersonScreen(s,emp.personId,'fashion','manager'),/data-payroll-action/);
 assert.match(Easy.giveAdvance(s,'fashionManager',{e:emp},500,100),/Only the owner/);
 
@@ -56,6 +58,7 @@ assert.match(Workforce.finalizePickerOffboarding(s,'fashion',pooja.id),/final du
 assert.equal(emp.status,'active');
 assert.match(HR.screen(s,'myHR','pickerFashion'),/History/);
 assert.match(Commerce.screen(s,'shopTeam','fashion'),/Order preparation team/);
+assert.match(Commerce.screen(s,'shopTeam','fashion'),/GIRO payroll/);
 assert.doesNotMatch(Commerce.screen(s,'shopTeam','fashion'),/data-commerce="invite-picker"/);
 // Prepare monthly pay from attendance without creating a second payable on repeat.
 const monthly=structuredClone(SEED);HR.people(monthly,'fashion');PC.ensureCore(monthly);
@@ -68,4 +71,19 @@ assert.ok(pLine.amount>0);
 assert.equal(HR.postEarnings(monthly,'fashion'),'');
 assert.equal(Pay.runMonthlyPayroll(monthly,'fashion',period).id,first.id);
 assert.equal(Pay.runMonthlyPayroll(monthly,'fashion',period).lines.find(x=>x.personId===pLine.personId).amount,pLine.amount);
+assert.match(Pay.monthlyPayrollScreen(monthly,'fashion',period),/Bank details missing/);
+const initial=Pay.balance(monthly,pLine.personId);
+const failed=Pay.approveMonthlyPayroll(monthly,first.id);
+assert.equal(failed.results.find(x=>x.personId===pLine.personId).outcome,'failed');
+assert.equal(Pay.balance(monthly,pLine.personId),initial);
+assert.match(Pay.monthlyPayrollScreen(monthly,'fashion',period),/Prepare another batch for remaining dues/);
+const worker=monthly.pickerStaff.find(x=>x.id==='PICK-004');
+worker.bank={accountName:worker.name,accountNumber:'1234567891',ifsc:'SBIN0001234'};worker.bankStatus='verified';
+const retry=Pay.runMonthlyPayroll(monthly,'fashion',period);
+assert.notEqual(retry.id,first.id);
+assert.match(Pay.monthlyPayrollScreen(monthly,'fashion',period),/Submit mock bank batch/);
+assert.equal(Pay.approveMonthlyPayroll(monthly,retry.id).results.find(x=>x.personId===pLine.personId).outcome,'paid');
+assert.equal(Pay.balance(monthly,pLine.personId),0);
+assert.equal(Pay.history(monthly,pLine.personId).filter(x=>x.method==='bank'&&x.status==='posted').length,1);
+assert.match(Pay.monthlyPayrollScreen(monthly,'fashion',period),/Earlier batches/);
 console.log('PASS staff redesign: guided navigation, seller isolation, branch sync, manager guard, cash acknowledgment, worker ledger');

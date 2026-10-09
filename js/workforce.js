@@ -191,16 +191,27 @@ export function approvePayroll(state, ws, actor, limit = Infinity) {
   r.status = 'approved'; r.approvedBy = actor; r.history.push({status: 'approved', by: actor, at: stamp()}); return '';
 }
 export function payPayroll(state, ws, actor) {
-  const r = currentRun(state, ws); if (!r || r.status !== 'approved') return 'Approve the payroll first.';
-  for (const l of r.lines.filter(x => !x.hold)) {
+  const r = currentRun(state, ws); if (!r || !['approved','partial_failed'].includes(r.status)) return 'Approve the payroll first.';
+  let failed = false;
+  for (const l of r.lines.filter(x => !x.hold && !x.paid && !x.settled)) {
     const w = findWorker(state, ws, l.key); if (!w) continue;
-    postAccrual(state, ws, l.key, 'salary', l.gross, `Salary ${r.month} · ${l.present} present, ${l.leave} leave`, {ref: r.id});
-    if (l.statutory) postAccrual(state, ws, l.key, 'statutory', -l.statutory, `Statutory deductions ${r.month}`, {ref: r.id});
-    if (l.recovery) { postAccrual(state, ws, l.key, 'advance_recovery', -l.recovery, `Salary advance recovery ${r.month}`, {ref: r.id}); w.member.loan.balance -= l.recovery; }
+    const staged=[];
+    staged.push(postAccrual(state, ws, l.key, 'salary', l.gross, `Salary ${r.month} · ${l.present} present, ${l.leave} leave`, {ref: r.id}));
+    if (l.statutory) staged.push(postAccrual(state, ws, l.key, 'statutory', -l.statutory, `Statutory deductions ${r.month}`, {ref: r.id}));
+    if (l.recovery) { staged.push(postAccrual(state, ws, l.key, 'advance_recovery', -l.recovery, `Salary advance recovery ${r.month}`, {ref: r.id})); w.member.loan.balance -= l.recovery; }
     const net = khata(state, ws, w).balance;
-    if (net > 0) { const e = disburse(state, {owner: ws, sourceType: 'payroll', sourceId: r.id, type: 'salary', direction: 'payable', payer: ws, payee: `staff:${l.memberId}`, responsible: ws, amount: net, method: 'bank', note: `Salary ${r.month} (payslip)`}, w.member?.bank?.accountNumber ? {method: 'bank', accountNumber: w.member.bank.accountNumber} : null); l.paid = e.status === 'paid' ? net : 0; l.failed = e.status === 'failed' ? e.failReason : ''; }
+    if (net > 0) {
+      const e = disburse(state, {owner: ws, sourceType: 'payroll', sourceId: r.id, type: 'salary', direction: 'payable', payer: ws, payee: `staff:${l.memberId}`, responsible: ws, amount: net, method: 'bank', note: `Salary ${r.month} (payslip)`}, w.member?.bank?.accountNumber ? {method: 'bank', accountNumber: w.member.bank.accountNumber} : null);
+      if(e.status === 'failed') {
+        const ids=new Set(staged.map(a=>a.id));state.accruals=state.accruals.filter(a=>!ids.has(a.id));
+        if(l.recovery)w.member.loan.balance+=l.recovery;
+        l.failed=e.failReason||'Bank transfer failed';failed=true;continue;
+      }
+      l.paid=net;
+    }
+    l.settled=true;l.failed='';
   }
-  r.status = 'paid'; r.paidAt = stamp(); r.history.push({status: 'paid', by: actor, at: stamp()});
+  r.status = failed ? 'partial_failed' : 'paid';if(!failed)r.paidAt=stamp();r.history.push({status:r.status,by:actor,at:stamp()});
   return '';
 }
 

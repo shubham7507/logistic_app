@@ -49,6 +49,10 @@ export function ensureCore(s) {
   // Delivery partners are platform-wide, not tied to one seller — 'platform' is a nominal business tag,
   // not a real seller lookup, so reusableIdentity() below shows its own label rather than bizName(s,...).
   for (const r of Object.values(s.deliveryPartners || {})) add('platform', 'delivery', r, 'delivery');
+  for(const e of s.employments){
+    const rec=e.source.kind==='people'?(s.peopleByWorkspace?.[e.business]||[]).find(x=>x.id===e.source.id):e.source.kind==='picker'?(s.pickerStaff||[]).find(x=>x.id===e.source.id):e.source.kind==='manager'?(s.storeManagers||[]).find(x=>x.id===e.source.id):null;
+    if(rec&&['active','approved'].includes(rec.status)&&['invited','submitted','pending'].includes(e.status))e.status='active';
+  }
   if (!s.teamsSeeded) { s.teamsSeeded = true; seedTeams(s); }
   return s;
 }

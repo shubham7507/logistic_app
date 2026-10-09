@@ -34,3 +34,30 @@ The previously delivered workbook remains a planned validation baseline, not a c
 ## Try it on GitHub Pages
 
 Extract the ZIP contents at the repository's Pages root and push them. Open `index.html` for the customer side, `seller.html` for the seller and manager workspaces, and `picker.html` for the worker. In a seller workspace choose **Staff**. Use the matching role switcher accounts and one browser profile to share mock records. The **Reset demo data** control restores the seed data.
+
+## GIRO payroll restoration (9 October 2026)
+
+The guided redesign hid the earlier bank batch entry in Store Team and omitted `monthlyPayroll` from retail owner route permissions. Owners now see **GIRO payroll** in the sidebar, **Pay workers**, and **Store Team**. Managers cannot submit a batch. The page explicitly shows monthly workers across all branches, bank-ready amount, missing bank details, holds, individual results, and earlier runs. A completed run with remaining dues can prepare a fresh batch; the previous result stays in history. Cash/UPI and advances remain individual actions in Pay workers.
+
+**Validated:** retail owner access and manager denial; failed payout leaves the same due balance; correcting the mock bank account and preparing a second batch pays once; worker history and owner balance agree; previous batch remains visible. `node tests/staff-redesign.e2e.mjs`, `node tests/demo-release.e2e.mjs`, `npm run test:unit`, `node tests/store-hr.unit.mjs`, `node tests/people-core.unit.mjs`, and direct `node --check` across all `js/*.js` passed. The static suite's child-process syntax runner still reports sandbox `EPERM`, so it was not counted as passing. Batch submission remains a simulated bank transfer and requires a verified bank account; it does not initiate actual GIRO or UPI.
+
+## Worker advance and monthly recovery (9 October 2026)
+
+The owner and worker now use one advance balance. A worker can request an amount and monthly repayment, the owner can offer a different plan, and the worker accepts or declines before the owner releases funds. Cash becomes active only after the worker confirms receipt. A UPI handoff stays pending until owner and worker both confirm; the demo opens a UPI intent or QR, but it cannot verify an actual bank transfer. A failed bank transfer leaves the request pending.
+
+The pay screen shows earned wages, this month's repayment, take-home amount, each advance's remaining balance and instalment, and the shared payment history. The owner can pay monthly wages individually by cash, UPI or mock bank transfer, or submit eligible bank payments in a GIRO style batch. Repayment is posted only when the payment succeeds or a cash/UPI handoff is confirmed. An instalment cannot be posted twice for the same advance and month. Failed GIRO lines can be retried in another batch without paying successful lines again. The older logistics payroll also rolls back staged salary accrual and loan repayment on bank failure, and retries the failed line.
+
+| Scenario | Expected result | Result |
+| --- | --- | --- |
+| Worker asks ₹3,000/₹1,000; owner offers ₹2,400/₹800; worker accepts | Pending owner approval at agreed terms | PASS |
+| Owner releases cash advance; worker has not acknowledged | No active debt yet | PASS |
+| Worker acknowledges cash and earns ₹10,000 | ₹800 recovery planned; ₹9,200 take-home; ₹2,400 initial debt | PASS |
+| Worker says salary cash was not received | ₹10,000 remains due; advance still ₹2,400 | PASS |
+| Owner retries and worker confirms cash | Salary due ₹0; advance ₹1,600; one recovery event | PASS |
+| Same month's pay is opened again | No second recovery | PASS |
+| Mock bank rejects GIRO; owner updates bank and retries | No debt change on failure; ₹9,000 pay and ₹1,000 repayment on retry | PASS |
+| UPI advance request before/after account verification | Pending until both confirmations; source and shared ledger agree | PASS |
+| Older logistics payroll bank failure and retry | Salary accrual and advance unchanged until successful retry | PASS |
+| Another seller views this worker's pay | No cross-seller wages shown | PASS |
+
+**Verification:** `npm run test:unit`, `node tests/advance-repayment.e2e.mjs`, `node tests/staff-redesign.e2e.mjs`, `node tests/demo-release.e2e.mjs`, `node tests/store-hr.unit.mjs`, and `node tests/workforce.unit.mjs` passed. The older `grocery-staff-payments.e2e.mjs` fails in its unrelated product-order stage (`This store action is not available at the current stage`); it is not claimed as passing. The demo is browser-local mock data: it does not transfer funds, check external UPI receipts, persist across devices, or perform real payroll compliance. Use test account values only; bank details in this static prototype are stored in browser state.

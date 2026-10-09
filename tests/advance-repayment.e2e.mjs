@@ -1,0 +1,97 @@
+import assert from 'node:assert/strict';
+import {SEED} from '../js/mock-data.js';
+import * as HR from '../js/store-hr.js';
+import * as Pay from '../js/payroll-core.js';
+import * as PC from '../js/people-core.js';
+
+const fresh=()=>{const s=structuredClone(SEED); HR.people(s,'fashion'); Pay.ensurePayrollCore(s); return s;};
+let s=fresh(), emp=s.employments.find(e=>e.business==='fashion'&&e.source.id==='PICK-004'), pid=emp.personId;
+assert.ok(emp);
+assert.equal(HR.requestAdvance(s,'pickerFashion','PICK-004',{amount:3000,instalment:1000,reason:'Rent'}),'');
+let req=s.staffAdvances.at(-1);
+assert.equal(req.status,'pending_approval');
+assert.equal(HR.changeAdvanceOffer(s,'fashion',req.id,2400,800),'');
+assert.equal(req.status,'counter_offer');
+assert.equal(HR.respondAdvanceOffer(s,'pickerFashion',req.id,true),'');
+assert.equal(req.amount,2400);assert.equal(req.instalment,800);
+req.method='cash';
+assert.equal(HR.approveAdvance(s,'fashion',req.id),'');
+let a=s.payAdvances.find(x=>x.migratedFrom?.id===req.id);
+assert.equal(a.status,'pending_ack');assert.equal(Pay.advanceOutstanding(s,pid,'fashion'),0);
+assert.equal(Pay.confirmAdvanceCash(s,a.id,true),'');
+assert.equal(req.status,'active');assert.equal(Pay.advanceOutstanding(s,pid,'fashion'),2400);
+assert.match(Pay.payPersonScreen(s,pid,'fashion','worker'),/Advance requests and repayment plan/);
+const month=new Date().toISOString().slice(0,7);
+Pay.addReimbursement(s,'fashion',pid,{amount:10000,note:'Test work earnings'}); // positive ledger balance
+let preview=Pay.monthlyPayPreview(s,'fashion',pid,month);
+assert.equal(preview.gross,10000);assert.equal(preview.recoveryTotal,800);assert.equal(preview.net,9200);
+assert.equal(Pay.payMonthlySalary(s,'fashion',pid,month,'cash'),'');
+assert.equal(Pay.advanceOutstanding(s,pid,'fashion'),2400,'cash cannot recover before acknowledgement');
+assert.equal(Pay.balance(s,pid,'fashion'),10000);
+const cash=s.payEvents.findLast(e=>e.personId===pid&&e.method==='cash'&&e.payroll);
+assert.equal(Pay.confirmCashPayment(s,cash.id,pid,false),'');
+assert.equal(Pay.advanceOutstanding(s,pid,'fashion'),2400,'worker did not receive cash');
+assert.equal(Pay.balance(s,pid,'fashion'),10000);
+assert.equal(Pay.payMonthlySalary(s,'fashion',pid,month,'cash'),'');
+const retry=s.payEvents.findLast(e=>e.personId===pid&&e.method==='cash'&&e.payroll);
+assert.equal(Pay.confirmCashPayment(s,retry.id,pid,true),'');
+assert.equal(Pay.balance(s,pid,'fashion'),0);
+assert.equal(Pay.advanceOutstanding(s,pid,'fashion'),1600);
+assert.equal(Pay.monthlyPayPreview(s,'fashion',pid,month).recoveryTotal,0,'same month cannot recover twice');
+assert.equal(s.payEvents.filter(e=>e.type==='advance_recovery'&&e.personId===pid).length,1);
+assert.equal(HR.advanceLeft(s,'PICK-004'),1600,'source ledger mirrors shared debt');
+assert.equal(Pay.balance(s,pid,'grocery'),0,'another business cannot see fashion wages');
+
+// A bank rejection must not deduct the salary instalment, and retry must not double-post.
+s=fresh();emp=s.employments.find(e=>e.business==='fashion'&&e.source.id==='PICK-004');pid=emp.personId;
+assert.equal(Pay.giveAdvance(s,'fashion',pid,{amount:3000,instalment:1000,reason:'Rent',method:'cash'}),'');
+a=s.payAdvances.at(-1);assert.equal(Pay.confirmAdvanceCash(s,a.id,true),'');
+Pay.addReimbursement(s,'fashion',pid,{amount:10000,note:'Test work earnings'});
+s.pickerStaff.find(p=>p.id==='PICK-004').bank={accountNumber:'12345678000'};
+s.pickerStaff.find(p=>p.id==='PICK-004').bankStatus='verified';
+const run=Pay.runMonthlyPayroll(s,'fashion',month);
+let outcome=Pay.approveMonthlyPayroll(s,run.id).results.find(x=>x.personId===pid);
+assert.equal(outcome.outcome,'failed');assert.equal(Pay.balance(s,pid,'fashion'),10000);assert.equal(Pay.advanceOutstanding(s,pid,'fashion'),3000);
+assert.equal(s.payEvents.filter(e=>e.type==='advance_recovery'&&e.personId===pid).length,0);
+s.pickerStaff.find(p=>p.id==='PICK-004').bank.accountNumber='12345678901';
+const next=Pay.runMonthlyPayroll(s,'fashion',month);
+assert.notEqual(next.id,run.id);
+outcome=Pay.approveMonthlyPayroll(s,next.id).results.find(x=>x.personId===pid);
+assert.equal(outcome.outcome,'paid');assert.equal(outcome.amount,9000);
+assert.equal(Pay.balance(s,pid,'fashion'),0);assert.equal(Pay.advanceOutstanding(s,pid,'fashion'),2000);
+assert.equal(s.payEvents.filter(e=>e.type==='advance_recovery'&&e.personId===pid).length,1);
+assert.equal(Pay.approveMonthlyPayroll(s,next.id).error?.includes('finalized'),true);
+
+// Request approval with UPI remains pending until both sides confirm.
+s=fresh();emp=s.employments.find(e=>e.business==='fashion'&&e.source.id==='PICK-004');pid=emp.personId;
+assert.equal(HR.requestAdvance(s,'pickerFashion','PICK-004',{amount:1000,instalment:250,reason:'Travel'}),'');
+req=s.staffAdvances.at(-1);req.method='upi';s.staffHR['PICK-004'].payout={method:'cash',verified:true};
+assert.match(HR.approveAdvance(s,'fashion',req.id),/verified UPI/);
+assert.equal(req.status,'pending_approval');
+assert.equal(HR.setPayout(s,'PICK-004',{method:'upi',upi:'pooja@okaxis'}),'');
+assert.equal(HR.approveAdvance(s,'fashion',req.id),'');
+a=s.payAdvances.find(x=>x.migratedFrom?.id===req.id);
+assert.equal(a.status,'pending_handoff');assert.ok(s.latestAdvanceUpiLink.startsWith('upi://'));
+assert.equal(Pay.confirmAdvanceUpi(s,a.id,'owner',true),'');assert.equal(Pay.advanceOutstanding(s,pid,'fashion'),0);
+assert.equal(Pay.confirmAdvanceUpi(s,a.id,'worker',true),'');assert.equal(Pay.advanceOutstanding(s,pid,'fashion'),1000);
+assert.equal(req.status,'active');
+assert.ok(Pay.history(s,pid,'fashion').some(e=>e.type==='advance'&&e.instalment===250));
+console.log(JSON.stringify({status:'PASS',suite:'Advance request, counteroffer, cash and UPI acknowledgements, monthly recovery, bank retry and business isolation'}));
+
+// Older logistics payroll preserves wages and advance on a failed line, then retries only that line.
+const W=await import('../js/workforce.js');
+const logistics=structuredClone(SEED);W.ensureWorkforce(logistics);
+let worker=W.workforceOf(logistics,'transporter').find(w=>w.id==='WORKER-001');
+worker.member.bank={accountNumber:'98765432000'};
+assert.equal(W.preparePayroll(logistics,'transporter','Owner'),'');
+assert.equal(W.approvePayroll(logistics,'transporter','Owner'),'');
+const oldLoan=worker.member.loan.balance;
+assert.equal(W.payPayroll(logistics,'transporter','Owner'),'');
+let oldRun=W.currentRun(logistics,'transporter');
+assert.equal(oldRun.status,'partial_failed');assert.equal(worker.member.loan.balance,oldLoan);
+assert.equal(logistics.accruals.filter(x=>x.ref===oldRun.id&&x.workerKey===worker.key).length,0);
+worker.member.bank.accountNumber='98765432101';
+assert.equal(W.payPayroll(logistics,'transporter','Owner'),'');
+assert.equal(oldRun.status,'paid');assert.equal(worker.member.loan.balance,oldLoan-2000);
+assert.equal(logistics.accruals.filter(x=>x.ref===oldRun.id&&x.workerKey===worker.key&&x.type==='advance_recovery').length,1);
+console.log(JSON.stringify({status:'PASS',suite:'Legacy logistics bank failure and recovery retry'}));

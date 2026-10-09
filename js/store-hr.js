@@ -91,7 +91,7 @@ export function setPayout(s, pid, v) {
   // UPI now goes through an actual verification check (upiVerify), the same spirit as pennyDrop()
   // for bank accounts — a syntactically valid-looking VPA is no longer treated as automatically real.
   if (v.method === 'upi') { const r = upiVerify({vpa: v.upi, name: v.name}); if (!r.ok) return r.reason; h.payout = {method: 'upi', upi: v.upi, verified: true, at: stamp()}; return ''; }
-  if (v.method === 'bank') { const r = pennyDrop({account: v.account, ifsc: v.ifsc, name: v.name}); if (!r.ok) return r.reason; h.payout = {method: 'bank', account: `••••${String(v.account).slice(-4)}`, ifsc: v.ifsc, verified: true, at: stamp()}; return ''; }
+  if (v.method === 'bank') { const r = pennyDrop({account: v.account, ifsc: v.ifsc, name: v.name}); if (!r.ok) return r.reason; h.payout = {method: 'bank', account: `••••${String(v.account).slice(-4)}`, accountNumber: String(v.account), ifsc: v.ifsc, verified: true, at: stamp()}; return ''; }
   if (v.method === 'cash') { h.payout = {method: 'cash', verified: true, at: stamp()}; return ''; }
   return 'Choose UPI, bank or cash.';
 }
@@ -111,7 +111,7 @@ const days = (s, pid, m = month()) => (s.staffDays || []).filter(d => d.personId
 const L = s => (s.staffLedger ||= []);
 const SIGN = {earning: 1, allowance: 1, reimbursement: 1, deduction: -1, payment: -1, advance_recovery: -1, cash_return: 1};
 export function post(s, e) { const x = {id: uid('SL'), at: stamp(), ts: clock(), status: 'posted', ...e}; L(s).push(x); return x; }
-const counts = e => !['disputed', 'rejected', 'pending_approval', 'pending_ack_failed', 'failed'].includes(e.status) && !(e.type === 'reimbursement' && e.status !== 'approved');
+const counts = e => !['disputed', 'rejected', 'pending_approval', 'pending_ack', 'pending_ack_failed', 'failed', 'not_received'].includes(e.status) && !(e.type === 'reimbursement' && e.status !== 'approved');
 export function balance(s, pid) { return L(s).filter(e => e.personId === pid && SIGN[e.type] && counts(e)).reduce((a, e) => a + SIGN[e.type] * e.amount, 0); }
 export const advanceLeft = (s, pid) => (s.staffAdvances || []).filter(a => a.personId === pid && a.status === 'active').reduce((x, a) => x + a.balance, 0);
 export function addReimbursement(s, pid, v, byStaff) {
@@ -134,36 +134,64 @@ export function addDeduction(s, ws, pid, v) {
 export function dispute(s, pid, id, reason) { const e = L(s).find(x => x.id === id && x.personId === pid); if (!e || e.type !== 'deduction') return 'Only deductions can be disputed here.'; if (!String(reason || '').trim()) return 'Say why you disagree.'; e.status = 'disputed'; e.disputeReason = reason.trim(); return ''; }
 export function giveAdvance(s, ws, pid, v) {
   const a = actor(s, ws), h = s.staffHR[pid], amount = Math.round(Number(v.amount)), inst = Math.round(Number(v.instalment));
-  if (!(amount > 0) || !(inst > 0)) return 'Enter the advance and the monthly instalment.';
+  if (!(amount > 0) || !(inst > 0) || inst > amount) return 'Enter an advance and a monthly repayment no greater than the advance.';
   const cap = h.payType === 'monthly' ? h.rate * LIMITS.advanceMaxMonths : h.rate * 26;
-  if (amount + advanceLeft(s, pid) > cap) return `Advances are limited to about one month's pay (${inr(cap)}).`;
+  if (amount + (s.staffAdvances||[]).filter(x=>x.personId===pid&&x.store===a.store&&['active','pending_ack','pending_approval'].includes(x.status)).reduce((n,x)=>n+x.balance,0) > cap) return `Advances are limited to about one month's pay (${inr(cap)}).`;
   if (!String(v.reason || '').trim()) return 'Add a reason.';
-  const status = a.kind === 'owner' ? 'active' : 'pending_approval';
+  const status = a.kind === 'owner' ? 'active' : 'pending_approval', id=uid('ADV');
   // Attempt the real payout BEFORE recording the advance as given. Previously payOut()'s result was
   // discarded entirely — an owner choosing UPI for someone with no verified account would see
   // "Advance given" even though the money never moved, with an advance record left behind claiming
   // otherwise. Now a failed payout (unverified UPI/bank, gateway decline) is reported back and
   // nothing is recorded, instead of silently succeeding.
   if (status === 'active') {
-    const payoutResult = payOut(s, a.store, pid, amount, v.method || 'upi', `Salary advance · ${v.reason.trim()}`, 'advance');
+    const payoutResult = payOut(s, a.store, pid, amount, v.method || 'upi', `Salary advance · ${v.reason.trim()}`, 'advance', id);
     if (payoutResult?.error) return payoutResult.error;
   }
-  (s.staffAdvances ||= []).push({id: uid('ADV'), store: a.store, personId: pid, amount, balance: amount, instalment: inst, reason: v.reason.trim(), method: v.method || 'upi', status, at: stamp(), by: a.name});
+  (s.staffAdvances ||= []).push({id, store: a.store, personId: pid, amount, balance: amount, instalment: inst, reason: v.reason.trim(), method: v.method || 'upi', status: status==='active'&&(v.method||'upi')==='cash'?'pending_ack':status, at: stamp(), by: a.name});
   return status === 'active' ? '' : 'sent';
 }
-export function approveAdvance(s, ws, id) { const a = actor(s, ws), x = (s.staffAdvances || []).find(y => y.id === id); if (a.kind !== 'owner') return 'Only the owner approves advances.'; if (!x || x.status !== 'pending_approval') return 'Nothing to approve.'; x.status = 'active'; x.approvedBy = a.name; payOut(s, x.store, x.personId, x.amount, x.method, `Salary advance · ${x.reason}`, 'advance'); return ''; }
+export function requestAdvance(s, ws, pid, v){
+  const a=actor(s,ws),p=people(s,a?.store).find(x=>x.id===pid&&x.status==='active');
+  if(!p||!(a.kind==='owner'||a.kind==='manager'&&inScope(a,p)||a.kind==='staff'&&a.person?.id===pid))return 'You can request an advance only for your own active store worker.';
+  if(a.kind==='owner')return 'Owners can give an advance from Pay workers.';
+  const amount=Math.round(Number(v.amount)),instalment=Math.round(Number(v.instalment));
+  if(!(amount>0)||!(instalment>0)||instalment>amount||!String(v.reason||'').trim())return 'Enter the amount, monthly repayment and reason.';
+  const cap=p.hr.payType==='monthly'?p.hr.rate*LIMITS.advanceMaxMonths:p.hr.rate*26;
+  const already=(s.staffAdvances||[]).filter(x=>x.store===a.store&&x.personId===pid&&['active','pending_ack','pending_approval'].includes(x.status)).reduce((n,x)=>n+x.balance,0);
+  if(amount+already>cap)return `Total advance requests cannot exceed ${inr(cap)}.`;
+  (s.staffAdvances||=[]).push({id:uid('ADV'),store:a.store,personId:pid,amount,balance:amount,instalment,reason:String(v.reason).trim(),method:a.kind==='staff'?p.hr.payout?.method||'cash':v.method||'cash',status:'pending_approval',at:stamp(),by:a.name});
+  return '';
+}
+export function changeAdvanceOffer(s,ws,id,amount,instalment){
+  const a=actor(s,ws),x=(s.staffAdvances||[]).find(v=>v.id===id&&v.store===a?.store&&v.status==='pending_approval');
+  if(a?.kind!=='owner'||!x)return 'Only the store owner can change a pending request.';
+  amount=Math.round(Number(amount));instalment=Math.round(Number(instalment));
+  if(!(amount>0)||!(instalment>0)||instalment>amount)return 'Enter an amount and monthly repayment no greater than that amount.';
+  const h=s.staffHR?.[x.personId],cap=h?.payType==='monthly'?h.rate:h?.rate*26;
+  const other=(s.staffAdvances||[]).filter(v=>v.id!==id&&v.store===a.store&&v.personId===x.personId&&['active','pending_ack','pending_approval','counter_offer'].includes(v.status)).reduce((n,v)=>n+v.balance,0);
+  if(cap>0&&amount+other>cap)return `Total advance requests cannot exceed ${inr(cap)}.`;
+  x.offer={amount,instalment,at:stamp(),by:a.name};x.status='counter_offer';return '';
+}
+export function respondAdvanceOffer(s,ws,id,accept){
+  const a=actor(s,ws),x=(s.staffAdvances||[]).find(v=>v.id===id&&v.store===a?.store&&v.personId===a?.person?.id&&v.status==='counter_offer');
+  if(a?.kind!=='staff'||!x)return 'Only this worker can respond to the offer.';
+  if(accept){x.amount=x.offer.amount;x.balance=x.offer.amount;x.instalment=x.offer.instalment;x.status='pending_approval';x.acceptedAt=stamp();}
+  else x.status='declined';return '';
+}
+export function approveAdvance(s, ws, id) { const a = actor(s, ws), x = (s.staffAdvances || []).find(y => y.id === id); if (a.kind !== 'owner'||x?.store!==a.store) return 'Only this store owner approves advances.'; if (!x || x.status !== 'pending_approval') return 'Nothing to approve.';const released=Payroll.releaseRequestedAdvance(s,a.store,id);if(typeof released==='string')return released;x.approvedBy=a.name;s.latestAdvanceUpiLink=released.upiLink||null;return ''; }
 // one payout routine for salary and advances: UPI/bank via the payment company, wallet, or cash needing acknowledgement
-function payOut(s, store, pid, amount, method, note, kind = 'salary') {
+function payOut(s, store, pid, amount, method, note, kind = 'salary', advanceId = null, payrollRecovery = null) {
   const h = s.staffHR[pid], m = method || h.payout?.method || 'cash', partyName = (s.pickerStaff || []).concat(s.storeManagers || []).find(x => x.id === pid)?.name;
-  if (['upi', 'bank'].includes(m) && !h.payout?.verified) return {error: `${partyName} has not added a verified UPI/bank account. Pay in cash or ask them to add it.`};
+  if (['upi', 'bank'].includes(m) && (!h.payout?.verified || h.payout.method !== m || (m === 'bank' && !h.payout.accountNumber))) return {error: `${partyName} has not added a verified ${m.toUpperCase()} account. Pay in cash or ask them to add it.`};
   let status = 'paid', ref = `CASH-${Date.now().toString().slice(-6)}`;
-  if (['upi', 'bank'].includes(m)) { const g = gateway.payout(h.payout.method === 'upi' ? {method: 'upi', vpa: h.payout.upi} : {method: 'bank', accountNumber: h.payout.account}, amount); if (!g.ok) return {error: g.reason}; ref = g.ref; }
+  if (['upi', 'bank'].includes(m)) { const g = gateway.payout(m === 'upi' ? {method: 'upi', vpa: h.payout.upi} : {method: 'bank', accountNumber: h.payout.accountNumber}, amount); if (!g.ok) return {error: g.reason}; ref = g.ref; }
   if (m === 'wallet') record(s, {owner: `staff:${pid}`, sourceType: 'store_pay', sourceId: pid, type: 'wallet_credit', payer: store, payee: `staff:${pid}`, responsible: store, amount, method: 'wallet', reference: `WAL-${Date.now().toString().slice(-6)}`, status: 'confirmed', note});
   if (m === 'cash') status = 'pending_ack';
-  const e = kind === 'advance' ? post(s, {store, personId: pid, branchId: h.homeBranch, type: 'advance_paid', amount, note, method: m, reference: ref, status}) : post(s, {store, personId: pid, branchId: h.homeBranch, type: 'payment', amount, note, method: m, reference: ref, status});
+  const e = kind === 'advance' ? post(s, {store, personId: pid, branchId: h.homeBranch, type: 'advance_paid', amount, note, method: m, reference: ref, status, advanceId}) : post(s, {store, personId: pid, branchId: h.homeBranch, type: 'payment', amount, note, method: m, reference: ref, status, payrollRecovery});
   return {ok: true, entry: e};
 }
-export function acknowledge(s, pid, id, ok) { const e = L(s).find(x => x.id === id && x.personId === pid && x.status === 'pending_ack'); if (!e) return 'Nothing to confirm.'; e.status = ok ? 'acknowledged' : 'not_received'; e.ackAt = stamp(); return ''; }
+export function acknowledge(s, pid, id, ok) { const e = L(s).find(x => x.id === id && x.personId === pid && x.status === 'pending_ack'); if (!e) return 'Nothing to confirm.'; e.status = ok ? 'acknowledged' : 'not_received'; e.ackAt = stamp(); if(e.advanceId){Payroll.ensurePayrollCore(s);const a=(s.payAdvances||[]).find(x=>x.migratedFrom?.id===e.advanceId&&x.status==='pending_ack');if(a){a.status=ok?'active':'disputed';const raw=(s.staffAdvances||[]).find(x=>x.id===e.advanceId);if(raw)raw.status=a.status;}}if(ok&&e.payrollRecovery)Payroll.applyRecovery(s,e.store,e.payrollRecovery.personId,e.payrollRecovery.period,e.payrollRecovery.plan); return ''; }
 
 // ---------- payroll ----------
 export function payrollLines(s, store, scopeBranch = null) {
@@ -175,7 +203,10 @@ export function payrollLines(s, store, scopeBranch = null) {
     const base = h.payType === 'monthly' ? Math.round(h.rate * Math.min(worked, 26) / 26) : h.payType === 'per_order' ? h.rate * orders : h.rate * worked;
     const meal = worked * (h.mealPerShift || 0), coverPay = coverDays * (h.coverAllowance || 0);
     const posted = L(s).some(e => e.personId === p.id && e.type === 'earning' && e.period === month());
-    const owed = balance(s, p.id) + (posted ? 0 : base + meal + coverPay), adv = (s.staffAdvances || []).filter(a => a.personId === p.id && a.status === 'active'), recovery = Math.min(owed, adv.reduce((x, a) => x + Math.min(a.instalment, a.balance), 0));
+    const owed = balance(s, p.id) + (posted ? 0 : base + meal + coverPay);
+    Payroll.ensurePayrollCore(s);
+    const emp = s.employments.find(e => e.business === store && e.source.id === p.id && ['picker','manager'].includes(e.source.kind));
+    const recovery = emp ? Payroll.recoveryPlan(s, store, emp.personId, month(), owed).reduce((sum, x) => sum + x.amount, 0) : 0;
     return {p, worked, coverDays, byBranch, base, meal, coverPay, posted, recovery, net: Math.max(0, owed - recovery), method: h.payout?.method || 'cash', payoutOk: h.payout?.verified};
   });
 }
@@ -193,9 +224,16 @@ export function postEarnings(s, ws) {
 export function payPerson(s, ws, pid, method) {
   const a = actor(s, ws); if (a.kind !== 'owner') return 'The owner pays staff (managers prepare).';
   const l = payrollLines(s, a.store).find(x => x.p.id === pid); if (!l) return 'Not found.'; if (!l.posted) return 'Post this month\'s earnings first.';
-  if (l.recovery) { let left = l.recovery; for (const adv of (s.staffAdvances || []).filter(x => x.personId === pid && x.status === 'active')) { const take = Math.min(left, adv.instalment, adv.balance); if (!take) continue; adv.balance -= take; left -= take; if (!adv.balance) adv.status = 'recovered'; post(s, {store: a.store, personId: pid, branchId: l.p.hr.homeBranch, type: 'advance_recovery', amount: take, note: `Advance instalment · ${adv.reason}`}); } }
-  if (!(l.net > 0)) return 'Nothing to pay.';
-  const r = payOut(s, a.store, pid, l.net, method || l.method, `Pay for ${month()}`); return r.error || '';
+  Payroll.ensurePayrollCore(s);const emp=s.employments.find(e=>e.business===a.store&&e.source.id===pid);
+  if(!emp)return 'Worker not found.';
+  if(L(s).some(e=>e.store===a.store&&e.personId===pid&&e.type==='payment'&&e.status==='pending_ack'))return 'Wait for the worker to confirm the pending cash payment.';
+  const preview=Payroll.monthlyPayPreview(s,a.store,emp.personId,month());
+  if(!(preview.gross>0))return 'Nothing to pay.';
+  if(!preview.net){Payroll.applyRecovery(s,a.store,emp.personId,month(),preview.recovery);return '';}
+  const r=payOut(s,a.store,pid,preview.net,method||l.method,`Pay for ${month()}`,'salary',null,{personId:emp.personId,period:month(),plan:preview.recovery});
+  if(r.error)return r.error;
+  if(r.entry.status!=='pending_ack')Payroll.applyRecovery(s,a.store,emp.personId,month(),preview.recovery);
+  return '';
 }
 export function payslip(s, store, pid) {
   const p = people(s, store).find(x => x.id === pid), es = L(s).filter(e => e.personId === pid && (e.period === month() || (e.ts && new Date(e.ts).toISOString().slice(0, 7) === month())));
@@ -304,7 +342,7 @@ function payrollTab(s, a) {
 }
 function ledgersTab(s, a, list) {
   const pend = L(s).filter(e => e.store === a.store && e.type === 'reimbursement' && e.status === 'submitted' && list.some(p => p.id === e.personId)), disp = L(s).filter(e => e.store === a.store && e.status === 'disputed'), advP = (s.staffAdvances || []).filter(x => x.store === a.store && x.status === 'pending_approval');
-  return `${pend.length || disp.length || advP.length ? `<section class="panel nc-actions"><h2>Needs your decision</h2>${pend.map(e => `<div class="ledger-row static"><span><b>Reimbursement ${inr(e.amount)} · ${esc(people(s, a.store).find(p => p.id === e.personId)?.name)}</b><small>${esc(e.note)} · receipt ${esc(e.receipt)}</small></span><span class="row-actions"><button class="button primary compact" data-hr="decide" data-id="${e.id}" data-d="approve">Approve</button><button class="button secondary compact" data-hr="decide" data-id="${e.id}" data-d="reject">Reject</button></span></div>`).join('')}${disp.map(e => `<div class="ledger-row static"><span><b>Disputed deduction ${inr(e.amount)}</b><small>${esc(e.note)} · staff says: ${esc(e.disputeReason)}</small></span><span class="row-actions"><button class="button secondary compact" data-hr="decide" data-id="${e.id}" data-d="approve">Uphold</button><button class="button secondary compact" data-hr="decide" data-id="${e.id}" data-d="reject">Waive</button></span></div>`).join('')}${advP.map(x => `<div class="ledger-row static"><span><b>Advance request ${inr(x.amount)} · ${esc(people(s, a.store).find(p => p.id === x.personId)?.name)}</b><small>${esc(x.reason)} · ${inr(x.instalment)}/month · by ${esc(x.by)}</small></span><button class="button primary compact" data-hr="adv-approve" data-id="${x.id}">Approve & pay</button></div>`).join('')}</section>` : ''}
+  return `${pend.length || disp.length || advP.length ? `<section class="panel nc-actions"><h2>Needs your decision</h2>${pend.map(e => `<div class="ledger-row static"><span><b>Reimbursement ${inr(e.amount)} · ${esc(people(s, a.store).find(p => p.id === e.personId)?.name)}</b><small>${esc(e.note)} · receipt ${esc(e.receipt)}</small></span><span class="row-actions"><button class="button primary compact" data-hr="decide" data-id="${e.id}" data-d="approve">Approve</button><button class="button secondary compact" data-hr="decide" data-id="${e.id}" data-d="reject">Reject</button></span></div>`).join('')}${disp.map(e => `<div class="ledger-row static"><span><b>Disputed deduction ${inr(e.amount)}</b><small>${esc(e.note)} · staff says: ${esc(e.disputeReason)}</small></span><span class="row-actions"><button class="button secondary compact" data-hr="decide" data-id="${e.id}" data-d="approve">Uphold</button><button class="button secondary compact" data-hr="decide" data-id="${e.id}" data-d="reject">Waive</button></span></div>`).join('')}${advP.map(x => `<div class="ledger-row static"><span><b>Advance request ${inr(x.amount)} · ${esc(people(s, a.store).find(p => p.id === x.personId)?.name)}</b><small>${esc(x.reason)} · ${inr(x.instalment)}/month · by ${esc(x.by)}</small></span><span class="row-actions">${a.kind==='owner'?`<button class="button primary compact" data-hr="adv-approve" data-id="${x.id}">Approve & pay</button><button class="button secondary compact" data-hr="adv-change" data-id="${x.id}">Change plan</button><button class="button secondary compact" data-hr="adv-decline" data-id="${x.id}">Decline</button>`:'Waiting for owner'}</span></div>`).join('')}</section>` : ''}
   ${list.filter(p => p.status === 'active').map(p => `<section class="panel"><div class="panel-header"><div><h2>${esc(p.name)} · balance ${inr(unifiedBalanceFor(s, p))}</h2><p>Advance remaining ${inr(unifiedAdvanceLeftFor(s, p))}</p></div></div>${L(s).filter(e => e.personId === p.id).slice(-8).reverse().map(e => `<div class="ledger-row static"><span><b>${esc(e.note || e.type)}</b><small>${esc(e.at)} · ${esc(e.type.replace(/_/g, ' '))}${e.method ? ` · ${esc(e.method)}` : ''} · ${esc(branchName(s, a.store, e.branchId))}</small></span><span class="amount ${SIGN[e.type] < 0 || e.type === 'advance_paid' ? 'out' : 'in'}">${SIGN[e.type] < 0 || e.type === 'advance_paid' ? '−' : '+'}${inr(e.amount)}</span>${e.status !== 'posted' ? pill(e.status) : ''}</div>`).join('') || '<p class="muted">No entries yet.</p>'}
   <div class="row-actions">${a.kind === 'owner' ? `<button class="button primary compact" data-unified-pay="${p.id}" data-pay-kind="${p.kind === 'manager' ? 'manager' : 'picker'}">Give advance / reimbursement / deduction</button>` : `<details><summary class="button secondary compact">Ask for an advance</summary><form class="inline-form" data-hr-form="advance" data-id="${p.id}"><input name="amount" type="number" placeholder="Advance ₹"><input name="instalment" type="number" placeholder="Monthly instalment ₹"><input name="reason" placeholder="Reason"><select name="method"><option value="upi">UPI</option><option value="cash">Cash</option><option value="wallet">Wallet</option></select><button class="button primary compact">Request approval</button></form></details>`}
   <details><summary class="button secondary compact">Add reimbursement</summary><form class="inline-form" data-hr-form="reimb" data-id="${p.id}"><input name="amount" type="number" placeholder="₹"><input name="note" placeholder="What was bought (e.g. carry bags)"><input name="receipt" type="file" accept="image/*"><button class="button secondary compact">Add</button></form></details>
@@ -334,7 +372,7 @@ function staffScreen(s, ws, a) {
   const pendingAdvanceUpiForWorker = emp ? Payroll.history(s, emp.personId).filter(h => h.kind === 'advance' && h.method === 'upi' && ['pending_handoff', 'active'].includes(h.status) && h.workerConfirmed === null) : [];
   const pendingAdvanceCashForWorker = emp ? Payroll.history(s, emp.personId).filter(h => h.kind === 'advance' && h.method === 'cash' && h.status === 'pending_ack') : [];
   return `${head('My pay & details', `${p.name} · ${s.shopPartners?.[p.store]?.name || p.store} · home ${branchName(s, p.store, h.homeBranch)}`)}
-  ${others.length ? `<p class="muted">You also work at ${others.map(x => esc(s.shopPartners?.[x.store]?.name || x.store)).join(', ')} — each employer sees only its own records.</p>` : ''}
+  ${(s.staffAdvances||[]).filter(x=>x.store===p.store&&x.personId===p.id&&x.status==='counter_offer').map(x=>`<section class="panel nc-actions"><h2>Owner suggests a different advance plan</h2><p>Requested ${inr(x.amount)} at ${inr(x.instalment)}/month. Owner offers ${inr(x.offer.amount)} at ${inr(x.offer.instalment)}/month.</p><button class="button primary compact" data-hr="adv-offer-accept" data-id="${esc(x.id)}">Accept plan</button><button class="button secondary compact" data-hr="adv-offer-decline" data-id="${esc(x.id)}">Decline</button></section>`).join('')}${others.length ? `<p class="muted">You also work at ${others.map(x => esc(s.shopPartners?.[x.store]?.name || x.store)).join(', ')} — each employer sees only its own records.</p>` : ''}
   <div class="metrics"><div class="metric"><span>Balance due to you</span><b>${inr(unifiedBalance)}</b></div><div class="metric"><span>Advance remaining</span><b>${inr(emp ? Payroll.advanceOutstanding(s, emp.personId) : advanceLeft(s, p.id))}</b></div><div class="metric"><span>ID check</span><b>${esc(h.kyc.status)}</b></div><div class="metric"><span>Payout</span><b>${esc(h.payout?.verified ? h.payout.method : 'not set')}</b></div></div>
   ${h.kyc.status !== 'verified' ? `<section class="panel"><h2>Verify yourself (before your first shift)</h2><form class="form-grid two" data-hr-form="kyc"><label><span>Aadhaar number</span><input name="aadhaar" inputmode="numeric"></label><label><span>OTP</span><input name="otp" placeholder="123456"></label><label><span>Date of birth</span><input name="dob" type="date"></label><label><span>Live selfie</span><input name="selfie" type="file" accept="image/*" capture="user"></label><label><span>Emergency contact name</span><input name="emergencyName"></label><label><span>Emergency mobile</span><input name="emergencyMobile"></label><button class="button primary wide">Verify</button></form><p class="mock-hint">Test: any 12-digit Aadhaar starting 2–9, OTP 123456.</p></section>` : ''}
   <section class="panel"><h2>How you get paid</h2><form class="form-grid two" data-hr-form="payout"><label><span>Method</span><select name="method"><option value="upi" ${h.payout?.method === 'upi' ? 'selected' : ''}>UPI</option><option value="bank" ${h.payout?.method === 'bank' ? 'selected' : ''}>Bank account</option><option value="cash" ${h.payout?.method === 'cash' ? 'selected' : ''}>Cash at the store</option></select></label><label><span>UPI ID</span><input name="upi" value="${esc(h.payout?.upi || '')}"></label><label><span>Bank account</span><input name="account"></label><label><span>IFSC</span><input name="ifsc" placeholder="SBIN0001234"></label><button class="button secondary wide">Save</button></form></section>
@@ -361,7 +399,10 @@ export function bind(root, api, inviteFn) {
     if (k === 'slip') { s.hrSlip = id || null; return done(''); }
     if (k === 'print') return window.print();
     if (k === 'decide') return done(decideEntry(s, ws(), id, b.dataset.d), 'Decision saved');
-    if (k === 'adv-approve') return done(approveAdvance(s, ws(), id), 'Advance approved and paid');
+    if (k === 'adv-approve') {const error=approveAdvance(s,ws(),id);if(error)return err(error);const link=s.latestAdvanceUpiLink;done('','Advance offered; complete the payment handover');if(link){if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent||''))location.href=link;else if(typeof QRCode!=='undefined'){const overlay=document.createElement('div');overlay.style.cssText='position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:9999';const box=document.createElement('div');box.style.cssText='background:white;padding:24px;border-radius:16px;text-align:center';box.innerHTML='<h3>Scan to pay the worker</h3><div id="advance-request-qr"></div><p>Return here and confirm whether the UPI payment went through.</p><button class="button secondary">Close</button>';overlay.append(box);document.body.append(overlay);box.querySelector('button').onclick=()=>overlay.remove();QRCode.toCanvas(box.querySelector('#advance-request-qr'),link,{width:220},e=>{if(e)box.querySelector('#advance-request-qr').textContent=link;});}else alert('Open this UPI link on your phone: '+link);}return;}
+    if (k === 'adv-change') {const x=(s.staffAdvances||[]).find(v=>v.id===id),amount=prompt('Advance amount to offer (₹)?',x?.amount),instalment=prompt('Monthly repayment to offer (₹)?',x?.instalment);if(amount===null||instalment===null)return;return done(changeAdvanceOffer(s,ws(),id,amount,instalment),'Offer sent to worker');}
+    if (k === 'adv-decline') {const x=(s.staffAdvances||[]).find(v=>v.id===id);if(actor(s,ws())?.kind!=='owner'||x?.store!==actor(s,ws()).store)return err('Only this store owner can decline.');x.status='declined';return done('','Request declined');}
+    if (k === 'adv-offer-accept'||k === 'adv-offer-decline') return done(respondAdvanceOffer(s,ws(),id,k==='adv-offer-accept'),k==='adv-offer-accept'?'Plan accepted; waiting for owner approval':'Offer declined');
     if (k === 'ack') return done(acknowledge(s, me(), id, Boolean(b.dataset.ok)), b.dataset.ok ? 'Thanks — confirmed' : 'Reported as not received; the owner will check');
   });
   root.querySelectorAll('form[data-hr-form]').forEach(f => f.onsubmit = e => { e.preventDefault(); const s = S(), fd = new FormData(f), v = Object.fromEntries(fd), k = f.dataset.hrForm, file = n => fd.get(n)?.name || '';
@@ -376,7 +417,7 @@ export function bind(root, api, inviteFn) {
     if (k === 'payout') return done(setPayout(s, me(), {...v, name: actor(s, ws()).name}), 'Payout details saved');
     if (k === 'dispute') return done(dispute(s, me(), f.dataset.id, v.reason), 'Dispute sent to the owner');
     if (k === 'my-reimb') return done(addReimbursement(s, me(), {...v, receipt: file('receipt')}, true), 'Claim sent for approval');
-    if (k === 'my-advance') { const a0 = actor(s, ws()), h = s.staffHR[me()]; const amount = Math.round(Number(v.amount)); if (!(amount > 0) || !(Number(v.instalment) > 0) || !String(v.reason || '').trim()) return err('Enter amount, monthly pay-back and reason.'); (s.staffAdvances ||= []).push({id: uid('ADV'), store: a0.store, personId: me(), amount, balance: amount, instalment: Math.round(Number(v.instalment)), reason: v.reason.trim(), method: h.payout?.method || 'cash', status: 'pending_approval', at: stamp(), by: a0.name}); return done('', 'Advance request sent'); }
+    if (k === 'my-advance') return done(requestAdvance(s,ws(),me(),v),'Advance request sent to the owner');
     if (k === 'branch-docs') return done(saveBranchDocs(s, ws(), f.dataset.branch, {...v, photo: file('photo')}), 'Branch documents saved');
   });
 }
