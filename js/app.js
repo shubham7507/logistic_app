@@ -121,7 +121,7 @@ const OPS_ROUTES={book:'bookScreen',bookingReview:'bookingReviewScreen',services
 function opsRoute(route){
   const ws=state.currentWorkspace;
   if(route==='notifications')return NC.screen(state);
-  if(route==='myHR'&&PC.scopeOf(state,ws)?.kind==='manager'){
+  if(route==='myHR'&&PC.scopeOf(state,ws)?.kind==='manager'&&!PC.STORES.includes(PC.scopeOf(state,ws)?.business)){
     const sc=PC.scopeOf(state,ws),e=state.employments?.find(x=>x.id===sc.empId&&x.status==='active');
     return e?`<div class="page-header"><div><h1>My pay</h1><p>${OPS.esc(PC.bizName(state,sc.business))} · my own history</p></div></div>`+Payroll.payPersonScreen(state,e.personId,sc.business,'worker'):deniedScreen();
   }
@@ -184,7 +184,7 @@ function opsRoute(route){
   return '';
 }
 const opsApi={getState:()=>state,save:()=>saveState(state),render:()=>{renderRoute();renderBell()},toast:m=>toast(m),navigate:r=>{if(readRoute()===r)renderRoute();else navigate(r);renderBell()}};
-function unreadCount(){const ws=state.currentWorkspace,key=ws==='staff'?`staff:${state.selectedStaffId}`:ws;return NC.badge(state,(state.notifications||[]).filter(n=>(n.to===ws||n.to===key||(n.parties||[]).includes(ws))&&(!n.pickerId||n.pickerId===currentPicker(state,ws)?.id)&&(!n.managerId||n.managerId===GroceryWorkforce.activeManager(state,ws)?.id)&&!n.read),ws)}
+function unreadCount(){const ws=state.currentWorkspace;return NC.badge(state,NC.mine(state,ws).filter(n=>!n.read),ws)}
 function renderBell(){const b=$('notifications-button');if(!b)return;const n=unreadCount();b.querySelector('.bell-count').textContent=n||'';b.querySelector('.bell-count').hidden=!n;b.setAttribute('aria-label',`Notifications${n?`, ${n} unread`:''}`)}
 let aiPending=null;
 function openAssistant(){const d=$('ai-dialog');if(!d)return;d.hidden=false;$('ai-input').value='';$('ai-readback').innerHTML=`<p class="muted">Ask about work, or give a command. Examples: “summarize TRP-501”, “record advance 5000 to Raj Transport UPI ref 88231 for TRP-501”, “reached dharamkata”, “report breakdown”.</p>`;$('ai-confirm').hidden=true;aiPending=null;$('ai-input').focus()}

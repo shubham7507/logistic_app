@@ -38,6 +38,7 @@ function payoutVerified(s, personId) {
     : emp.source.kind === 'manager' ? (s.storeManagers || []).find(x => x.id === emp.source.id)
     : emp.source.kind === 'delivery' ? Object.values(s.deliveryPartners || {}).find(x => x.id === emp.source.id)
     : null;
+  if(s.staffHR?.[emp.source.id]?.payout?.verified)return true;
   if (rec?.bank?.accountNumber) return ['verified', 'complete'].includes(rec.bankStatus);
   // Legacy retail records kept their own verified flag separately (store-hr.js's staffHR.payout) —
   // fall back to it only when the employment's own record has nothing newer to say.
@@ -328,8 +329,10 @@ function resolveBankRecord(s, personId) {
     : emp.source.kind === 'manager' ? (s.storeManagers || []).find(x => x.id === emp.source.id)
     : emp.source.kind === 'delivery' ? Object.values(s.deliveryPartners || {}).find(x => x.id === emp.source.id)
     : null;
-  if(rec?.bank)return rec.bank;
   const legacy=s.staffHR?.[emp.source.id]?.payout;
+  if(legacy?.verified&&legacy.method==='bank'&&legacy.accountNumber)return {accountNumber:legacy.accountNumber,upi:rec?.bank?.upi};
+  if(legacy?.verified&&legacy.method==='upi'&&legacy.upi)return {upi:legacy.upi,accountNumber:rec?.bank&&['verified','complete'].includes(rec.bankStatus)?rec.bank.accountNumber:null};
+  if(rec?.bank)return rec.bank;
   return legacy?.verified ? {upi:legacy.upi,accountNumber:legacy.accountNumber || (legacy.account&&!String(legacy.account).includes('•')?legacy.account:null)} : null;
 }
 export function releaseRequestedAdvance(s,business,requestId){

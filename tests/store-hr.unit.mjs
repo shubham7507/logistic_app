@@ -16,7 +16,7 @@ const mgr=H.actor(s,'groceryManager');assert.equal(mgr.kind,'manager');assert.ma
 r=H.invite(s,'groceryFresh',{name:'Asha',mobile:'9876505101',role:'picker',homeBranch:'groceryFresh-B1',payType:'per_shift',rate:400},invitePicker);assert.ok(r.ok);assert.match(r.note,/also works at/);
 // staff verification: age, Aadhaar OTP, selfie, emergency; payout ₹1 check
 assert.match(H.verifyStaff(s,priya.id,{dob:'2012-01-01'}),/18/);
-assert.equal(H.verifyStaff(s,priya.id,{dob:'1998-05-01',aadhaar:'234567890123',otp:'123456',selfie:'me.jpg',emergencyName:'Mom',emergencyMobile:'9811100000'}),'');
+assert.equal(H.verifyStaff(s,priya.id,{dob:'1998-05-01',aadhaar:'234567890123',otp:'123456',consent:'1',selfie:'me.jpg',emergencyName:'Mom',emergencyMobile:'9811100000'}),'');
 assert.equal(H.setPayout(s,priya.id,{method:'upi',upi:'priya@okaxis'}),'');
 // transfer by owner only; history kept
 const asha=s.pickerStaff.find(p=>p.id==='PICK-001');H.hr(s,{...asha,kind:'staff'});

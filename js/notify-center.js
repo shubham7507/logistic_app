@@ -9,7 +9,8 @@ const head = (t, x, a = '') => `<div class="page-header"><div><h1>${esc(t)}</h1>
 const refOf = n => n.ref || (String(n.text).match(/^([A-Z]{2,4}-[A-Z0-9-]+):/) || [])[1] || 'general';
 export function mine(s, ws) {
   const key = ws === 'staff' ? `staff:${s.selectedStaffId}` : ws;
-  return (s.notifications || []).filter(n => n.to === ws || n.to === key || (n.parties || []).includes(ws));
+  const selected=s.activePicker?.[ws]||s.activeStoreManager?.[ws];
+  return (s.notifications || []).filter(n => (n.to === ws || n.to === key || (n.parties || []).includes(ws)) && (!n.staffId || n.staffId === selected || ws === 'staff' && n.staffId === s.selectedStaffId) && (!n.pickerId || n.pickerId === s.activePicker?.[ws]) && (!n.managerId || n.managerId === s.activeStoreManager?.[ws]));
 }
 function groups(list) {
   const g = new Map(); for (const n of list) { const r = refOf(n); if (!g.has(r)) g.set(r, []); g.get(r).push(n); }
