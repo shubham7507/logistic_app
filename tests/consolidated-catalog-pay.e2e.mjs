@@ -14,6 +14,8 @@ import * as Payroll from '../js/payroll-core.js';
 for(const store of ['grocery','groceryFresh','electrical','fashion']){
  const s=structuredClone(SEED);Plus.ensurePlus(s);assert.equal(loadStaffDemo(s,store),'');
  assert.equal(ROLE_CONFIG[store].nav.some(([r])=>r==='plusListings'),false);
+ assert.equal(Plus.screen(s,'plusListings',store),'');
+ assert.equal(Commerce.screen(s,'shopPickerPay',store),'');
  assert.match(Commerce.screen(s,'shopCatalog',store),/Import products from CSV/);
  assert.match(Commerce.screen(s,'shopCatalog',store),/Listing details and batches/);
  assert.match(Commerce.screen(s,'shopCatalog',store),/Receive dated stock/);

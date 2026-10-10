@@ -47,7 +47,7 @@ with sync_playwright() as p:
     go('wishlist'); check('Buy again' in main() and 'Wishlist' in main(), 'wishlist screen')
     # seller
     pg.goto(f'{B}/seller.html#/plusListings'); pg.wait_for_timeout(300)
-    check('Listings & stock' in main(), 'seller listings'); pg.locator('[data-plus="edit-listing"]').first.click(); pg.wait_for_timeout(150)
+    check('Products and stock' in main(), 'seller catalogue redirect'); pg.locator('[data-plus="edit-listing"]').first.click(); pg.wait_for_timeout(150)
     pg.fill('form[data-plus-form="listing"] [name="mrp"]', '1'); pg.locator('form[data-plus-form="listing"] button').click(); pg.wait_for_timeout(120)
     check('MRP' in pg.locator('.plus-error').inner_text() or 'above' in pg.locator('.plus-error').inner_text(), 'price above MRP refused'); shot('124-listings')
     go('plusStore'); pg.click('[data-plus="toggle-pause"]'); pg.wait_for_timeout(120); check(any(p.get('paused') for p in st()['shopPartners'].values()), 'store paused'); pg.click('[data-plus="toggle-pause"]'); pg.wait_for_timeout(100)

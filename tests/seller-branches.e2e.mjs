@@ -43,7 +43,7 @@ for(const store of ['grocery','groceryFresh','electrical','fashion']){
  ok(Branches.toggleBranch(s,store,second));
  assert.match(Shop.placeOrder(s,{productId:product.id,qty:1,address:'Noida',method:'cod'}).error,/no active branch/);
  ok(Branches.toggleBranch(s,store,second));
- assert.match(Commerce.screen(s,'shopPickerPay',store),/Prepare pay/);
+ assert.match(Commerce.screen(s,'shopEarnings',store),/data-route="staffPay"/);
 }
 // A shift and pay run retains its branch for owner reconciliation.
 const p=Staff.staffFor(s,'electrical').find(x=>x.status==='active');

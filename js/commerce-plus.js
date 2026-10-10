@@ -375,15 +375,6 @@ export function saveListing(s, p, v) {
   if (before !== `${p.name}|${p.category}|${p.size}` || p.approval !== 'approved') { p.approval = 'pending'; p.approvalNote = 'Waiting for MoveAI review'; }
   return '';
 }
-export function bulkUpload(s, store, csv) {
-  const rows = String(csv || '').trim().split(/\n+/).map(r => (r.match(/("[^"]*"|(?:\\,|[^,])+)/g) || []).map(x => x.trim().replace(/^"|"$/g, '').replace(/\\,/g, ','))).filter(r => r.length >= 6 && !/^name$/i.test(r[0]));
-  const out = {created: 0, updated: 0, errors: []};
-  rows.forEach((r, i) => { const [name, category, size, price, mrp, qty, brand = '', barcode = '', hsn = ''] = r; if (!name || !(Number(price) > 0) || !(Number(mrp) >= Number(price))) { out.errors.push(`Row ${i + 1}: check name, price and MRP`); return; }
-    let p = s.products.find(x => x.fulfilmentPartner === store && x.name === name && x.size === size);
-    if (p) { Object.assign(p, {price: Number(price), mrp: Number(mrp)}); p.quantity = Number(qty) || p.quantity; out.updated += 1; }
-    else { p = {id: `PRD-U${Date.now().toString().slice(-5)}${i}`, name, category, size, price: Number(price), mrp: Number(mrp), quantity: Number(qty) || 0, reserved: 0, lowStockAt: 5, status: 'active', stock: 'In stock', vegStatus: 'vegetarian', fulfilmentPartner: store, brand: brand || name.split(' ')[0], barcode: barcode || undefined, hsn: hsn || undefined, approval: 'pending', approvalNote: 'New listing · waiting for MoveAI review'}; s.products.push(p); out.created += 1; } });
-  ensurePlus(s); return out;
-}
 export function addBatch(s, p, qty, expiry, branchId) {
   const n=Number(qty), store=Object.keys(s.shopPartners||{}).find(k=>s.shopPartners[k].name===p?.fulfilmentPartner);
   if(!p||!store)return 'Choose a product at this store.';
@@ -417,7 +408,6 @@ export function screen(s, route, ws) {
   if (route === 'moveaiWallet' && ws === 'personal') return walletScreen(s);
   if (route === 'monthlyStatement' && ws === 'personal') return customerStatementScreen(s);
   const sw = storeWs(ws);
-  if (sw && route === 'plusListings') return listingsScreen(s, sw);
   if (sw && route === 'plusStore') return storeScreen(s, sw);
   if (sw && route === 'plusAnalytics') return analyticsScreen(s, sw);
   if (sw && route === 'plusReturns') return sellerReturnsScreen(s, sw);
@@ -439,16 +429,6 @@ function wishlistScreen(s) {
   <section class="panel"><h2>Repeat orders</h2>${s.schedules.map(x => `<article class="market-row"><span><b>${x.frequency === 'daily' ? 'Every day' : 'Every week'} · ${x.items.length} items</b><small>Next: ${esc(x.nextDue)}${x.active ? '' : ' · paused'}</small></span>${x.nextDue <= today() && x.active ? `<button class="button primary compact" data-plus="schedule-cart" data-id="${esc(x.id)}">Due — review & order</button>` : ''}<button class="button secondary compact" data-plus="schedule-toggle" data-id="${esc(x.id)}">${x.active ? 'Pause' : 'Resume'}</button></article>`).join('') || '<p class="muted">Choose "Repeat this order" at checkout.</p>'}<button class="button text compact" data-plus="schedule-advance">Prototype: move repeat dates to today</button></section>`;
 }
 function walletScreen(s) { const w = s.customerWallet; return `${head('MoveAI wallet', 'Instant refunds and weight differences. Used automatically at your next checkout in a real launch.')}<div class="metrics"><div class="metric"><span>Balance</span><b>${inr(w.balance)}</b></div></div><section class="panel">${w.entries.map(e => `<div class="ledger-row static"><span><b>${esc(e.note)}</b><small>${esc(e.at)}</small></span><span class="amount in">+${inr(e.amount)}</span></div>`).join('') || '<p class="muted">No wallet activity yet.</p>'}</section>`; }
-function listingsScreen(s, ws) {
-  const p0 = s.shopPartners[ws], prods = s.products.filter(p => p.fulfilmentPartner === p0.name), edit = prods.find(p => p.id === s.plusEditProduct);
-  const exp = prods.flatMap(p => (p.batches || []).filter(b => b.qty > 0 && b.expiry <= addDays(today(), 3)).map(b => `${p.name}: ${b.qty} expire ${b.expiry}`));
-  return `${head('Listings & stock', `${p0.name} · MRP, details, approval, variants, batches and bulk upload`)}
-  ${exp.length ? `<div class="action-warning"><b>Expiring within 3 days</b><span>${esc(exp.join(' · '))}. Sell first or mark down; expired batches are removed from stock automatically.</span></div>` : ''}
-  <section class="panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>Product</th><th>Price / MRP</th><th>Stock & batches</th><th>Listing</th><th></th></tr></thead><tbody>${prods.map(p => `<tr><td><b>${esc(p.name)}</b><small class="block muted">${esc(p.size)} · ${esc(GROUPS[groupOf(p)].label)} · aisle ${esc(p.aisle)}${p.variantGroup ? ` · variant ${esc(p.variantLabel || '')}` : ''}</small></td><td>${inr(p.price)} / ${inr(p.mrp)}<small class="block muted">${offPct(p)}% off · HSN ${esc(p.hsn)} · GST ${p.gstRate}%</small></td><td>${p.quantity - (p.reserved || 0)} available${(p.batches || []).filter(b => b.qty > 0).map(b => `<small class="block muted">${b.qty} · exp ${b.expiry}</small>`).join('')}</td><td>${pill(p.approval)}${p.approvalNote ? `<small class="block muted">${esc(p.approvalNote)}</small>` : ''}</td><td><button class="button secondary compact" data-plus="edit-listing" data-id="${esc(p.id)}">Edit</button></td></tr>`).join('')}</tbody></table></div></section>
-  ${edit ? listingForm(s, edit) : ''}
-  <div class="grid two"><section class="panel"><h2>Bulk upload (CSV)</h2><p class="muted">One product per line: name, category, size, price, MRP, quantity, brand, barcode, HSN. New products wait for MoveAI review.</p><form data-plus-form="bulk" class="form-grid"><textarea name="csv" rows="5" placeholder="Toor Dal,Pulses\\, dal & beans,1 kg,165,180,30,Tata Sampann,8901234567890,0713"></textarea><button class="button secondary">Upload</button></form></section>
-  <section class="panel"><h2>Receive stock (batch)</h2><form class="inline-form" data-plus-form="batch"><select name="productId">${prods.filter(p => ['fresh', 'food'].includes(groupOf(p))).map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${esc(p.size)}</option>`).join('')}</select><input name="qty" type="number" min="1" placeholder="Qty"><input name="expiry" type="date"><button class="button secondary compact">Add batch</button></form><p class="muted">Pickers are guided to the oldest expiry first (first expiry, first out).</p></section></div><p class="plus-error field-error" hidden></p>`;
-}
 export function catalogExtras(s, ws) {
   const store=operatorStore(ws),partner=s.shopPartners?.[store];if(!partner)return '';
   const products=s.products.filter(p=>p.fulfilmentPartner===partner.name),branchId=selectedBranch(s,store),selected=products.find(p=>p.id===s.plusEditProduct);
@@ -556,7 +536,6 @@ export function bind(root, api) {
     if (k === 'review') { const o = s.customerOrders.find(x => x.id === f.dataset.id); s.reviews.push({id: uid('RV'), orderId: o.id, productId: v.productId, rating: Number(v.rating), text: String(v.text || '').trim() || 'No comment', by: s.person?.name?.split(' ')[0] || 'Customer', at: stamp(), store: o.fulfilmentPartner, storeRating: Number(v.storeRating) || null, deliveryRating: Number(v.deliveryRating) || null}); return done('', 'Thanks for your review'); }
     if (k === 'save-list') { if (!s.productCart?.length) return err('Your cart is empty.'); s.savedLists.push({name: String(v.name || 'My list').trim(), items: s.productCart.map(c => ({productId: c.productId, quantity: c.quantity}))}); return done('', 'List saved'); }
     if (k === 'listing') { if(ws()!==sw())return err('Store owner access required for listing details.');const p=s.products.find(x=>x.id===f.dataset.id&&x.fulfilmentPartner===s.shopPartners?.[sw()]?.name);if(!p)return err('Product unavailable at this store.');const m=saveListing(s, p, v); if (m && !/^Saved/.test(m)) return err(m); return done('', m || (p.approval === 'pending' ? 'Saved · waiting for MoveAI review' : 'Listing updated')); }
-    if (k === 'bulk') { const r = bulkUpload(s, s.shopPartners[sw()].name, v.csv); return done('', `${r.created} new (waiting for review), ${r.updated} updated${r.errors.length ? ` · ${r.errors.join('; ')}` : ''}`); }
     if (k === 'batch') { const store=sw(),p=s.products.find(x=>x.id===v.productId&&x.fulfilmentPartner===s.shopPartners?.[store]?.name);if(!Inventory.canStock(s,ws()))return err('Store stock permission required.');return done(addBatch(s,p,v.qty,v.expiry,selectedBranch(s,store)), 'Batch added to this branch'); }
     if (k === 'onboard') { const p = s.shopPartners[sw()]; const g = gstLookup(v.gstin, p.name); if (!g.ok) return err(g.reason); if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(String(v.pan).toUpperCase())) return err('Enter a valid PAN.'); const b = pennyDrop({account: v.account, ifsc: v.ifsc, name: p.name}); if (!b.ok) return err(b.reason); if (v.fssai && !/^\d{14}$/.test(v.fssai)) return err('FSSAI licence numbers have 14 digits.'); p.onboarding = {gstin: g.data.gstin, pan: String(v.pan).toUpperCase(), bankVerified: true, fssai: v.fssai || '', status: 'pending'}; return done('', 'Submitted to MoveAI for approval'); }
     if (k === 'hours') { s.shopPartners[sw()].hours = {open: v.open, close: v.close}; return done('', 'Hours saved'); }

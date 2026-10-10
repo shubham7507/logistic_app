@@ -25,8 +25,6 @@ assert.match(X.saveListing(s,salt,{mrp:10}),/above MRP/);
 assert.match(X.saveListing(s,salt,{mrp:30,'d:Ingredients':''}),/Ingredients is required/);
 assert.equal(salt.approval,'changes_needed');assert.ok(!pub(salt),'not live until fixed');
 X.saveListing(s,salt,{mrp:30,'d:Ingredients':'Iodised salt'});salt.approval='approved';assert.ok(pub(salt));
-const up=X.bulkUpload(s,'ABC Grocery','Toor Dal,Pulses\\, dal & beans,1 kg,165,180,30,Tata Sampann\nBad,Rice,1 kg,200,150,5');assert.equal(up.created,1);assert.equal(up.errors.length,1);
-assert.equal(s.products.at(-1).approval,'pending');assert.ok(!pub(s.products.at(-1)));
 assert.ok(X.listingCheck(s,{...salt,id:'X',name:'Whisky 750 ml'}).includes('Restricted item'));
 // batches: FEFO and expiry write-off
 assert.equal(X.addBatch(s,salt,10,'2099-01-01'),'');const q0=salt.quantity;salt.batches.push({id:'old',qty:3,expiry:'2000-01-01'});X.ensurePlus(s);assert.equal(salt.quantity,q0-3,'expired batch removed from stock');
@@ -87,7 +85,7 @@ let old=deliver('PRD-107',1,{deliveredAt:Date.now()-3*86400000});assert.equal(X.
 assert.ok(X.analytics(s,'ABC Grocery').orders>0);
 
 // every new screen renders without leaking undefined/NaN
-for(const [route,ws] of [['wishlist','personal'],['moveaiWallet','personal'],['plusListings','grocery'],['plusStore','grocery'],['plusAnalytics','grocery'],['plusReturns','grocery'],['plusListings','groceryManager'],['plusApprovals','admin'],['plusClaims','admin'],['plusSettings','admin'],['plusReports','admin']]){const html=X.screen(s,route,ws);assert.ok(html.length>200,route);assert.doesNotMatch(html.replace(/<[^>]+>/g,' '),/\bundefined\b|NaN/,`${route} leaks`);}
+for(const [route,ws] of [['wishlist','personal'],['moveaiWallet','personal'],['plusStore','grocery'],['plusAnalytics','grocery'],['plusReturns','grocery'],['plusApprovals','admin'],['plusClaims','admin'],['plusSettings','admin'],['plusReports','admin']]){const html=X.screen(s,route,ws);assert.ok(html.length>200,route);assert.doesNotMatch(html.replace(/<[^>]+>/g,' '),/\bundefined\b|NaN/,`${route} leaks`);}
 for(const p of s.products.slice(0,8))assert.doesNotMatch(X.productExtras(s,p).replace(/<[^>]+>/g,' '),/\bundefined\b|NaN/);
 assert.match(X.orderHelp(s,h2),/Help with this order/);assert.match(X.deliveryExtras(s,'deliveryPartner'),/Return pickups/);
 console.log(JSON.stringify({status:'PASS',suite:'E-commerce additions (catalogue, search, checkout, picking, courier, returns, money, admin)'},null,2));
