@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import {SEED} from '../js/mock-data.js';
+import * as Inventory from '../js/grocery-inventory.js';
+import * as Commerce from '../js/commerce.js';
+const s=structuredClone(SEED);s.currentWorkspace='grocery';
+const rice=Inventory.counterProducts(s,'grocery','india gate rice');
+assert.ok(rice.length>0);
+assert.ok(rice.every(p=>/india gate/i.test(p.name)&&/rice/i.test(p.name)));
+assert.equal(Inventory.counterProducts(s,'grocery','not-in-catalog').length,0);
+const screen=Inventory.counterScreen(s,'grocery');
+assert.match(screen,/data-commerce="counter-search"/);
+assert.match(screen,/data-commerce="voice-counter-parse"/);
+assert.match(screen,/available products at this branch/);
+let renders=0,saves=0;
+function click(action,values){const button={dataset:{commerce:action}};const root={querySelectorAll:selector=>selector==='[data-commerce]'?[button]:[],querySelector:selector=>selector in values?{value:values[selector]}:null};Commerce.bind(root,{getState:()=>s,save:()=>saves++,render:()=>renders++,toast:msg=>{if(msg!=='Updated')throw Error(msg)}});button.onclick()}
+click('counter-search',{'[data-counter-query]':'Tata Salt'});
+assert.equal(s.counterQueries.grocery,'Tata Salt');assert.equal(renders,1);
+assert.match(Inventory.counterScreen(s,'grocery'),/1 matching product/);
+click('counter-search',{'[data-counter-query]':'not-in-catalog'});
+assert.match(Inventory.counterScreen(s,'grocery'),/No products found at this branch/);
+click('voice-counter-parse',{'[data-voice-counter-text]':'Two Tata Salt and one rice'});
+assert.equal(s.voiceCounterDraft.grocery.lines.length,2);
+assert.equal((s.counterCarts?.grocery||[]).length,0);
+assert.match(Inventory.counterScreen(s,'grocery'),/Review 2 requested item\(s\)/);
+assert.equal(saves,3);
+const delivery=Commerce.screen(s,'shopCounterDelivery','grocery');
+assert.match(delivery,/What are we delivering/);assert.match(delivery,/Where should it go/);assert.match(delivery,/How will they pay/);
+console.log('PASS counter search, voice review, delivery form');
