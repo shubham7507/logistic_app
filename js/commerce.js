@@ -4,6 +4,7 @@ import * as PC from './people-core.js';
 import {deliveryOnboardingScreen,deliverySubmittedScreen,deliveryReviewScreen,submitDeliveryOnboarding,deliveryReviewDecision,currentDeliveryPartner} from './delivery-onboarding.js';
 import * as Payroll from './payroll-core.js';
 import * as HR from './store-hr.js';
+import * as CatalogCSV from './catalog-csv.js';
 import * as Geo from './geo.js';
 import * as Plus from './commerce-plus.js';
 import {clock, record, gateway, wallet, payout as walletPayout} from './pay.js';
@@ -370,9 +371,22 @@ export function bind(root,api){
    const st=api.getState(),err=instantDeliveryPayout(st,ws);
    if(err)return api.toast(err);api.save();api.render();api.toast('Instant payout sent');
  });
- root.querySelectorAll('[data-commerce]').forEach(b=>b.onclick=()=>{
+ root.querySelectorAll('[data-commerce]').forEach(b=>b.onclick=async()=>{
   const s=api.getState(),ws=s.currentWorkspace,o=orders(s).find(x=>x.id===b.dataset.id),action=b.dataset.commerce;
   if(action==='load-monthly-payroll')return; // Handled by the month selector below.
+  if(action==='catalog-csv-preview'){
+   const file=root.querySelector('[data-catalog-csv]')?.files?.[0];if(!file)return api.toast('Choose a CSV file first.');
+   delete s.catalogCsvPreview;
+   if(file.size>100000){api.save();api.render();return api.toast('Import at most 100 products in a file under 100 KB.');}
+   const result=CatalogCSV.preview(s,ws,await file.text(),Inventory);
+   if(result.error){api.save();api.render();return api.toast(result.error);}
+   s.catalogCsvPreview=result;api.save();api.render();return api.toast('Review the product and stock changes before importing.');
+  }
+  if(action==='catalog-csv-clear'){delete s.catalogCsvPreview;api.save();api.render();return;}
+  if(action==='catalog-csv-import'){
+   const error=CatalogCSV.commit(s,ws,s.catalogCsvPreview,Inventory);if(error)return api.toast(error);
+   const count=s.catalogCsvPreview.items.length;delete s.catalogCsvPreview;api.save();api.render();return api.toast(`${count} product(s) imported for this branch.`);
+  }
   let error='';
  if(['accept','pack'].includes(action))error=sellerAction(s,ws,b.dataset.id,action,action==='pack'?root.querySelector(`[data-bags="${b.dataset.id}"]`)?.value||'':'');
   else if(action==='voice-product-parse'){if(!sellerRole(ws))error='Store owner access required.';else{const source=root.querySelector('[data-voice-product-text]')?.value||'';if(!source.trim())error='Speak or type a product first.';else(s.voiceCatalogDraft||={})[storeOf(ws)]=Voice.productDraft(source);}}
