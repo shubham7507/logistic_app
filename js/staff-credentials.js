@@ -1,8 +1,8 @@
 // Browser-only review records. Never use real identity or payout documents in this demo.
-export const fileTypes = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
+export const fileTypes = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf', 'application/xml', 'text/xml'];
 export async function demoFile(file) {
   if (!file || !file.name) return null;
-  if (!fileTypes.includes(file.type)) throw Error('Choose a PNG, JPG, WebP or PDF test file.');
+  if (!fileTypes.includes(file.type) && !(file.name.toLowerCase().endsWith('.xml') && !file.type)) throw Error('Choose a PNG, JPG, WebP, PDF or XML test file.');
   if (file.size > 120000) throw Error('Demo files must be under 120 KB. Use a small mock file.');
   const data = await new Promise((resolve, reject) => {
     const reader = new FileReader(); reader.onload = () => resolve(reader.result);
