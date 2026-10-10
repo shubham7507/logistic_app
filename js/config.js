@@ -50,8 +50,8 @@ export const ROLE_CONFIG={
   pickerFresh:{label:'Fresh Mart picker',subtitle:'Store picker',icon:'P',nav:nav.pickerFresh,branches:false,homePhase:'P16'},
   pickerElectrical:{label:'Sharma Electricals staff',subtitle:'Order preparation',icon:'P',nav:nav.pickerElectrical,branches:false,homePhase:'P16'},
   pickerFashion:{label:'City Fashion staff',subtitle:'Order preparation',icon:'P',nav:nav.pickerFashion,branches:false,homePhase:'P16'},
-  deliveryPartner:{label:'Delivery Partner 1',subtitle:'Store delivery · Approved',icon:'D',nav:nav.deliveryPartner,branches:false,homePhase:'P16'},
-  deliveryPartner2:{label:'Delivery Partner 2',subtitle:'Store delivery · Approved',icon:'D',nav:nav.deliveryPartner2,branches:false,homePhase:'P16'},
+  deliveryPartner:{label:'Delivery Partner 1',subtitle:'Store delivery',icon:'D',nav:nav.deliveryPartner,branches:false,homePhase:'P16'},
+  deliveryPartner2:{label:'Delivery Partner 2',subtitle:'Store delivery',icon:'D',nav:nav.deliveryPartner2,branches:false,homePhase:'P16'},
 };
 
 export const ROUTES={

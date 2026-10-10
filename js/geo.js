@@ -15,7 +15,7 @@ export function ensureGeo(s) {
   for (const p of Object.values(s.shopPartners || {})) { p.coords ||= STORE_COORDS[p.name] || [28.6315, 77.2167]; p.radiusKm ??= 12; }
   Object.values(s.deliveryPartners || {}).forEach((d, i) => { d.coords ||= [[28.6470, 77.1850], [28.5750, 77.2380], [28.6300, 77.2200]][i % 3]; });
   s.customerPin ||= {label: 'Rajendra Place, Delhi', lat: AREAS['Rajendra Place, Delhi'][0], lng: AREAS['Rajendra Place, Delhi'][1]};
-  for (const o of s.customerOrders || []) if (!o.dest && o.fulfilment !== 'pickup' && !['cancelled'].includes(o.status)) { const st = storeOf(s, o.fulfilmentPartner); if (st) { o.origin = st.coords; o.dest = [s.customerPin.lat, s.customerPin.lng]; o.destLabel = s.customerPin.label; o.deliveryKm ??= Math.round(roadKm(o.origin, o.dest) * 10) / 10; o.geo ||= {phase: o.status === 'delivered' ? 'delivered' : 'waiting', live: false}; } }
+  for (const o of s.customerOrders || []) if (!o.dest && o.channel !== 'counter_delivery' && o.fulfilment !== 'pickup' && !['cancelled'].includes(o.status)) { const st = storeOf(s, o.fulfilmentPartner); if (st) { o.origin = st.coords; o.dest = [s.customerPin.lat, s.customerPin.lng]; o.destLabel = s.customerPin.label; o.deliveryKm ??= Math.round(roadKm(o.origin, o.dest) * 10) / 10; o.geo ||= {phase: o.status === 'delivered' ? 'delivered' : 'waiting', live: false}; } }
   return s;
 }
 const storeOf = (s, name) => Object.values(s.shopPartners || {}).find(p => p.name === name);
@@ -43,7 +43,7 @@ const courierOf = (s, o) => Object.values(s.deliveryPartners || {}).find(d => d.
 export const current = (s, o) => { const t = o.track || []; return t.length ? [t.at(-1).lat, t.at(-1).lng] : courierOf(s, o)?.coords || o.origin; };
 const toStorePhase = o => ['offered', 'accepted'].includes(o.deliveryAssignment?.status) && o.status !== 'out_for_delivery';
 export function recordPosition(s, o, lat, lng, src = 'gps') {
-  if (!o.deliveryAssignment || ['delivered', 'cancelled', 'returned'].includes(o.status)) return 'Tracking is only on during an active delivery.';
+  if (!o?.deliveryAssignment || !['accepted','picked_up'].includes(o.deliveryAssignment.status) || !['ready_for_pickup','out_for_delivery'].includes(o.status)) return 'Tracking is only on during an active delivery.';
   (o.track ||= []).push({lat, lng, at: Date.now(), src}); if (o.track.length > 300) o.track.shift();
   o.geo ||= {}; o.geo.live = true; o.geo.lastAt = Date.now();
   const here = [lat, lng], c = courierOf(s, o); if (c) c.coords = here;
@@ -164,7 +164,7 @@ export function trackPanel(s, o) {
   ${phase !== 'delivered' ? `<div class="row-actions"><button class="button text compact" data-geo-share="${esc(o.id)}">Share tracking link</button></div>` : o.deliveredLocation ? `<p class="muted">Delivered at ${o.deliveredLocation.map(x => x.toFixed(4)).join(', ')}</p>` : ''}</section>`;
 }
 export function courierPanel(s, o) {
-  ensureGeo(s); if (!o.origin || !o.dest) return '';
+  ensureGeo(s); if (!o.origin || !o.dest) return '<p class="action-warning">Map pin is missing for this order. Follow the written address and confirm the location with the customer before delivery.</p>';
   const toStore = toStorePhase(o), target = toStore ? o.origin : o.dest, here = current(s, o);
   return `<div class="geo-courier">${mapSvg([{at: o.origin, icon: '🏪', label: 'Store'}, {at: o.dest, icon: '🏠', label: 'Customer'}, {at: here, icon: '🛵', label: 'You', fill: '#0b6655'}], {path: (o.track || []).map(p => [p.lat, p.lng]), plan: [o.origin, o.dest], label: 'Your route'})}
   <small class="block"><b>${esc(PHASE[o.geo?.phase || (toStore ? 'to_store' : 'to_customer')] || '')}</b> · ${roadKm(here, target).toFixed(1)} km to ${toStore ? 'the store' : 'the customer'} · about ${etaMin(s, o)} min ${o.geo?.live ? '· <b class="live-dot">● Location on</b>' : ''}</small>
@@ -183,6 +183,17 @@ export function adminLive(s) {
 // tracking on one order could silently clear the wrong order's GPS watch.
 const watchIds = new Map();
 let autoTimer = null;
+export function pauseCourierTracking(s,ws){
+ const id=s.deliveryPartners?.[ws]?.id;if(!id)return;
+ for(const o of s.customerOrders||[])if(o.deliveryAssignment?.partnerId===id&&o.geo?.live){
+  const wid=watchIds.get(o.id);if(wid!=null&&globalThis.navigator?.geolocation)navigator.geolocation.clearWatch(wid);
+  watchIds.delete(o.id);o.geo.live=false;o.geo.everStarted=false;
+ }
+ if(autoTimer){clearInterval(autoTimer);autoTimer=null;}
+}
+export function reconcileCourierTracking(s){
+ for(const o of s.customerOrders||[])if(o.geo?.mode==='gps'&&o.geo.live&&!watchIds.has(o.id)){o.geo.live=false;o.geo.everStarted=false;}
+}
 // Statuses where a delivery is genuinely in progress — manual "Stop sharing" is disabled here; it only
 // re-enables once the order reaches a real end state (the auto-clear in the position callback already
 // handles the normal case; this is specifically about a courier choosing to stop early).
@@ -206,18 +217,19 @@ function hydrate(root, api) {
 }
 export function bind(root, api) {
   hydrate(root, api);
-  root.querySelectorAll('form[data-geo-gate]').forEach(f => f.onsubmit = e => { e.preventDefault(); const s = api.getState(), o = (s.customerOrders || []).find(x => x.id === f.dataset.geoGate); const err = saveGateNote(s, o, new FormData(f).get('note')); if (err) return api.toast(err); api.save(); api.render(); api.toast('Entrance note saved for the next delivery here'); });
+  root.querySelectorAll('form[data-geo-gate]').forEach(f => f.onsubmit = e => { e.preventDefault(); const s = api.getState(), p=s.deliveryPartners?.[s.currentWorkspace],o = (s.customerOrders || []).find(x => x.id === f.dataset.geoGate&&x.deliveryAssignment?.partnerId===p?.id&&['accepted','picked_up'].includes(x.deliveryAssignment.status));if(!o)return api.toast('This delivery is not assigned to you.'); const err = saveGateNote(s, o, new FormData(f).get('note')); if (err) return api.toast(err); api.save(); api.render(); api.toast('Entrance note saved for the next delivery here'); });
   root.querySelectorAll('[data-geo-job]').forEach(b => b.onclick = () => { const s = api.getState(), kind = b.dataset.kind, j = (kind === 'trip' ? s.trips : s.movingJobs).find(x => x.id === b.dataset.geoJob);
     if (b.dataset.mode === 'step') { const e = jobDemoStep(s, j, kind); api.save(); api.render(); if (e) api.toast(e); return; }
     if (!navigator.geolocation) return api.toast('This browser cannot share location. Use the demo button.');
     navigator.geolocation.watchPosition(p => { jobPosition(api.getState(), j, kind, p.coords.latitude, p.coords.longitude, 'gps'); api.save(); api.render(); }, err => api.toast(`Location permission needed (${err.message})`), {enableHighAccuracy: true, maximumAge: 10000}); api.toast('Sharing live location for this job'); });
-  const S = () => api.getState(), find = id => (S().customerOrders || []).find(o => o.id === id);
+  const S = () => api.getState(), find = id => {const s=S(),p=s.deliveryPartners?.[s.currentWorkspace];return p&&(s.customerOrders||[]).find(o=>o.id===id&&o.deliveryAssignment?.partnerId===p.id&&['accepted','picked_up'].includes(o.deliveryAssignment.status));};
   root.querySelector('[data-geo-area]')?.addEventListener('change', e => { const a = e.target.value; if (!AREAS[a]) return; S().checkoutPin = {label: a, lat: AREAS[a][0], lng: AREAS[a][1]}; api.save(); api.render(); });
   root.querySelector('[data-geo="locate"]')?.addEventListener('click', () => { const msg = root.querySelector('.geo-msg'); if (!navigator.geolocation) { msg.hidden = false; msg.textContent = 'This browser cannot share location. Choose an area.'; return; } msg.hidden = false; msg.textContent = 'Asking for location permission…'; navigator.geolocation.getCurrentPosition(p => { S().checkoutPin = {label: 'My current location', lat: p.coords.latitude, lng: p.coords.longitude}; api.save(); api.render(); }, err => { msg.textContent = `Location not available (${err.message}). Choose an area instead.`; }, {enableHighAccuracy: true, timeout: 10000}); });
-  root.querySelectorAll('[data-geo-step]').forEach(b => b.onclick = () => { const e = demoStep(S(), find(b.dataset.geoStep)); api.save(); api.render(); if (e) api.toast(e); });
-  root.querySelectorAll('[data-geo-start-demo]').forEach(b => b.onclick = () => { const o=find(b.dataset.geoStartDemo),error=startDemoLocation(S(),o);if(error)return api.toast(error);api.save();api.render();api.toast('Simulated location started for this delivery'); });
-  root.querySelectorAll('[data-geo-auto]').forEach(b => b.onclick = () => { if (autoTimer) { clearInterval(autoTimer); autoTimer = null; return api.toast('Auto-drive stopped'); } const id = b.dataset.geoAuto; autoTimer = setInterval(() => { const o = find(id); const e = o ? demoStep(S(), o) : 'stop'; api.save(); api.render(); if (e) { clearInterval(autoTimer); autoTimer = null; } }, 1200); api.toast('Auto-drive started (moves 400 m every second)'); });
+  root.querySelectorAll('[data-geo-step]').forEach(b => b.onclick = () => { const o=find(b.dataset.geoStep);if(!o)return api.toast('This delivery is not assigned to you.');const e=demoStep(S(),o);api.save();api.render();if(e)api.toast(e); });
+  root.querySelectorAll('[data-geo-start-demo]').forEach(b => b.onclick = () => { const o=find(b.dataset.geoStartDemo);if(!o)return api.toast('This delivery is not assigned to you.');const wid=watchIds.get(o.id);if(wid!=null&&navigator.geolocation)navigator.geolocation.clearWatch(wid);watchIds.delete(o.id);const error=startDemoLocation(S(),o);if(error)return api.toast(error);api.save();api.render();api.toast('Simulated location started for this delivery'); });
+  root.querySelectorAll('[data-geo-auto]').forEach(b => b.onclick = () => { if (autoTimer) { clearInterval(autoTimer); autoTimer = null; return api.toast('Auto-drive stopped'); } const id = b.dataset.geoAuto;if(!find(id))return api.toast('This delivery is not assigned to you.');autoTimer = setInterval(() => { const o = find(id); const e = o ? demoStep(S(), o) : 'stop'; if(o){api.save();api.render()}if(e){clearInterval(autoTimer);autoTimer=null;} }, 1200); api.toast('Auto-drive started (moves 400 m every second)'); });
   root.querySelectorAll('[data-geo-live]').forEach(b => b.onclick = () => { const s = S(), o = find(b.dataset.geoLive);
+    if(!o)return api.toast('This delivery is not assigned to you.');
     if (o.geo?.live) {
       // Hard guard, not just a hidden button — stopping mid-delivery is blocked here regardless of how
       // the click was triggered. It only ever auto-clears, inside the position callback below, once
@@ -226,8 +238,8 @@ export function bind(root, api) {
       stopTracking(o); const wid = watchIds.get(o.id); if (wid != null && navigator.geolocation) navigator.geolocation.clearWatch(wid); watchIds.delete(o.id); api.save(); api.render(); return api.toast('Location sharing stopped');
     }
     if (!navigator.geolocation) return api.toast('This browser cannot share location. Use the demo buttons.');
-    const wid = navigator.geolocation.watchPosition(p => { const x = find(o.id); if (!x || ['delivered', 'cancelled'].includes(x.status)) { const w = watchIds.get(o.id); if (w != null) navigator.geolocation.clearWatch(w); watchIds.delete(o.id); return; } recordPosition(S(), x, p.coords.latitude, p.coords.longitude, 'gps'); api.save(); api.render(); }, err => {const x=find(o.id);if(x&&!x.track?.length){x.geo.live=false;x.geo.everStarted=false;api.save();api.render()}api.toast(`Location unavailable (${err.message}). Use demo location for this prototype.`)}, {enableHighAccuracy: true, maximumAge: 5000});
+    const wid = navigator.geolocation.watchPosition(p => { const x = find(o.id); if (!x || x.geo?.mode==='demo') { const w = watchIds.get(o.id); if (w != null) navigator.geolocation.clearWatch(w); watchIds.delete(o.id); return; }recordPosition(S(),x,p.coords.latitude,p.coords.longitude,'gps');x.geo.everStarted=true;api.save();api.render();},err => {const x=find(o.id);if(x&&x.geo?.mode==='gps'&&!x.track?.length){x.geo.live=false;x.geo.everStarted=false;api.save();api.render()}const w=watchIds.get(o.id);if(w!=null)navigator.geolocation.clearWatch(w);watchIds.delete(o.id);api.toast(`Location unavailable (${err.message}). Use demo location for this prototype.`)}, {enableHighAccuracy: true, maximumAge: 5000});
     watchIds.set(o.id, wid);
-    o.geo = {...(o.geo || {}), mode:'gps', live: true, everStarted: true, lastAt: Date.now()}; api.save(); api.render(); api.toast('Sharing live location for this delivery only'); });
+    o.geo = {...(o.geo || {}), mode:'gps', live:false}; api.save(); api.render(); api.toast('Waiting for browser location permission'); });
   root.querySelectorAll('[data-geo-share]').forEach(b => b.onclick = async () => { const url = `${location.origin}${location.pathname}#/orderTracking`; try { await navigator.clipboard.writeText(`Track my MoveAI order ${b.dataset.geoShare}: ${url}`); api.toast('Tracking link copied'); } catch { api.toast(url); } });
 }

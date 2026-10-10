@@ -8,11 +8,30 @@ const nameOf=f=>typeof f==='string'?f:f?.name||'';
 const picture=f=>/\.(jpe?g|png|webp|heic|pdf)$/i.test(nameOf(f));
 const masked=v=>String(v||'').replace(/.(?=.{4})/g,'•');
 export const currentDeliveryPartner=(s,ws)=>s.deliveryPartners?.[ws]||null;
+// Bring existing browser-local Ravi data onto the same review model as Sana.
+// This migration applies only to the preapproved demo partner, never to a new applicant.
+export function ensureDeliveryPartners(s){
+ const p=s.deliveryPartners?.deliveryPartner;
+ if(p?.id==='DP-001'&&p.status==='approved'&&!p.onboardingVersion){
+  p.onboardingVersion=1;
+  p.panMasked||='••••••1234';
+  p.verification={identity:'demo_verified',driving:'demo_checked',vehicle:'demo_checked',payout:'demo_checked',background:true,training:true};
+  p.documents||={};p.documents.licence||={};p.documents.licence.expiry||='2031-05-31';
+  p.documents.insurance={...(p.documents.insurance||{}),expiry:p.documents.insurance?.expiry||'2031-05-31'};
+  p.documents.puc||={documentName:'puc-ravi.pdf',expiry:'2031-05-31'};
+ }
+ for(const partner of Object.values(s.deliveryPartners||{}))if(partner.status==='approved'&&partner.bank?.accountNumber){
+  partner.payoutAccount={accountNumber:partner.bank.accountNumber};
+  (s.payoutAccounts||={})[partner.id]={method:partner.bank.upi?'upi':'bank',vpa:partner.bank.upi||undefined,accountNumber:partner.bank.accountNumber,ifsc:partner.bank.ifsc,holder:partner.bank.accountName};
+ }
+ return s;
+}
 export function deliveryEligibility(p){
  if(!p||p.status!=='approved')return 'Platform approval required.';
- // Seeded Ravi remains a usable demo account; all newly onboarded accounts use the gates below.
- if(!p.onboardingVersion)return '';
+ if(!p.onboardingVersion)return 'Complete the delivery partner review.';
  if(!p.verification?.training||!p.verification?.background)return 'Training or background review is incomplete.';
+ if(!p.verification?.identity||!p.verification?.driving||!p.verification?.vehicle||!p.verification?.payout)return 'Verification details are incomplete.';
+ if(!['walking','cycle'].includes(p.vehicle?.type)&&(!p.documents?.licence?.expiry||!p.documents?.insurance?.expiry||!p.documents?.puc?.expiry))return 'Vehicle documents are incomplete.';
  if(p.documents?.licence?.expiry<today())return 'Driving licence expired. Upload a renewal.';
  if(p.documents?.insurance?.expiry<today())return 'Insurance expired. Upload a renewal.';
  if(p.documents?.puc?.expiry<today())return 'PUC expired. Upload a renewal.';
@@ -76,6 +95,7 @@ export function saveDeliveryPayout(s,ws,v){
  if(!check.ok&&!picture(v.bankProof))return 'Upload a cancelled cheque or passbook for manual payout review.';
  if(v.upi){const u=upiVerify({vpa:v.upi,name:p.name});if(!u.ok)return u.reason;}
  p.panMasked=masked(String(v.pan).toUpperCase());p.bank={accountName:String(v.accountName||'').trim(),accountNumber:String(v.accountNumber||'').replace(/\D/g,''),masked:masked(String(v.accountNumber||'').replace(/\D/g,'')),ifsc:String(v.ifsc||'').toUpperCase(),upi:String(v.upi||'').trim(),proofName:nameOf(v.bankProof)};
+ p.payoutAccount={accountNumber:p.bank.accountNumber};
  p.verification.payout=check.ok?'demo_checked':'manual_review';p.onboardingStep='review';return '';
 }
 export function submitDeliveryOnboarding(s,ws){
@@ -84,6 +104,7 @@ export function submitDeliveryOnboarding(s,ws){
  p.status='submitted';p.available=false;p.submittedAt=new Date().toISOString();p.correctionReason='';return '';
 }
 const tag=v=>v==='demo_checked'||v==='demo_verified'?'Demo checked':v==='manual_review'?'Manual review':v==='not_applicable'?'Not needed':v?'Complete':'To do';
+export function deliveryProfileDetails(p){const v=p.verification||{},d=p.documents||{},reason=deliveryEligibility(p);return `<section class="panel delivery-join-card"><h2>My verification and payout</h2><div class="review-checklist"><span>ID: ${tag(v.identity)} · ${esc(p.identity?.aadhaarMasked||p.identity?.idLast4&&`ending ${p.identity.idLast4}`||'Not added')}</span><span>Driving: ${tag(v.driving)} · licence expiry ${esc(d.licence?.expiry||'Not needed')}</span><span>Vehicle: ${tag(v.vehicle)} · ${esc(p.vehicle?.number||p.vehicle?.type||'Not added')} · insurance ${esc(d.insurance?.expiry||'Not needed')} · PUC ${esc(d.puc?.expiry||'Not needed')}</span><span>Payout: ${tag(v.payout)} · ${esc(p.bank?.masked||'Not added')} · ${esc(p.bank?.upi||'No UPI ID')}</span><span>Platform: background ${v.background?'complete':'pending'} · training ${v.training?'complete':'pending'}</span></div><p class="muted">${esc(reason||'Approved for delivery offers')} · Demo checks only. Changes to documents need platform review.</p></section>`;}
 const file=(label,key,accept='image/*,application/pdf')=>`<label><span>${label}</span><input type="file" name="${key}" accept="${accept}" ${accept.includes('image/*')?'capture="environment"':''}></label>`;
 export function deliveryOnboardingScreen(s,ws){
  const p=currentDeliveryPartner(s,ws);if(!p)return '';
@@ -99,7 +120,7 @@ export function deliveryOnboardingScreen(s,ws){
 export function deliverySubmittedScreen(p){return `<section class="panel"><h2>Submitted for platform review</h2><p>${esc(p.name)} · identity ${tag(p.verification?.identity)}, driving ${tag(p.verification?.driving)}, vehicle ${tag(p.verification?.vehicle)}, payout ${tag(p.verification?.payout)}.</p><p>Admin will review evidence, background and training before enabling offers.</p></section>`;}
 export function deliveryReviewScreen(s,ws){const p=currentDeliveryPartner(s,ws);if(!p)return '';
  const v=p.verification||{},d=p.documents||{};
- return `<section class="panel delivery-join-card"><h2>Review ${esc(p.name)}</h2><p>Demo verification results and filenames only. Open source documents in a secure service when a backend is connected.</p><div class="review-checklist"><span>ID: ${tag(v.identity)} · ${esc(p.identity?.aadhaarMasked||`${p.identity?.frontName||'No front'} / ${p.identity?.backName||'No back'}`)}</span><span>Licence: ${tag(v.driving)} · ${esc(masked(d.licence?.number||''))} · expiry ${esc(d.licence?.expiry||'N/A')} · ${esc(d.licence?.frontName||'')}</span><span>Vehicle: ${tag(v.vehicle)} · ${esc(p.vehicle?.number||p.vehicle?.type||'')} · RC ${esc(d.rc?.documentName||'N/A')} · insurance ${esc(d.insurance?.expiry||'N/A')} · PUC ${esc(d.puc?.expiry||'N/A')}</span><span>PAN ${esc(p.panMasked||'N/A')} · bank ${esc(p.bank?.masked||'N/A')} · ${tag(v.payout)}</span></div><form id="delivery-review-form"><label class="check-row"><input type="checkbox" name="background"> Demo background review complete</label><label class="check-row"><input type="checkbox" name="training"> Demo delivery training complete</label><label><span>Section to correct</span><select name="section"><option value="identity">Identity</option><option value="driving">Licence</option><option value="vehicle">Vehicle</option><option value="payout">Payout</option></select></label><label><span>Reason for correction or rejection</span><textarea name="reason"></textarea></label><div class="form-actions"><button type="button" class="button secondary" data-commerce="delivery-review-correction" data-ws="${esc(ws)}">Request correction</button><button type="button" class="button danger" data-commerce="delivery-review-reject" data-ws="${esc(ws)}">Reject</button><button type="button" class="button primary" data-commerce="delivery-review-approve" data-ws="${esc(ws)}">Approve partner</button></div></form></section>`;
+ return `<section class="panel delivery-join-card"><h2>Review ${esc(p.name)}</h2><p>Demo verification results and filenames only. Open source documents in a secure service when a backend is connected.</p><div class="review-checklist"><span>ID: ${tag(v.identity)} · ${esc(p.identity?.aadhaarMasked||p.identity?.idLast4&&`${p.identity.idType||'ID'} ending ${p.identity.idLast4}`||`${p.identity?.frontName||'No front'} / ${p.identity?.backName||'No back'}`)}</span><span>Licence: ${tag(v.driving)} · ${esc(masked(d.licence?.number||''))} · expiry ${esc(d.licence?.expiry||'N/A')} · ${esc(d.licence?.frontName||'')}</span><span>Vehicle: ${tag(v.vehicle)} · ${esc(p.vehicle?.number||p.vehicle?.type||'')} · RC ${esc(d.rc?.documentName||'N/A')} · insurance ${esc(d.insurance?.expiry||'N/A')} · PUC ${esc(d.puc?.expiry||'N/A')}</span><span>PAN ${esc(p.panMasked||'N/A')} · bank ${esc(p.bank?.masked||'N/A')} · ${tag(v.payout)}</span></div>${p.status==='submitted'?`<form id="delivery-review-form"><label class="check-row"><input type="checkbox" name="background"> Demo background review complete</label><label class="check-row"><input type="checkbox" name="training"> Demo delivery training complete</label><label><span>Section to correct</span><select name="section"><option value="identity">Identity</option><option value="driving">Licence</option><option value="vehicle">Vehicle</option><option value="payout">Payout</option></select></label><label><span>Reason for correction or rejection</span><textarea name="reason"></textarea></label><div class="form-actions"><button type="button" class="button secondary" data-commerce="delivery-review-correction" data-ws="${esc(ws)}">Request correction</button><button type="button" class="button danger" data-commerce="delivery-review-reject" data-ws="${esc(ws)}">Reject</button><button type="button" class="button primary" data-commerce="delivery-review-approve" data-ws="${esc(ws)}">Approve partner</button></div></form>`:'<p class="muted">This application is not awaiting review.</p>'}</section>`;
 }
 export function deliveryReviewDecision(s,ws,decision,section='identity',reason='',checks={}){
  const p=currentDeliveryPartner(s,ws);if(!p||p.status!=='submitted')return 'Nothing to review for this delivery partner.';
@@ -110,7 +131,7 @@ export function deliveryReviewDecision(s,ws,decision,section='identity',reason='
   if(!p.identity||!p.verification?.driving||!p.verification?.vehicle||!p.verification?.payout)return 'Review all application steps first.';
   for(const x of ['licence','insurance','puc'])if(p.documents?.[x]?.expiry&&p.documents[x].expiry<today())return `${x} expired. Request a renewed document.`;
   if(!checks.background||!checks.training)return 'Complete background review and delivery training first.';
-  p.verification.background=true;p.verification.training=true;p.verification.reviewedAt=new Date().toISOString();p.status='approved';p.available=true;
+  p.verification.background=true;p.verification.training=true;p.verification.reviewedAt=new Date().toISOString();p.status='approved';p.available=true;ensureDeliveryPartners(s);
  }else if(decision==='reject'){p.status='rejected';p.available=false;p.rejectionReason=String(reason).trim();}
  else{p.status='correction_required';p.available=false;p.correctionSection=section;p.correctionReason=String(reason).trim();p.onboardingStep=section;p.verification[section]=null;}
  return '';

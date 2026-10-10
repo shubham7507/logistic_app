@@ -46,8 +46,10 @@ export const SEED={
   // through end to end without needing a third demo slot.
   deliveryPartners:{
     deliveryPartner:{id:'DP-001',name:'Ravi Delivery',mobile:'9876506001',status:'approved',available:true,
+      onboardingVersion:1,verification:{identity:'demo_verified',driving:'demo_checked',vehicle:'demo_checked',payout:'demo_checked',background:true,training:true},
+      panMasked:'••••••1234',
       vehicle:{type:'two_wheeler',number:'KA05AB1234'},
-      documents:{licence:{number:'DL-14-2019-0012345',expiry:'2029-05-31'},rc:{documentName:'rc-ravi.pdf'},insurance:{documentName:'insurance-ravi.pdf'}},
+      documents:{licence:{number:'DL-14-2019-0012345',expiry:'2031-05-31',status:'demo_checked'},rc:{documentName:'rc-ravi.pdf'},insurance:{documentName:'insurance-ravi.pdf',expiry:'2031-05-31'},puc:{documentName:'puc-ravi.pdf',expiry:'2031-05-31'}},
       identity:{idType:'Driving licence',idLast4:'2345',dob:'1994-02-10',address:'Whitefield, Bangalore',documentName:'rc-ravi.pdf'},
       bank:{accountName:'Ravi Delivery',accountNumber:'1234567801',masked:'••••7801',ifsc:'HDFC0001234',upi:'ravi@upi'},
       documentsStatus:'complete',bankStatus:'complete',emergencyStatus:'skipped',emergency:null,
