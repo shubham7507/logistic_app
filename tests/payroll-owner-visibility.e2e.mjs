@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {SEED} from '../js/mock-data.js';
+import * as HR from '../js/store-hr.js';
+import * as Pay from '../js/payroll-core.js';
+import * as PC from '../js/people-core.js';
+import {readFileSync} from 'node:fs';
+const s=structuredClone(SEED);HR.people(s,'grocery');PC.ensureCore(s);const worker=s.pickerStaff.find(x=>x.store==='grocery'&&x.status==='active');const h=HR.hr(s,{...worker,kind:'staff'});h.kyc={status:'verified',reviewStatus:'pending',idLast4:'1234',dob:'1990-01-01',selfie:'test-selfie.jpg'};assert.equal(HR.setPayout(s,worker.id,{method:'bank',account:'12345678901',ifsc:'SBIN0001234',name:worker.name}), '');
+s.hrTab='team';const owner=HR.screen(s,'storeHR','grocery'),manager=HR.screen(s,'storeHR','groceryManager');assert.match(owner,/Aadhaar ending 1234/);assert.match(owner,/account ••••8901/);assert.match(owner,/test-selfie.jpg/);assert.match(owner,/beneficiary Asha Picker/);assert.match(owner,/IFSC SBIN0001234/);assert.match(owner,/Confirm ID match/);assert.doesNotMatch(manager,/Aadhaar ending 1234|account ••••8901|test-selfie.jpg|1990-01-01|Confirm ID match/);
+const emp=s.employments.find(x=>x.business==='grocery'&&x.source.id===worker.id);Pay.ensurePayrollCore(s);const run=Pay.runMonthlyPayroll(s,'grocery',new Date().toISOString().slice(0,7));assert.equal(run.lines.find(x=>x.personId===emp.personId).verified,true);
+h.payout={method:'upi',upi:'test@okaxis',verified:true};assert.equal(Pay.runMonthlyPayroll(s,'grocery',new Date().toISOString().slice(0,7)).lines.find(x=>x.personId===emp.personId).verified,false,'UPI alone cannot qualify for bank batch');
+const app=readFileSync(new URL('../js/app.js',import.meta.url),'utf8');assert.match(app,/data-open-hr-team>Check staff bank and ID/);
+console.log('PASS payroll owner visibility: masked bank and ID only to owner, UPI not bank-ready, direct shortcut');

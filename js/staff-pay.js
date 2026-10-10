@@ -21,6 +21,7 @@ export function screen(s, route, ws) {
 }
 export function bind(root,api){
   const attendanceLink=root.querySelector('[data-open-hr-time]');if(attendanceLink)attendanceLink.onclick=e=>{e.stopPropagation();api.getState().hrTab='time';api.save();api.navigate('storeHR')};
+  const teamLink=root.querySelector('[data-open-hr-team]');if(teamLink)teamLink.onclick=e=>{e.stopPropagation();api.getState().hrTab='team';api.save();api.navigate('storeHR')};
   root.querySelector('[data-staff-pay-requests]')?.addEventListener('click',()=>{const s=api.getState();s.hrTab='ledgers';api.save();api.navigate('storeHR')});
   root.querySelector('[data-staff-post-earnings]')?.addEventListener('click',()=>{const s=api.getState(),sc=PC.scopeOf(s,s.currentWorkspace);if(sc?.kind!=='owner'||!PC.STORES.includes(sc.business))return api.toast('Only the seller owner posts earnings.');const error=HR.postEarnings(s,s.currentWorkspace);if(error)return api.toast(error);Payroll.ensurePayrollCore(s);api.save();api.render();api.toast('Earnings posted. Review the draft before paying.');});
   root.querySelector('[data-staff-pay-branch]')?.addEventListener('change',e=>{const s=api.getState(),sc=PC.scopeOf(s,s.currentWorkspace);if(sc?.kind!=='owner')return;(s.staffPayBranch||={})[sc.business]=e.target.value;api.save();api.render()});
