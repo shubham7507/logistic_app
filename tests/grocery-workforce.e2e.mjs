@@ -5,6 +5,7 @@ import {mobileNavigation} from '../js/navigation.js';
 import * as W from '../js/grocery-workforce.js';
 import * as Staff from '../js/grocery-staff.js';
 import * as Pay from '../js/grocery-picker-pay.js';
+import * as Payroll from '../js/payroll-core.js';
 import * as C from '../js/commerce.js';
 import * as Orders from '../js/product-orders.js';
 
@@ -33,8 +34,11 @@ okay(W.selectStoreManager(s,'groceryManager','MGR-001'));
 
 okay(Staff.invitePicker(s,'grocery','Priya Cover','9876501199'));
 const cover=s.pickerStaff.at(-1);
-okay(Staff.selectPicker(s,'picker',cover.id));okay(Staff.acceptPickerInvite(s,'picker'));okay(Pay.setPickerPayPlan(s,'grocery',cover.id,'daily',500));
-assert.match(W.publishPickerShift(s,'groceryFreshManager',cover.id,today,'09:00','17:00'),/Choose an active picker/);
+okay(Staff.selectPicker(s,'picker',cover.id));okay(Staff.acceptPickerInvite(s,'picker'));
+assert.equal(cover.status,'profile_pending'); // Invitation acceptance still requires profile review.
+cover.status='active'; // This roster test starts after the separate onboarding scenario completes.
+okay(Pay.setPickerPayPlan(s,'grocery',cover.id,'daily',500));
+assert.match(W.publishPickerShift(s,'groceryFreshManager',cover.id,today,'09:00','17:00'),/Choose an active staff member/);
 okay(W.publishPickerShift(s,'groceryManager',cover.id,today,'09:00','17:00'));
 const roster=s.pickerSchedules.at(-1);
 assert.match(Pay.startPickerShift(s,'picker'),/Confirm your scheduled shift/);
@@ -65,7 +69,7 @@ assert.match(W.finalizePickerOffboarding(s,'grocery','PICK-001'),/Resolve open t
 okay(Pay.recordPickerPayment(s,'grocery',pay.id,'bank','TEST-FINAL-001'));
 
 // Full customer order through the manager, picker, seller/courier and admin.
-const placed=Orders.placeOrder(s,{productId:'PRD-101',qty:2,address:'Noida',method:'upi',vpa:'test@okaxis'}).order;
+const placed=Orders.placeOrder(s,{productId:'PRD-101',qty:2,address:'Noida',method:'cod'}).order;
 assert.match(C.sellerAction(s,'groceryFreshManager',placed.id,'accept'),/denied/);
 okay(C.sellerAction(s,'groceryManager',placed.id,'accept'));
 okay(Staff.assignPicker(s,'groceryManager',placed.id,'PICK-001'));
@@ -76,6 +80,7 @@ okay(C.pickerAction(s,'picker',placed.id,'complete'));
 okay(C.sellerAction(s,'groceryManager',placed.id,'pack',1));
 assert.equal(placed.deliveryAssignment.partnerName,'Ravi Delivery');
 okay(C.deliveryAction(s,'deliveryPartner',placed.id,'accept'));
+placed.geo={everStarted:true,live:true}; // Mock user enabled live sharing before pickup.
 okay(C.deliveryAction(s,'deliveryPartner',placed.id,'pickup',placed.pickupCode,1));
 okay(C.deliveryAction(s,'deliveryPartner',placed.id,'deliver',placed.deliveryCode));
 assert.equal(placed.status,'delivered');
@@ -83,6 +88,10 @@ assert.match(Orders.ordersScreen(s),new RegExp(placed.id));
 s.selectedTrackingOrderId=placed.id;assert.match(Orders.trackingScreen(s),/Delivered|delivered/);
 assert.ok(s.notifications.some(n=>n.to==='groceryManager'&&n.ref===placed.id));
 assert.match(C.screen(s,'commerceOrders','admin'),new RegExp(placed.id));
+Payroll.ensurePayrollCore(s);
+const employment=s.employments.find(e=>e.business==='grocery'&&e.source.id==='PICK-001');
+const finalDue=Payroll.balance(s,employment.personId,'grocery');
+if(finalDue>0){okay(Payroll.payNow(s,'grocery',employment.personId,finalDue,'cash',''));const event=s.payEvents.findLast(x=>x.personId===employment.personId&&x.method==='cash');okay(Payroll.confirmCashPayment(s,event.id,employment.personId,true));}
 okay(W.finalizePickerOffboarding(s,'grocery','PICK-001'));
 assert.equal(s.pickerStaff[0].status,'offboarded');
 assert.match(Pay.startPickerShift(s,'picker'),/Active picker/);

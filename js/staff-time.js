@@ -22,7 +22,9 @@ export function saveSchedule(s,store,pid,v,actor){
  if(!validDay(v.effectiveFrom)||v.effectiveFrom<today())return 'Start the new schedule today or later.';
  if(!/^\d\d:\d\d$/.test(v.start||'')||!/^\d\d:\d\d$/.test(v.end||'')||v.start>=v.end)return 'Choose valid shift start and end times.';
  const rules=(s.staffWorkRules||={})[pid]||=[];
- if(rules.some(x=>x.effectiveFrom===v.effectiveFrom))return 'There is already a schedule starting on this date. Choose another effective date.';
+ const demo=rules.find(x=>x.effectiveFrom===v.effectiveFrom&&x.by==='Demo workweek');
+ if(demo)rules.splice(rules.indexOf(demo),1);
+ else if(rules.some(x=>x.effectiveFrom===v.effectiveFrom))return 'There is already a schedule starting on this date. Choose another effective date.';
  rules.push({id:uid('SCH'),store,personId:pid,weekdays,start:v.start,end:v.end,effectiveFrom:v.effectiveFrom,by:actor,at:at()});s.staffWorkRules[pid]=rules;
  notify(s,workerWs(s,store,pid),'myHR',`Your work schedule at ${s.shopPartners?.[store]?.name||store} changes on ${v.effectiveFrom}`,pid,pid);
  return '';

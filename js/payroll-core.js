@@ -11,6 +11,7 @@
 // building one is a separate, large task of its own. Their pay stays on the existing trip-settlement
 // system for now; this is a deliberate boundary, not an oversight.
 import {esc, inr} from './ops.js';
+import {clock} from './pay.js';
 import * as PC from './people-core.js';
 import * as WF from './workforce.js';
 import {gateway} from './pay.js';
@@ -511,7 +512,7 @@ export function monthlyPayrollScreen(s, business, period) {
   ensurePayrollCore(s);
   const history=runs(s).filter(r=>r.business===business&&r.period===period);
   const saved=history.at(-1);
-  if(period!==new Date().toISOString().slice(0,7)&&!saved)return `<section class="panel"><h2>${esc(period)}</h2><p>No saved pay run for this month. The demo prepares pay for the current month only.</p></section>`;
+  if(period!==new Date(clock()).toISOString().slice(0,7)&&!saved)return `<section class="panel"><h2>${esc(period)}</h2><p>No saved pay run for this month. Choose the current demo month to prepare a batch.</p></section>`;
   const run = saved?.status==='draft' ? runMonthlyPayroll(s,business,period) : saved || runMonthlyPayroll(s,business,period);
   const isDraft = run.status === 'draft';
   const ready=run.lines.filter(l=>!l.hold&&((l.verified&&l.amount>0)||(!l.amount&&l.recoveryTotal>0)));
@@ -524,7 +525,7 @@ export function monthlyPayrollScreen(s, business, period) {
   return `<section class="panel"><h2>GIRO style bank batch · ${esc(period)}</h2><p class="info-banner">Demo payroll for monthly workers across all branches. Bank responses and ledger entries are simulated. No money is transferred.</p><p class="muted">${isDraft?`Ready: ${ready.length} · ${inr(totalDue)}. Bank details missing: ${blocked.length}. On hold: ${held.length}. Review each line before submitting.`:`Batch ${esc(run.id)} completed ${esc(run.completedAt)}. Paid ${(run.results||[]).filter(r=>r.outcome==='paid').length}, failed ${(run.results||[]).filter(r=>r.outcome==='failed').length}, held ${(run.results||[]).filter(r=>r.outcome==='held').length}.`}</p>
   ${rows || '<p class="muted">No one with a monthly pay plan found for this business.</p>'}
   ${isDraft && ready.length ? `<button class="button primary full" data-payroll-approve-run="${esc(run.id)}">Submit mock bank batch · ${inr(totalDue)}</button>` : ''}
-  ${isDraft && !ready.length?'<p class="muted">No bank-ready amount to submit. Post earnings or ask workers to add verified bank details.</p>':''}
+  ${isDraft && !ready.length?'<p class="info-banner">No bank-ready amount yet. Open Attendance & leave to finish the month, post earnings above, then ask each worker to add a verified bank account in My work & pay. UPI-only workers can be paid individually from Pay workers.</p>':''}
   ${!isDraft&&pending?`<button class="button secondary" data-payroll-retry="${esc(period)}">Prepare another batch for remaining dues</button>`:''}
   ${history.length>1?`<details><summary>Earlier batches (${history.length-1})</summary>${history.slice(0,-1).reverse().map(r=>`<div class="ledger-row static"><span><b>${esc(r.id)}</b><small>${esc(r.completedAt||r.createdAt)} · ${esc(r.status)} · ${(r.results||[]).filter(x=>x.outcome==='paid').length} paid, ${(r.results||[]).filter(x=>x.outcome==='failed').length} failed</small></span></div>`).join('')}</details>`:''}
   </section>`;

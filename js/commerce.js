@@ -372,6 +372,7 @@ export function bind(root,api){
  });
  root.querySelectorAll('[data-commerce]').forEach(b=>b.onclick=()=>{
   const s=api.getState(),ws=s.currentWorkspace,o=orders(s).find(x=>x.id===b.dataset.id),action=b.dataset.commerce;
+  if(action==='load-monthly-payroll')return; // Handled by the month selector below.
   let error='';
  if(['accept','pack'].includes(action))error=sellerAction(s,ws,b.dataset.id,action,action==='pack'?root.querySelector(`[data-bags="${b.dataset.id}"]`)?.value||'':'');
   else if(action==='voice-product-parse'){if(!sellerRole(ws))error='Store owner access required.';else{const source=root.querySelector('[data-voice-product-text]')?.value||'';if(!source.trim())error='Speak or type a product first.';else(s.voiceCatalogDraft||={})[storeOf(ws)]=Voice.productDraft(source);}}
@@ -535,7 +536,7 @@ export function bind(root,api){
    if(err)return api.toast(err);api.save();api.render();api.toast('Done');
  });
  root.querySelector('[data-commerce="load-monthly-payroll"]')?.addEventListener('click',()=>{const st=api.getState(),period=root.querySelector('#payroll-period-input')?.value;if(!period)return api.toast('Choose a month first.');st.selectedPayrollPeriod=period;api.save();api.render();});
- root.querySelectorAll('[data-payroll-retry]').forEach(b=>b.onclick=()=>{const st=api.getState(),sc=PC.scopeOf(st,st.currentWorkspace);if(sc?.kind!=='owner'||b.dataset.payrollRetry!==new Date().toISOString().slice(0,7))return api.toast('Only the owner can prepare a new batch for the current month.');Payroll.runMonthlyPayroll(st,sc.business,b.dataset.payrollRetry);api.save();api.render();});
+ root.querySelectorAll('[data-payroll-retry]').forEach(b=>b.onclick=()=>{const st=api.getState(),sc=PC.scopeOf(st,st.currentWorkspace);if(sc?.kind!=='owner'||b.dataset.payrollRetry!==new Date(clock()).toISOString().slice(0,7))return api.toast('Only the owner can prepare a new batch for the current demo month.');Payroll.runMonthlyPayroll(st,sc.business,b.dataset.payrollRetry);api.save();api.render();});
  root.querySelectorAll('[data-payroll-hold]').forEach(b=>b.onclick=()=>{const st=api.getState(),err=Payroll.toggleHold(st,b.dataset.payrollHold,b.dataset.person);if(err)return api.toast(err);api.save();api.render();});
  root.querySelectorAll('[data-payroll-approve-run]').forEach(b=>b.onclick=()=>{
    const st=api.getState();if(PC.scopeOf(st,st.currentWorkspace)?.kind!=='owner')return api.toast('Only the owner approves payroll.');

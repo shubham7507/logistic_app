@@ -1,0 +1,17 @@
+.staff-guide { background: #eef7f4; border-color: #c9e5dc; }
+.staff-guide h2 { margin-bottom: .5rem; }
+.staff-guide ol { margin: .5rem 0 1rem; padding-left: 1.5rem; line-height: 1.65; }
+.staff-guide p { max-width: 75ch; }
+.staff-form-row { display: flex; flex-wrap: wrap; align-items: end; gap: .85rem; margin: 1rem 0; }
+.staff-form-row label { display: grid; gap: .3rem; flex: 1 1 170px; min-width: 0; font-weight: 600; }
+.staff-form-row input, .staff-form-row select, .staff-cover-action select { max-width: 100%; min-height: 42px; padding: .55rem .7rem; border: 1px solid #b6c9c3; border-radius: 9px; background: #fff; font: inherit; }
+.staff-branch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 1rem; }
+.staff-branch-card .panel-header { align-items: start; }
+.staff-branch-card .metrics { margin: 1rem 0; }
+.staff-shift-card { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .8rem; padding: 1rem 0; border-bottom: 1px solid #dbe5e2; }
+.staff-shift-card:last-child { border-bottom: 0; }
+.staff-shift-card > div:first-child { display: grid; gap: .3rem; }
+.staff-shift-card small { color: #52635e; }
+.staff-cover-action { display: flex; flex-wrap: wrap; gap: .7rem; align-items: end; }
+.staff-cover-action label { display: grid; gap: .3rem; }
+@media (max-width: 650px) { .staff-shift-card > *, .staff-cover-action, .staff-cover-action label { width: 100%; } .staff-form-row > button { width: 100%; } }

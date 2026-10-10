@@ -8,7 +8,7 @@ const businessScreens=[peopleScreen(state),addStaffScreen(state),staffDetailScre
 for(const html of businessScreens){assert.ok(html.length>200);assert.ok(!html.includes('undefined'))}
 assert.ok(staffDetailScreen(state).includes('+91 ••••••1101'));
 assert.ok(!staffDetailScreen(state).includes('9876501101'));
-assert.ok(staffOnboardingScreen(state).includes('Owner reviews masked values only')||staffOnboardingScreen(state).includes('Only your own information'));
+assert.ok(staffOnboardingScreen(state).includes('You enter your own private information'));
 assert.ok(rolesScreen(state).includes('Owner-only actions cannot be delegated'));
 assert.ok(offboardingScreen(state).includes('history and dues remain'));
 
