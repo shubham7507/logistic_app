@@ -1,0 +1,47 @@
+import assert from 'node:assert/strict';
+import {SEED} from '../js/mock-data.js';
+import {ROLE_CONFIG} from '../js/config.js';
+import {loadStaffDemo} from '../js/staff-demo.js';
+import * as Branches from '../js/seller-branches.js';
+import * as Inventory from '../js/grocery-inventory.js';
+import * as Plus from '../js/commerce-plus.js';
+import * as Commerce from '../js/commerce.js';
+import * as StaffPay from '../js/staff-pay.js';
+import * as HR from '../js/store-hr.js';
+import * as PC from '../js/people-core.js';
+import * as Payroll from '../js/payroll-core.js';
+
+for(const store of ['grocery','groceryFresh','electrical','fashion']){
+ const s=structuredClone(SEED);Plus.ensurePlus(s);assert.equal(loadStaffDemo(s,store),'');
+ assert.equal(ROLE_CONFIG[store].nav.some(([r])=>r==='plusListings'),false);
+ assert.match(Commerce.screen(s,'shopCatalog',store),/Import products from CSV/);
+ assert.match(Commerce.screen(s,'shopCatalog',store),/Listing details and batches/);
+ assert.match(Commerce.screen(s,'shopCatalog',store),/Receive dated stock/);
+ assert.doesNotMatch(Commerce.screen(s,'shopCatalog',store),/data-plus-form="bulk"/);
+ assert.match(Commerce.screen(s,'shopEarnings',store),/data-route="staffPay"/);
+ assert.doesNotMatch(Commerce.screen(s,'shopEarnings',store),/data-route="shopPickerPay"/);
+ assert.match(StaffPay.screen(s,'staffPay',store),/Pay workers/);
+ assert.match(StaffPay.screen(s,'staffPay',store),/advance request/i);
+ assert.match(HR.screen(s,'storeHR',store),/People/);
+ const food=Inventory.forStore(s,store).find(p=>['grocery','groceryFresh'].includes(store)&&(/rice|salt|atta|dal|milk/i.test(p.name)));
+ if(!food)continue;
+ const main=Branches.defaultBranch(s,store),other=Branches.branchesFor(s,store).find(b=>b.id!==main).id;
+ Inventory.ensureProductBranches(s,food);
+ const a=Inventory.available(food,main),b=Inventory.available(food,other),total=food.quantity;
+ assert.equal(Plus.addBatch(s,food,7,'2099-01-01',other),'');
+ assert.equal(Inventory.available(food,main),a);
+ assert.equal(Inventory.available(food,other),b+7);
+ assert.equal(food.quantity,total+7);
+ assert.equal(food.batches.at(-1).branchId,other);
+ assert.match(Plus.addBatch(s,food,-1,'2099-01-01',other),/quantity/);
+ assert.match(Plus.addBatch(s,food,1,'2000-01-01',other),/future/);
+ assert.equal(Inventory.available(food,other),b+7);
+ assert.equal(Branches.selectBranch(s,store,other),'');
+ assert.match(Commerce.screen(s,'shopCatalog',store),/Receive dated stock/);
+ assert.match(Commerce.screen(s,'shopCatalog',store),new RegExp(Branches.branch(s,store,other).name.split(' · ')[0]));
+ const emp=s.employments.find(e=>e.business===store&&e.status==='active');assert(emp);
+ const before=Payroll.balance(s,emp.personId);HR.post(s,{store,personId:emp.source.id,branchId:main,type:'earning',amount:300,note:'Demo work',status:'posted'});Payroll.ensurePayrollCore(s);
+ assert.equal(Payroll.balance(s,emp.personId),before+300);
+ assert.match(StaffPay.screen(s,'staffPay',store),new RegExp(s.persons[emp.personId].name));
+}
+console.log('PASS consolidated catalogue and pay: four seller roles, branch batches, one pay ledger and mock worker requests');
