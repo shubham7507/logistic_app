@@ -34,6 +34,8 @@ function touch(s) { s.payVersion = (s.payVersion || 0) + 1; }
 function payoutVerified(s, personId) {
   const emp = s.employments?.find(e => e.personId === personId && e.status === 'active');
   if (!emp) return false;
+  const hr=s.staffHR?.[emp.source.id];
+  if(hr?.payout?.reviewStatus==='pending'||hr?.payout?.reviewStatus==='correction_required')return !!hr.previousPayout?.verified;
   const rec = emp.source.kind === 'people' ? (s.peopleByWorkspace?.[emp.business] || []).find(x => x.id === emp.source.id)
     : emp.source.kind === 'picker' ? (s.pickerStaff || []).find(x => x.id === emp.source.id)
     : emp.source.kind === 'manager' ? (s.storeManagers || []).find(x => x.id === emp.source.id)
@@ -330,7 +332,11 @@ function resolveBankRecord(s, personId) {
     : emp.source.kind === 'manager' ? (s.storeManagers || []).find(x => x.id === emp.source.id)
     : emp.source.kind === 'delivery' ? Object.values(s.deliveryPartners || {}).find(x => x.id === emp.source.id)
     : null;
-  const legacy=s.staffHR?.[emp.source.id]?.payout;
+  const h=s.staffHR?.[emp.source.id];
+  const legacy=h?.payout?.reviewStatus==='pending'||h?.payout?.reviewStatus==='correction_required'?h.previousPayout:h?.payout;
+  if(h?.payout?.reviewStatus==='pending'||h?.payout?.reviewStatus==='correction_required'){
+    return legacy?.verified ? {upi:legacy.upi,accountNumber:legacy.accountNumber} : null;
+  }
   if(legacy?.verified&&legacy.method==='bank'&&legacy.accountNumber)return {accountNumber:legacy.accountNumber,upi:rec?.bank?.upi};
   if(legacy?.verified&&legacy.method==='upi'&&legacy.upi)return {upi:legacy.upi,accountNumber:rec?.bank&&['verified','complete'].includes(rec.bankStatus)?rec.bank.accountNumber:null};
   if(rec?.bank)return rec.bank;
