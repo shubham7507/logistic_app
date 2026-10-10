@@ -15,6 +15,7 @@ assert.ok(o.dest&&o.origin);assert.ok(o.deliveryKm>2&&o.deliveryKm<8,'road dista
 // courier: offered → accepted → drive to store (auto arrival) → pickup → drive to customer (arriving, arrived) → deliver
 o.status='ready_for_pickup';o.bagCount=1;C.autoOffer(s,o);const ws=Object.keys(s.deliveryPartners).find(k=>s.deliveryPartners[k].id===o.deliveryAssignment.partnerId);
 assert.equal(C.deliveryAction(s,ws,o.id,'accept'),'');
+o.geo.everStarted=true; // The courier explicitly started location sharing before driving.
 G.demoStep(s,o,0.05);assert.equal(o.geo.live,true);assert.equal(o.geo.phase,'to_store');
 assert.match(C.deliveryAction(s,ws,o.id,'pickup',o.pickupCode,1),/from the store/,'pickup blocked away from the store');
 for(let i=0;i<60&&!o.geo.arrivedStoreAt;i++)G.demoStep(s,o);assert.ok(o.geo.arrivedStoreAt,'auto arrived at store');

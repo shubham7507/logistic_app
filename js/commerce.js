@@ -1,7 +1,7 @@
 // Shared mock commerce workflow. Role checks live in mutations, not just screens.
 import {esc, pill, inr} from './ops.js';
 import * as PC from './people-core.js';
-import {deliveryOnboardingScreen,deliverySubmittedScreen,deliveryReviewScreen,submitDeliveryOnboarding,deliveryReviewDecision,currentDeliveryPartner} from './delivery-onboarding.js';
+import {deliveryOnboardingScreen,deliverySubmittedScreen,deliveryReviewScreen,submitDeliveryOnboarding,deliveryReviewDecision,currentDeliveryPartner,deliveryEligibility,requestAadhaarOtp,confirmAadhaarOtp,submitManualIdentity,saveDeliveryDriving,saveDeliveryVehicle,saveDeliveryPayout} from './delivery-onboarding.js';
 import * as Payroll from './payroll-core.js';
 import * as HR from './store-hr.js';
 import * as CatalogCSV from './catalog-csv.js';
@@ -105,7 +105,7 @@ export function autoOffer(s,o){
  o.deliveryAssignment={partnerId:choice.id,partnerName:choice.name,status:'offered',offeredAt:clock()};log(s,o,'MoveAI',`Delivery offered to ${choice.name}`);
 }
 export function assign(s,id,partnerId){
- const o=orders(s).find(x=>x.id===id),p=Object.values(s.deliveryPartners||{}).find(x=>x.id===partnerId&&x.status==='approved'&&x.available);
+ const o=orders(s).find(x=>x.id===id),p=Object.values(s.deliveryPartners||{}).find(x=>x.id===partnerId&&!deliveryEligibility(x)&&x.available);
  if(!o||o.status!=='ready_for_pickup'||!p)return 'Order or available partner not found.';
  if(o.deliveryAssignment?.status==='accepted')return 'The current partner already accepted. Resolve that assignment first.';
  o.deliveryAssignment={partnerId:p.id,partnerName:p.name,status:'offered',offeredAt:clock()};log(s,o,'Admin',`Delivery offered to ${p.name}`);return '';
@@ -115,12 +115,12 @@ export function expireOffer(s,id){
  if(!o||o.status!=='ready_for_pickup'||a?.status!=='offered')return 'There is no open delivery offer.';
  if(clock()-a.offeredAt<10*60000)return 'The courier still has time to respond (10-minute demo window).';
  const old=a.partnerId,oldWs=Object.keys(s.deliveryPartners||{}).find(ws=>s.deliveryPartners[ws].id===old);for(const n of s.notifications||[])if(n.ref===id&&n.to===oldWs&&/New delivery offer/.test(n.text))n.read=true;o.deliveryAssignment=null;log(s,o,'Admin','Delivery offer expired');
- const next=Object.values(s.deliveryPartners||{}).find(p=>p.id!==old&&p.status==='approved'&&p.available);
+ const next=Object.values(s.deliveryPartners||{}).find(p=>p.id!==old&&!deliveryEligibility(p)&&p.available);
  if(next)assign(s,id,next.id);else log(s,o,'MoveAI','Waiting for an available delivery partner');return '';
 }
 export function deliveryAction(s,ws,id,action,code='',bagCount='',cashHandover={}){
  const o=orders(s).find(x=>x.id===id);if(!o||!driverRole(ws)||!mine(s,o,ws))return 'Delivery access denied.';
- if(driver(s,ws).status!=='approved')return 'Delivery profile must be approved.';
+ if(deliveryEligibility(driver(s,ws)))return deliveryEligibility(driver(s,ws));
  const a=o.deliveryAssignment,actor=driver(s,ws).name;
  if(action==='accept'&&a.status==='offered'){a.status='accepted';log(s,o,actor,'Delivery offer accepted');return '';}
  if(action==='decline'&&a.status==='offered'){a.status='declined';for(const n of s.notifications||[])if(n.ref===id&&n.to===ws&&/New delivery offer/.test(n.text))n.read=true;log(s,o,actor,'Delivery offer declined');o.deliveryAssignment=null;const choices=Object.values(s.deliveryPartners||{}).filter(p=>p.id!==driver(s,ws).id&&p.available&&p.status==='approved');if(choices[0])assign(s,id,choices[0].id);else log(s,o,'MoveAI','Waiting for an available delivery partner');return '';}
@@ -228,6 +228,7 @@ export function payDelivery(s,id,method='bank',reference=''){const o=orders(s).f
  x.status=method==='bank'?'paid':'recorded_paid';x.method=method;x.channel=method==='bank'?'moveai_pay':'outside_app';x.payoutReference=g.ref;x.paidAt=clock();o.deliveryPayoutStatus=x.status;log(s,o,'Admin',`Delivery earning ${inr(o.feeBreakdown?.deliveryPartnerEarning??SHOP_POLICY.deliveryEarning)} ${method==='bank'?'paid':'externally recorded'} to ${p.name}`);return '';
 }
 export function setPartnerStatus(s,kind,ws,status){const list=kind==='store'?s.shopPartners:s.deliveryPartners,item=list?.[ws];if(!item||!['approved','under_review','suspended'].includes(status))return 'Profile not found.';
+ if(kind==='delivery'&&status==='approved'&&item.onboardingVersion&&(!item.verification?.background||!item.verification?.training||['licence','insurance','puc'].some(k=>item.documents?.[k]?.expiry&&item.documents[k].expiry<new Date().toISOString().slice(0,10))))return 'Complete platform training, background review and renew expired documents first.';
  if(status==='suspended'&&orders(s).some(o=>!['delivered','cancelled','returned'].includes(o.status)&&(kind==='store'?o.party===item.party:o.deliveryAssignment?.partnerId===item.id)))return 'Resolve active orders before suspending this profile.';
  item.status=status;if(kind==='delivery'&&status!=='approved')item.available=false;(s.audit||=[]).unshift({id:`AUD-${Date.now()}`,event:`${kind} ${ws}: ${status}`,actor:'Admin',workspace:'admin',at:stamp()});return '';}
 export function advanceDemoClock(s){s.simClockDays=(s.simClockDays||0)+7;globalThis.__moveaiClockOffset=s.simClockDays;}
@@ -276,7 +277,7 @@ export function storeExceptions(s,ws){
   return reason?{order:o,reason}:null;
  }).filter(Boolean);
 }
-const orderCard=(o,ws,s)=>`<section class="panel order-card"><div class="panel-header"><div><h2>${esc(o.id)} · ${inr(o.total)}</h2><p>${o.items.map(i=>`${i.quantity} × ${esc(i.name||i.productId)}`).join(', ')} · ${esc(o.fulfilmentPartner)}${o.branchName?` · ${esc(o.branchName)}`:''}</p></div>${pill(o.status)}</div>${nextAction(o,ws)?`<p class="info-banner">${esc(nextAction(o,ws))}</p>`:''}<p class="muted">Payment: ${esc(o.paymentStatus||'legacy')} · Store settlement: ${esc(o.settlementStatus||'legacy')} · Delivery: ${esc(o.deliveryAssignment?.partnerName||'Not assigned')}${o.latestLocation?` · Last location: ${esc(o.latestLocation.label)}`:''}</p>${driverRole(ws)?driverAddresses(o,s):''}${ws==='admin'?`<p class="muted">Customer: ${esc(o.customer||'Customer')} · Address: ${esc(o.address||'Not recorded')} · Picker: ${esc(o.pick?.picker||staffFor(s,Object.keys(s.shopPartners||{}).find(k=>s.shopPartners[k].party===o.party)).find(p=>p.id===o.pickerId)?.name||'Not assigned')} (${Object.keys(o.pick?.checked||{}).length}/${o.items.length} item lines) · COD: ${esc(o.codCash?.status||'N/A')} · Delivery payout: ${esc(o.deliveryPayoutStatus||'N/A')}</p>`:''}${replacementPicker(o,ws,s)}${storeOperator(ws)&&o.status==='returned'&&!o.returnStockCondition?`<div class="info-banner"><b>Inspect returned items</b><select data-online-return-condition="${esc(o.id)}"><option value="damaged">Damaged / expired · do not restock</option><option value="sellable">Sellable · restock</option></select><button class="button secondary compact" data-commerce="return-stock" data-id="${esc(o.id)}">Record condition</button></div>`:''}<div class="row-actions">${buttons(o,ws,s)}</div><details><summary>Order history</summary>${(o.history||[]).map(h=>`<small class="block">${esc(h.at)} · ${esc(h.actor||'MoveAI')}: ${esc(h.text)}</small>`).join('')}</details></section>`;
+const orderCard=(o,ws,s)=>`<section class="panel order-card"><div class="panel-header"><div><h2>${esc(o.id)} · ${inr(o.total)}</h2><p>${o.items.map(i=>`${i.quantity} × ${esc(i.name||i.productId)}`).join(', ')} · ${esc(o.fulfilmentPartner)}${o.branchName?` · ${esc(o.branchName)}`:''}</p></div>${pill(o.status)}</div>${nextAction(o,ws)?`<p class="info-banner">${esc(nextAction(o,ws))}</p>`:''}<p class="muted">Payment: ${esc(o.paymentStatus||'legacy')} · Store settlement: ${esc(o.settlementStatus||'legacy')} · Delivery: ${esc(o.deliveryAssignment?.partnerName||'Not assigned')}${o.latestLocation?` · Last location: ${esc(o.latestLocation.label)}`:''}</p>${driverRole(ws)?driverAddresses(o,s):''}${driverRole(ws)&&['accepted','picked_up'].includes(o.deliveryAssignment?.status)?Geo.courierPanel(s,o):''}${ws==='admin'?`<p class="muted">Customer: ${esc(o.customer||'Customer')} · Address: ${esc(o.address||'Not recorded')} · Picker: ${esc(o.pick?.picker||staffFor(s,Object.keys(s.shopPartners||{}).find(k=>s.shopPartners[k].party===o.party)).find(p=>p.id===o.pickerId)?.name||'Not assigned')} (${Object.keys(o.pick?.checked||{}).length}/${o.items.length} item lines) · COD: ${esc(o.codCash?.status||'N/A')} · Delivery payout: ${esc(o.deliveryPayoutStatus||'N/A')}</p>`:''}${replacementPicker(o,ws,s)}${storeOperator(ws)&&o.status==='returned'&&!o.returnStockCondition?`<div class="info-banner"><b>Inspect returned items</b><select data-online-return-condition="${esc(o.id)}"><option value="damaged">Damaged / expired · do not restock</option><option value="sellable">Sellable · restock</option></select><button class="button secondary compact" data-commerce="return-stock" data-id="${esc(o.id)}">Record condition</button></div>`:''}<div class="row-actions">${buttons(o,ws,s)}</div><details><summary>Order history</summary>${(o.history||[]).map(h=>`<small class="block">${esc(h.at)} · ${esc(h.actor||'MoveAI')}: ${esc(h.text)}</small>`).join('')}</details></section>`;
 export function screen(s,route,ws){
  if(storeOperator(ws)){
   const store=storeOf(ws),p=partner(s,store),branchId=Branches.selectedBranch(s,store),os=visibleOrders(s,ws).filter(o=>!o.branchId||o.branchId===branchId),exceptions=storeExceptions(s,ws).filter(x=>!x.order.branchId||x.order.branchId===branchId),prods=s.products.filter(x=>x.fulfilmentPartner===p.name);
@@ -446,7 +447,7 @@ export function bind(root,api){
   else if(action==='picker-review-reject')error=pickerReviewDecision(s,ws,b.dataset.id,'reject',undefined,root.querySelector('#picker-review-form [name="reason"]')?.value);
   else if(action==='picker-review-correction')error=pickerReviewDecision(s,ws,b.dataset.id,'correction',root.querySelector('#picker-review-form [name="section"]')?.value,root.querySelector('#picker-review-form [name="reason"]')?.value);
   else if(action==='reuse-delivery-identity'){const dp=currentDeliveryPartner(s,ws);if(!dp)return;PC.ensureCore(s);const reuse=PC.reusableIdentity(s,dp.mobile,'platform');if(!reuse)return api.toast('Nothing to reuse right now.');const f=root.querySelector('#delivery-onboarding-form');const set=(name,val)=>{const el=f?.querySelector(`[name="${name}"]`);if(el&&val!=null)el.value=val};set('accountName',reuse.bank.accountName);set('accountNumber',reuse.bank.accountNumber);set('ifsc',reuse.bank.ifsc);set('upi',reuse.bank.upi);if(reuse.emergency){set('emergencyName',reuse.emergency.name);set('relationship',reuse.emergency.relationship);set('emergencyMobile',reuse.emergency.mobile)}return api.toast(`Filled from your verified profile at ${reuse.businessName} — review and submit`);}
-  else if(action==='delivery-review-approve')error=deliveryReviewDecision(s,b.dataset.ws,'approve');
+  else if(action==='delivery-review-approve')error=deliveryReviewDecision(s,b.dataset.ws,'approve','identity','',{background:root.querySelector('#delivery-review-form [name="background"]')?.checked,training:root.querySelector('#delivery-review-form [name="training"]')?.checked});
   else if(action==='delivery-review-reject')error=deliveryReviewDecision(s,b.dataset.ws,'reject',undefined,root.querySelector('#delivery-review-form [name="reason"]')?.value);
   else if(action==='delivery-review-correction')error=deliveryReviewDecision(s,b.dataset.ws,'correction',root.querySelector('#delivery-review-form [name="section"]')?.value,root.querySelector('#delivery-review-form [name="reason"]')?.value);
   else if(action==='select-picker')error=selectPicker(s,ws,root.querySelector('[data-picker-account]')?.value);
@@ -474,7 +475,7 @@ export function bind(root,api){
   else if(action==='suggest-replacement')error=suggestReplacement(s,ws,b.dataset.id,root.querySelector(`[data-replacement="${b.dataset.id}"]`)?.value);
   else if(action==='reject'){const reason=prompt('Why is this order rejected?');if(reason===null)return;error=sellerAction(s,ws,b.dataset.id,'reject',reason);}
   else if(action==='toggle-stock')error=Inventory.setAvailability(s,ws,b.dataset.id,['paused','draft'].includes(s.products.find(p=>p.id===b.dataset.id)?.status)?'active':'paused');
-  else if(action==='toggle-availability'){if(!driverRole(ws))error='Access denied.';else driver(s,ws).available=!driver(s,ws).available;}
+  else if(action==='toggle-availability'){if(!driverRole(ws))error='Access denied.';else if(!driver(s,ws).available&&deliveryEligibility(driver(s,ws)))error=deliveryEligibility(driver(s,ws));else driver(s,ws).available=!driver(s,ws).available;}
   else if(['accept-job','decline-job','pickup','deliver','remit','issue'].includes(action))error=deliveryAction(s,ws,b.dataset.id,({'accept-job':'accept','decline-job':'decline'})[action]||action,action==='issue'?root.querySelector(`[data-issue="${b.dataset.id}"]`)?.value||'':root.querySelector(`[data-code="${b.dataset.id}"]`)?.value||'',root.querySelector(`[data-collected-bags="${b.dataset.id}"]`)?.value||'',{amount:root.querySelector(`[data-cod-handover-amount="${b.dataset.id}"]`)?.value,receiver:root.querySelector(`[data-cod-handover-receiver="${b.dataset.id}"]`)?.value});
   else if(action==='location')error=updateLocation(s,ws,b.dataset.id,root.querySelector(`[data-location="${b.dataset.id}"]`)?.value||'');
   else if(ws!=='admin')error='Admin access required.';
@@ -582,7 +583,18 @@ export function bind(root,api){
    if(err)return api.toast(err);api.save();api.render();api.toast(b.dataset.ok==='1'?'Confirmed received':'Marked as not received');
  });
  root.querySelectorAll('[data-payroll-cash-ack]').forEach(b=>b.onclick=()=>{const st=api.getState(),pid=recipientId(st);if(!pid||pid!==b.dataset.person)return api.toast('Only the worker can confirm their cash.');const err=Payroll.confirmCashPayment(st,b.dataset.payrollCashAck,pid,b.dataset.ok==='1');if(err)return api.toast(err);api.save();api.render();api.toast(b.dataset.ok==='1'?'Cash received':'Reported as not received');});
- root.querySelector('#delivery-onboarding-form')?.addEventListener('submit',e=>{e.preventDefault();const s=api.getState(),ws=s.currentWorkspace,v=Object.fromEntries(new FormData(e.currentTarget));const err=submitDeliveryOnboarding(s,ws,v);const el=root.querySelector('#delivery-onboarding-error');if(err){if(el){el.textContent=err;el.hidden=false}return}if(el)el.hidden=true;api.save();api.render();api.toast('Sent to the platform for review')});
+ root.querySelectorAll('[data-delivery-step]').forEach(b=>b.onclick=()=>{const s=api.getState(),p=currentDeliveryPartner(s,s.currentWorkspace);if(!p||!['profile_pending','correction_required'].includes(p.status))return;p.onboardingStep=b.dataset.deliveryStep;api.save();api.render()});
+ root.querySelectorAll('[data-delivery-form]').forEach(f=>f.onsubmit=e=>{e.preventDefault();const s=api.getState(),ws=s.currentWorkspace;if(!driverRole(ws))return;const v=Object.fromEntries(new FormData(f)),action=f.dataset.deliveryForm;let err='Unknown step.';
+  if(action==='request')err=requestAadhaarOtp(s,ws,v.aadhaar,!!v.consent);
+  if(action==='otp')err=confirmAadhaarOtp(s,ws,v.otp,v.dob,v.selfie);
+  if(action==='manual')err=submitManualIdentity(s,ws,{...v,consent:!!v.consent});
+  if(action==='driving')err=saveDeliveryDriving(s,ws,v);
+  if(action==='vehicle')err=saveDeliveryVehicle(s,ws,v);
+  if(action==='payout')err=saveDeliveryPayout(s,ws,v);
+  if(err){const el=root.querySelector('[data-delivery-error]');if(el){el.hidden=false;el.textContent=err}return}api.save();api.render()});
+ root.querySelector('[data-delivery-resend]')?.addEventListener('click',()=>{const s=api.getState(),p=currentDeliveryPartner(s,s.currentWorkspace);if(!p?.otpRequest)return;p.otpRequest={...p.otpRequest,issuedAt:Date.now(),attempts:0};api.save();api.render()});
+ root.querySelector('[data-delivery-change-number]')?.addEventListener('click',()=>{const s=api.getState(),p=currentDeliveryPartner(s,s.currentWorkspace);if(!p)return;delete p.otpRequest;api.save();api.render()});
+ root.querySelector('[data-delivery-submit]')?.addEventListener('click',()=>{const s=api.getState(),err=submitDeliveryOnboarding(s,s.currentWorkspace);if(err){const el=root.querySelector('[data-delivery-error]');if(el){el.hidden=false;el.textContent=err}return}api.save();api.render();api.toast('Sent to platform review')});
  const deliveryMethod=root.querySelector('[data-counter-delivery-method]'),deliveryRef=root.querySelector('[data-counter-delivery-ref-field]');
  if(deliveryMethod&&deliveryRef){const update=()=>{deliveryRef.hidden=!['upi','card'].includes(deliveryMethod.value)};deliveryMethod.addEventListener('change',update);update();}
  root.querySelector('[data-counter-query]')?.addEventListener?.('keydown',e=>{if(e.key==='Enter'){e.preventDefault();root.querySelector('[data-commerce="counter-search"]')?.click()}});

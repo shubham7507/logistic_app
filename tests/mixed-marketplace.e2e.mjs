@@ -3,6 +3,7 @@ import {SEED} from '../js/mock-data.js';
 import * as Shop from '../js/product-orders.js';
 import * as Commerce from '../js/commerce.js';
 import * as Inventory from '../js/grocery-inventory.js';
+import * as Geo from '../js/geo.js';
 import {ROLE_CONFIG} from '../js/config.js';
 import {PRODUCTS} from '../js/products.js';
 
@@ -27,6 +28,8 @@ for(const method of ['upi','cod']){
  assert.deepEqual(r.orders.map(o=>o.total),[710,160,799]);
  assert.equal(new Set(r.orders.map(o=>o.checkoutId)).size,1);
  assert.equal(s.productCart.length,0);
+ if(method==='upi')for(const order of r.orders)assert.equal(order.status,'payment_pending');
+ if(method==='upi')assert.equal(Shop.confirmCustomerPayment(s,r.orders[0],true),'');
  assert.equal(Commerce.visibleOrders(s,'electrical').length,1);
  assert.equal(Commerce.visibleOrders(s,'fashion').length,1);
  assert.equal(Commerce.visibleOrders(s,'grocery').filter(o=>o.checkoutId===r.checkoutId).length,1);
@@ -42,6 +45,7 @@ for(const method of ['upi','cod']){
   assert.equal(Commerce.sellerAction(s,ws,o.id,'pack'),'');
   assert.equal(o.status,'ready_for_pickup');
   assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');
+  assert.equal(Geo.startDemoLocation(s,o),'');
   assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,o.bagCount),'');
   s.selectedTrackingOrderId=o.id;assert.match(Shop.trackingScreen(s),/Courier collected/);
   assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode),'');

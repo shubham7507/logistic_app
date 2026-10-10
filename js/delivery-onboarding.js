@@ -1,155 +1,117 @@
-// Delivery partner joining lifecycle: profile_pending -> submitted -> approved (or correction_required
-// / rejected). Reviewed by the platform (admin), never by an individual seller — a delivery partner
-// isn't tied to one seller, so no seller ever sees or acts on this. 'approved' is reused as the
-// terminal status rather than introducing 'active', so the existing job-matching code (which already
-// checks status==='approved' everywhere) needs zero changes.
+// Browser-local delivery partner onboarding. Files are represented by names only;
+// all OTP, document, background, and payout checks are explicitly simulated.
 import {esc} from './ops.js';
-import * as PC from './people-core.js';
-import {aadhaarEkyc, pennyDrop, faceMatch} from './verify-sim.js';
-
-export function currentDeliveryPartner(state, ws) { return state.deliveryPartners?.[ws] || null; }
-
-export function deliveryOnboardingScreen(state, ws, assisted = false) {
-  const p = currentDeliveryPartner(state, ws); if (!p) return '';
-  const correction = p.status === 'correction_required'
-    ? `<div class="action-warning"><b>Correction requested: ${esc((p.correctionSection || '').replaceAll('Status', ''))}</b><span>${esc(p.correctionReason || 'Update the highlighted section and submit again.')}</span></div>`
-    : '';
-  PC.ensureCore(state); const reuse = PC.reusableIdentity(state, p.mobile, 'platform');
-  const reuseBanner = reuse
-    ? `<div class="info-banner"><b>Verified details available</b><span>You already have a verified identity and bank profile from ${esc(reuse.businessName)}. Reuse it instead of entering everything again.</span><button type="button" class="button secondary" data-commerce="reuse-delivery-identity">Use my verified details</button></div>`
-    : '';
-  return `<section class="panel"><h2>Complete your joining details</h2><p>${esc(p.name)} · Reviewed by the platform, not any one seller — once approved you can accept jobs from any seller</p>${correction}${reuseBanner}
-  ${!assisted?`<p class="muted">No smartphone? <button type="button" class="button-link" data-commerce="toggle-assisted-delivery-onboarding">Have someone verify this on your behalf instead</button></p>`:`<div class="action-warning"><b>Assisted verification</b><span>Someone else is entering this on ${esc(p.name)}'s behalf, with their consent, because they don't have a smartphone to do this themselves. This gets recorded differently from self-verification.</span></div><button type="button" class="button-link" data-commerce="toggle-assisted-delivery-onboarding">Switch back to self-verification</button>`}
-  <form id="delivery-onboarding-form">
-    <input type="hidden" name="assisted" value="${assisted?'1':''}">
-    <h3>Aadhaar verification <small class="muted">(via OTP — no need to upload a photo of the card)</small></h3>
-    <div class="form-grid two">
-      <label><span>Aadhaar number</span><input name="aadhaar" inputmode="numeric" maxlength="12" placeholder="12-digit number"></label>
-      <label><span>Date of birth</span><input type="date" name="dob" value="${esc(p.identity?.dob||'')}"></label>
-    </div>
-    <div class="form-grid two">
-      <label><span>OTP ${assisted?'(read aloud by them from their SMS)':'(sent to the Aadhaar-linked mobile)'}</span><input name="otp" inputmode="numeric" maxlength="6" placeholder="6-digit OTP"></label>
-      <label><span>${assisted?'Photo of them or their Aadhaar card':'Live selfie'}</span><input name="selfie" type="file" accept="image/*" ${assisted?'':'capture="user"'}></label>
-    </div>
-    <label class="check-row"><input type="checkbox" name="consent" value="1"> ${assisted?`I confirm ${esc(p.name)} was present and gave consent for this verification.`:'I consent to fetching my Aadhaar details for verification.'}</label>
-    <p class="mock-hint">Test: any 12-digit Aadhaar starting 2–9, OTP 123456.</p>
-    <h3>Vehicle</h3>
-    <div class="form-grid two">
-      <label><span>Vehicle type</span><select name="vehicleType"><option ${p.vehicle?.type==='two_wheeler'?'selected':''} value="two_wheeler">Two-wheeler</option><option ${p.vehicle?.type==='three_wheeler'?'selected':''} value="three_wheeler">Three-wheeler</option><option ${p.vehicle?.type==='four_wheeler'?'selected':''} value="four_wheeler">Four-wheeler</option></select></label>
-      <label><span>Registration number</span><input name="vehicleNumber" value="${esc(p.vehicle?.number||'')}"></label>
-    </div>
-    <h3>Vehicle documents</h3>
-    <div class="form-grid two">
-      <label><span>Driving licence number</span><input name="licenceNumber" value="${esc(p.documents?.licence?.number||'')}"></label>
-      <label><span>Licence expiry</span><input type="date" name="licenceExpiry" value="${esc(p.documents?.licence?.expiry||'')}"></label>
-    </div>
-    <div class="form-grid two">
-      <label><span>Vehicle RC document</span><input name="rcDocumentName" value="${esc(p.documents?.rc?.documentName||'')}"></label>
-      <label><span>Insurance document</span><input name="insuranceDocumentName" value="${esc(p.documents?.insurance?.documentName||'')}"></label>
-    </div>
-    <h3>Emergency contact <small class="muted">(optional — leave blank to skip, add it later)</small></h3>
-    <div class="form-grid two">
-      <label><span>Name</span><input name="emergencyName" value="${esc(p.emergency?.name||'')}" placeholder="Optional"></label>
-      <label><span>Relationship</span><input name="relationship" value="${esc(p.emergency?.relationship||'')}" placeholder="Optional"></label>
-    </div>
-    <label><span>Mobile</span><input name="emergencyMobile" maxlength="10" value="${esc(p.emergency?.mobile||'')}" placeholder="Optional"></label>
-    <h3>Payout destination <small class="muted">(verified with a ₹1 penny-drop check)</small></h3>
-    <div class="form-grid two">
-      <label><span>Account holder</span><input name="accountName" value="${esc(p.bank?.accountName||p.name)}"></label>
-      <label><span>Account number</span><input name="accountNumber" value="${esc(p.bank?.accountNumber||'')}"></label>
-    </div>
-    <div class="form-grid two">
-      <label><span>IFSC</span><input name="ifsc" value="${esc(p.bank?.ifsc||'')}"></label>
-      <label><span>UPI (optional)</span><input name="upi" value="${esc(p.bank?.upi||'')}"></label>
-    </div>
-    <p id="delivery-onboarding-error" class="field-error" hidden></p>
-    <div class="info-banner"><b>The platform only ever sees a masked Aadhaar number and verified status</b><span>The full number is never shown or stored visibly — only "XXXX XXXX 1234" and whether it's verified.</span></div>
-    <button class="button primary full">Save and submit for platform review</button>
-  </form></section>`;
+import {aadhaarEkyc,pennyDrop,licenceLookup,upiVerify} from './verify-sim.js';
+const steps=['identity','driving','vehicle','payout','review'];
+const today=()=>new Date().toISOString().slice(0,10);
+const nameOf=f=>typeof f==='string'?f:f?.name||'';
+const picture=f=>/\.(jpe?g|png|webp|heic|pdf)$/i.test(nameOf(f));
+const masked=v=>String(v||'').replace(/.(?=.{4})/g,'•');
+export const currentDeliveryPartner=(s,ws)=>s.deliveryPartners?.[ws]||null;
+export function deliveryEligibility(p){
+ if(!p||p.status!=='approved')return 'Platform approval required.';
+ // Seeded Ravi remains a usable demo account; all newly onboarded accounts use the gates below.
+ if(!p.onboardingVersion)return '';
+ if(!p.verification?.training||!p.verification?.background)return 'Training or background review is incomplete.';
+ if(p.documents?.licence?.expiry<today())return 'Driving licence expired. Upload a renewal.';
+ if(p.documents?.insurance?.expiry<today())return 'Insurance expired. Upload a renewal.';
+ if(p.documents?.puc?.expiry<today())return 'PUC expired. Upload a renewal.';
+ return '';
 }
-
-export function deliverySubmittedScreen(p) {
-  return `<section class="panel"><h2>${p.status==='correction_required'?'Correction required':'Sent for platform review'}</h2><p>${esc(p.name)}</p>
-  <div class="review-checklist">
-    <span class="done">✓ Vehicle &amp; documents submitted</span>
-    <span class="${p.emergencyStatus==='skipped'?'':'done'}">${p.emergencyStatus==='skipped'?'○ Emergency contact not provided (optional)':'✓ Emergency contact submitted'}</span>
-    <span class="done">✓ Payout destination submitted</span>
-  </div>
-  ${p.status==='correction_required'
-    ? `<div class="action-warning"><b>${esc(p.correctionReason)}</b><span>Only the selected section must be corrected.</span></div>`
-    : '<p>The platform can approve, reject or return one section for correction. Once approved, you can accept jobs from any seller — not just one.</p>'}
-  </section>`;
+export function requestAadhaarOtp(s,ws,number,consent){
+ const p=currentDeliveryPartner(s,ws);if(!p||!['profile_pending','correction_required'].includes(p.status))return 'Application is not open.';
+ if(!consent)return 'Consent is required before requesting an Aadhaar check.';
+ const n=String(number||'').replace(/\D/g,'');if(!/^[2-9]\d{11}$/.test(n))return 'Enter a valid 12-digit test Aadhaar number.';
+ p.otpRequest={last4:n.slice(-4),issuedAt:Date.now(),attempts:0,mode:'demo'};
+ return '';
 }
-
-export function deliveryReviewScreen(state, ws) {
-  const p = currentDeliveryPartner(state, ws); if (!p) return '';
-  const assisted = p.verificationMode === 'assisted';
-  return `<section class="panel"><h2>Review new delivery partner</h2><p>${esc(p.name)} · Not tied to any one seller</p>
-  ${assisted?`<div class="action-warning"><b>Assisted verification</b><span>This was entered by ${esc(p.assistedBy||'someone else')} on ${esc(p.name)}'s behalf, with their confirmed consent — not self-verified. Review a little more carefully before approving.</span></div>`:''}
-  <div class="review-checklist">
-    <span class="done">✓ Mobile verified · ••••••${esc(String(p.mobile||'').slice(-4))}</span>
-    <span class="done">✓ Aadhaar (OTP) · ${esc(p.identity?.aadhaarMasked||'verified')} · ${assisted?'verified, assisted':'verified, self'}</span>
-    <span class="done">✓ Vehicle &amp; documents · masked</span>
-    <span class="${p.emergencyStatus==='skipped'?'':'done'}">${p.emergencyStatus==='skipped'?'○ Emergency contact · not provided, optional — does not block approval':'✓ Emergency contact · complete'}</span>
-    <span class="done">✓ Payout destination · verified and masked</span>
-  </div>
-  <form id="delivery-review-form">
-    <label><span>Correction section</span><select name="section"><option value="documentsStatus">Vehicle &amp; documents</option><option value="bankStatus">Payout destination</option><option value="emergencyStatus">Emergency contact</option></select></label>
-    <label><span>Correction/rejection reason</span><textarea name="reason" placeholder="Required for correction or rejection"></textarea></label>
-    <p id="delivery-review-error" class="field-error" hidden></p>
-    <div class="form-actions">
-      <button type="button" class="button secondary" data-commerce="delivery-review-correction" data-ws="${esc(ws)}">Request correction</button>
-      <button type="button" class="button danger" data-commerce="delivery-review-reject" data-ws="${esc(ws)}">Reject</button>
-      <button type="button" class="button primary" data-commerce="delivery-review-approve" data-ws="${esc(ws)}">Approve — available platform-wide</button>
-    </div>
-  </form></section>`;
+export function confirmAadhaarOtp(s,ws,otp,dob,selfie){
+ const p=currentDeliveryPartner(s,ws),r=p?.otpRequest;
+ if(!r)return 'Choose Verify Aadhaar first.';
+ if(Date.now()-r.issuedAt>5*60000)return 'Demo OTP expired. Choose Resend OTP.';
+ if(r.attempts>=3)return 'Too many attempts. Choose Resend OTP.';
+ r.attempts++;
+ const result=aadhaarEkyc({aadhaar:`23456789${r.last4}`,otp,consent:true});if(!result.ok)return result.reason;
+ if(!dob||!picture(selfie)||/\.pdf$/i.test(nameOf(selfie)))return 'Enter date of birth and take a selfie image.';
+ p.identity={idType:'Aadhaar',idLast4:r.last4,aadhaarMasked:`XXXX XXXX ${r.last4}`,dob,selfieName:nameOf(selfie),method:'demo_otp'};
+ (p.verification||={}).identity='demo_verified';delete p.otpRequest;p.onboardingStep='driving';p.onboardingVersion=1;return '';
 }
-
-export function submitDeliveryOnboarding(state, ws, v) {
-  const p = currentDeliveryPartner(state, ws);
-  if (!p || !['profile_pending', 'correction_required'].includes(p.status)) return 'No joining details to submit for this delivery partner.';
-  const assisted = v.assisted === '1';
-  // Real Aadhaar OTP verification for personal identity — vehicle documents (licence/RC/insurance)
-  // stay as typed fields, same as before, since there's no simulated verification for those specifically.
-  const kyc = aadhaarEkyc({aadhaar: v.aadhaar, otp: v.otp, consent: v.consent === '1'});
-  if (!kyc.ok) return `Aadhaar: ${kyc.reason}`;
-  if (!v.dob) return 'Enter the date of birth.';
-  if (!v.selfie) return assisted ? 'Upload a photo of them or their Aadhaar card.' : 'Take a live selfie.';
-  const fm = faceMatch({name: v.selfie}, assisted ? 'assisted-reference' : kyc.data?.masked);
-  if (!fm.ok) return `Photo: ${fm.reason}`;
-  if (!v.vehicleNumber || !v.licenceNumber || !v.licenceExpiry || !String(v.rcDocumentName || '').trim() || !String(v.insuranceDocumentName || '').trim()) {
-    return 'Vehicle: complete vehicle details, licence, and both document fields.';
-  }
-  const emergencyProvided = Boolean(String(v.emergencyName || '').trim() || String(v.emergencyMobile || '').trim());
-  if (emergencyProvided && !/^[6-9]\d{9}$/.test(String(v.emergencyMobile || '').replace(/\D/g, ''))) {
-    return 'Enter a valid 10-digit mobile for the emergency contact, or leave both fields blank to skip it.';
-  }
-  const bankCheck = pennyDrop({account: v.accountNumber, ifsc: v.ifsc, name: v.accountName});
-  if (!bankCheck.ok) return `Bank account: ${bankCheck.reason}`;
-  p.vehicle = {type: v.vehicleType, number: String(v.vehicleNumber).trim().toUpperCase()};
-  p.documents = {
-    licence: {number: String(v.licenceNumber).trim(), expiry: v.licenceExpiry},
-    rc: {documentName: String(v.rcDocumentName).trim()},
-    insurance: {documentName: String(v.insuranceDocumentName).trim()},
-  };
-  p.identity = {idType: 'Aadhaar', idLast4: kyc.data.masked.slice(-4), dob: v.dob, address: kyc.data.address, documentName: v.selfie, aadhaarMasked: kyc.data.masked};
-  p.bank = {accountName: bankCheck.data.holder, accountNumber: String(v.accountNumber).replace(/\D/g, ''), masked: bankCheck.data.masked, ifsc: bankCheck.data.ifsc, upi: String(v.upi || '').trim()};
-  p.emergency = emergencyProvided ? {name: String(v.emergencyName).trim(), relationship: String(v.relationship || '').trim(), mobile: String(v.emergencyMobile).replace(/\D/g, '')} : null;
-  p.verificationMode = assisted ? 'assisted' : 'self';
-  if (assisted) { p.assistedBy = 'Platform self-service'; p.assistedAt = new Date().toISOString(); }
-  p.documentsStatus = 'complete'; p.bankStatus = 'complete'; p.emergencyStatus = emergencyProvided ? 'complete' : 'skipped';
-  p.status = 'submitted'; p.correctionSection = null; p.correctionReason = '';
-  return '';
+export function submitManualIdentity(s,ws,{dob,front,back,selfie,consent}){
+ const p=currentDeliveryPartner(s,ws);if(!p||!['profile_pending','correction_required'].includes(p.status))return 'Application is not open.';
+ if(!consent||!dob||![front,back,selfie].every(picture)||/\.pdf$/i.test(nameOf(selfie)))return 'Give consent, enter date of birth, upload Aadhaar front and back, and take a selfie image.';
+ p.identity={idType:'Aadhaar',dob,method:'manual_review',frontName:nameOf(front),backName:nameOf(back),selfieName:nameOf(selfie)};
+ (p.verification||={}).identity='manual_review';p.onboardingStep='driving';p.onboardingVersion=1;delete p.otpRequest;return '';
 }
-
-export function deliveryReviewDecision(state, ws, decision, section = 'documentsStatus', reason = '') {
-  const p = currentDeliveryPartner(state, ws);
-  if (!p || p.status !== 'submitted') return 'Nothing to review for this delivery partner.';
-  if (!['approve', 'correction', 'reject'].includes(decision)) return 'Select a valid review decision.';
-  if (decision === 'correction' && !['documentsStatus', 'bankStatus', 'emergencyStatus'].includes(section)) return 'Select the section that needs correction.';
-  if (decision !== 'approve' && !String(reason || '').trim()) return 'Add a reason for correction or rejection.';
-  if (decision === 'approve') { p.status = 'approved'; p.available = true; }
-  else if (decision === 'reject') { p.status = 'rejected'; p.rejectionReason = String(reason).trim(); }
-  else { p.status = 'correction_required'; p.correctionSection = section; p.correctionReason = String(reason).trim(); }
-  return '';
+export function saveDeliveryDriving(s,ws,v){
+ const p=currentDeliveryPartner(s,ws);if(!p?.identity)return 'Complete identity first.';
+ const type=v.vehicleType||'two_wheeler',number=String(v.licenceNumber||'').trim(),expiry=v.licenceExpiry;
+ if(!['two_wheeler','three_wheeler','four_wheeler','cycle','walking'].includes(type))return 'Choose a delivery mode.';
+ if(!['cycle','walking'].includes(type)){
+  if(!number||!expiry||expiry<today())return 'Enter a current driving licence number and expiry date.';
+  const check=licenceLookup({number,dob:p.identity.dob,name:p.name,type:'deliveryPartner'});
+  if(!check.ok&&!picture(v.licenceFront))return `${check.reason} Upload licence front and back for manual review.`;
+  if(!check.ok&&!picture(v.licenceBack))return 'Upload the back of the driving licence too.';
+  p.documents||={};p.documents.licence={number,expiry,frontName:nameOf(v.licenceFront),backName:nameOf(v.licenceBack),status:check.ok?'demo_checked':'manual_review'};
+  (p.verification||={}).driving=check.ok?'demo_checked':'manual_review';
+ }else{p.documents||={};p.documents.licence=null;(p.verification||={}).driving='not_applicable';}
+ p.vehicle={...(p.vehicle||{}),type};p.onboardingStep='vehicle';return '';
+}
+export function saveDeliveryVehicle(s,ws,v){
+ const p=currentDeliveryPartner(s,ws);if(!p?.verification?.driving)return 'Complete driving eligibility first.';
+ const motor=!['walking','cycle'].includes(p.vehicle.type);
+ if(motor){
+  if(!String(v.vehicleNumber||'').trim()||!picture(v.rc)||!picture(v.insurance)||!picture(v.puc)||!v.insuranceExpiry||!v.pucExpiry)return 'Enter the vehicle number and upload RC, insurance and PUC with expiry dates.';
+  if(v.insuranceExpiry<today()||v.pucExpiry<today())return 'Insurance and PUC must be current.';
+  if(v.ownership==='borrowed'&&!picture(v.authorization))return 'Upload permission from the vehicle owner.';
+  p.vehicle={...p.vehicle,number:String(v.vehicleNumber).trim().toUpperCase(),ownership:v.ownership||'own',authorizationName:nameOf(v.authorization)};
+  p.documents={...(p.documents||{}),rc:{documentName:nameOf(v.rc)},insurance:{documentName:nameOf(v.insurance),expiry:v.insuranceExpiry},puc:{documentName:nameOf(v.puc),expiry:v.pucExpiry}};
+ }else{p.vehicle={...p.vehicle,number:'',ownership:'not_applicable'};}
+ p.verification.vehicle=motor?'manual_review':'not_applicable';p.onboardingStep='payout';return '';
+}
+export function saveDeliveryPayout(s,ws,v){
+ const p=currentDeliveryPartner(s,ws);if(!p?.verification?.vehicle)return 'Complete the vehicle step first.';
+ if(!/^[A-Z]{5}\d{4}[A-Z]$/.test(String(v.pan||'').toUpperCase()))return 'Enter a 10-character PAN.';
+ const check=pennyDrop({account:v.accountNumber,ifsc:v.ifsc,name:v.accountName});
+ if(!check.ok&&!check.fallback)return check.reason;
+ if(!check.ok&&!picture(v.bankProof))return 'Upload a cancelled cheque or passbook for manual payout review.';
+ if(v.upi){const u=upiVerify({vpa:v.upi,name:p.name});if(!u.ok)return u.reason;}
+ p.panMasked=masked(String(v.pan).toUpperCase());p.bank={accountName:String(v.accountName||'').trim(),accountNumber:String(v.accountNumber||'').replace(/\D/g,''),masked:masked(String(v.accountNumber||'').replace(/\D/g,'')),ifsc:String(v.ifsc||'').toUpperCase(),upi:String(v.upi||'').trim(),proofName:nameOf(v.bankProof)};
+ p.verification.payout=check.ok?'demo_checked':'manual_review';p.onboardingStep='review';return '';
+}
+export function submitDeliveryOnboarding(s,ws){
+ const p=currentDeliveryPartner(s,ws);if(!p||!['profile_pending','correction_required'].includes(p.status))return 'No joining details to submit.';
+ if(!p.identity||!p.verification?.driving||!p.verification?.vehicle||!p.verification?.payout)return 'Complete all four steps before submitting.';
+ p.status='submitted';p.available=false;p.submittedAt=new Date().toISOString();p.correctionReason='';return '';
+}
+const tag=v=>v==='demo_checked'||v==='demo_verified'?'Demo checked':v==='manual_review'?'Manual review':v==='not_applicable'?'Not needed':v?'Complete':'To do';
+const file=(label,key,accept='image/*,application/pdf')=>`<label><span>${label}</span><input type="file" name="${key}" accept="${accept}" ${accept.includes('image/*')?'capture="environment"':''}></label>`;
+export function deliveryOnboardingScreen(s,ws){
+ const p=currentDeliveryPartner(s,ws);if(!p)return '';
+ const current=steps.includes(p.onboardingStep)?p.onboardingStep:'identity',v=p.verification||{};
+ const status=`<div class="delivery-steps">${steps.map((x,i)=>`<button type="button" class="delivery-step ${current===x?'active':''}" data-delivery-step="${x}"><b>${i+1}. ${({identity:'My ID',driving:'My licence',vehicle:'My vehicle',payout:'My payment',review:'Ready to deliver'})[x]}</b><small>${tag(x==='identity'?v.identity:x==='driving'?v.driving:x==='vehicle'?v.vehicle:x==='payout'?v.payout:p.status==='submitted'?'Submitted':'')}</small></button>`).join('')}</div>`;
+ const identity=`<section class="panel delivery-join-card"><h2>1. Verify my ID</h2><p>Choose the demo OTP check, or upload both sides of Aadhaar for manual review. Nothing here contacts UIDAI.</p><div class="delivery-choice"><h3>Aadhaar with demo OTP</h3>${p.otpRequest?`<p class="info-banner">Demo OTP requested for Aadhaar ending ${esc(p.otpRequest.last4)}. Enter <b>123456</b> within five minutes.</p><form data-delivery-form="otp"><div class="form-grid two"><label><span>OTP</span><input name="otp" inputmode="numeric" maxlength="6" required></label><label><span>Date of birth</span><input name="dob" type="date" required></label>${file('Live selfie','selfie','image/*')}</div><button class="button primary">Confirm demo OTP</button><button type="button" class="button secondary" data-delivery-resend>Resend demo OTP</button><button type="button" class="button text" data-delivery-change-number>Change Aadhaar number</button></form>`:`<form data-delivery-form="request"><label><span>Aadhaar number</span><input name="aadhaar" inputmode="numeric" maxlength="12" placeholder="Test number: 234567890123" required></label><label class="check-row"><input type="checkbox" name="consent" required> I consent to this demo identity check</label><button class="button primary">Verify Aadhaar</button></form>`}</div><div class="delivery-choice"><h3>Cannot use OTP? Submit front and back</h3><form data-delivery-form="manual"><div class="form-grid two"><label><span>Date of birth</span><input type="date" name="dob" required></label>${file('Aadhaar front','front')}${file('Aadhaar back','back')}${file('Live selfie','selfie','image/*')}</div><label class="check-row"><input type="checkbox" name="consent" required> I consent to manual ID review</label><button class="button secondary">Submit ID images for review</button></form><p class="muted">Demo stores only filenames, not document images. Uploads require secure storage when a backend is added.</p></div></section>`;
+ const driving=`<section class="panel delivery-join-card"><h2>2. My delivery mode and licence</h2><form data-delivery-form="driving"><div class="form-grid two"><label><span>Delivery mode</span><select name="vehicleType"><option value="two_wheeler">Motorbike / scooter</option><option value="three_wheeler">Three-wheeler</option><option value="four_wheeler">Car</option><option value="cycle">Cycle</option><option value="walking">Walking</option></select></label><label><span>Licence number (motor vehicles)</span><input name="licenceNumber" value="${esc(p.documents?.licence?.number||'')}" placeholder="RJ14 20220012345"></label><label><span>Licence expiry</span><input name="licenceExpiry" type="date" value="${esc(p.documents?.licence?.expiry||'')}"></label>${file('Licence front (if demo lookup fails)','licenceFront')}${file('Licence back (if demo lookup fails)','licenceBack')}</div><p>Mock lookup may require manual review. Walking and cycle roles skip motor licence checks and can receive only compatible jobs.</p><button class="button primary">Save and continue</button></form></section>`;
+ const vehicle=`<section class="panel delivery-join-card"><h2>3. My vehicle</h2><form data-delivery-form="vehicle"><p>For motor vehicles upload RC, insurance and PUC. Walking and cycle partners can continue without them.</p><div class="form-grid two"><label><span>Registration number</span><input name="vehicleNumber" value="${esc(p.vehicle?.number||'')}"></label><label><span>Ownership</span><select name="ownership"><option value="own">My vehicle</option><option value="borrowed">Someone else's vehicle</option></select></label>${file('RC image or PDF','rc')}${file('Insurance image or PDF','insurance')}<label><span>Insurance expiry</span><input type="date" name="insuranceExpiry" value="${esc(p.documents?.insurance?.expiry||'')}"></label>${file('PUC image or PDF','puc')}<label><span>PUC expiry</span><input type="date" name="pucExpiry" value="${esc(p.documents?.puc?.expiry||'')}"></label>${file('Owner permission if borrowed','authorization')}</div><button class="button primary">Save and continue</button></form></section>`;
+ const payout=`<section class="panel delivery-join-card"><h2>4. My payout details</h2><form data-delivery-form="payout"><div class="form-grid two"><label><span>PAN</span><input name="pan" placeholder="ABCDE1234F" required></label><label><span>Account holder</span><input name="accountName" value="${esc(p.bank?.accountName||p.name)}" required></label><label><span>Account number</span><input name="accountNumber" inputmode="numeric" value="${esc(p.bank?.accountNumber||'')}" required></label><label><span>IFSC</span><input name="ifsc" value="${esc(p.bank?.ifsc||'')}" required></label><label><span>UPI ID (optional)</span><input name="upi" value="${esc(p.bank?.upi||'')}"></label>${file('Cancelled cheque / passbook if name differs','bankProof')}</div><p>Bank and UPI checks are simulated. Only masked account details appear in review.</p><button class="button primary">Save and continue</button></form></section>`;
+ const review=`<section class="panel delivery-join-card"><h2>5. Review and submit</h2><div class="review-checklist"><span>${tag(v.identity)} · ID ${esc(p.identity?.aadhaarMasked||p.identity?.frontName||'')}</span><span>${tag(v.driving)} · licence ${esc(p.documents?.licence?.number?masked(p.documents.licence.number):'not needed')}</span><span>${tag(v.vehicle)} · ${esc(p.vehicle?.number||p.vehicle?.type||'')}</span><span>${tag(v.payout)} · account ${esc(p.bank?.masked||'')}</span></div><p>Platform review and demo training are required before new job offers. Sellers cannot approve this application.</p><button type="button" class="button primary" data-delivery-submit ${v.identity&&v.driving&&v.vehicle&&v.payout?'':'disabled'}>Submit for platform review</button></section>`;
+ return `<div class="delivery-join"><div class="info-banner"><b>Delivery joining · ${esc(p.name)}</b><span>Demo checks only. Your approval applies to all sellers.</span></div>${p.status==='correction_required'?`<p class="action-warning">Please correct ${esc(p.correctionSection||'the requested details')}: ${esc(p.correctionReason||'')}</p>`:''}${status}${({identity,driving,vehicle,payout,review})[current]}<p class="field-error" data-delivery-error hidden></p></div>`;
+}
+export function deliverySubmittedScreen(p){return `<section class="panel"><h2>Submitted for platform review</h2><p>${esc(p.name)} · identity ${tag(p.verification?.identity)}, driving ${tag(p.verification?.driving)}, vehicle ${tag(p.verification?.vehicle)}, payout ${tag(p.verification?.payout)}.</p><p>Admin will review evidence, background and training before enabling offers.</p></section>`;}
+export function deliveryReviewScreen(s,ws){const p=currentDeliveryPartner(s,ws);if(!p)return '';
+ const v=p.verification||{},d=p.documents||{};
+ return `<section class="panel delivery-join-card"><h2>Review ${esc(p.name)}</h2><p>Demo verification results and filenames only. Open source documents in a secure service when a backend is connected.</p><div class="review-checklist"><span>ID: ${tag(v.identity)} · ${esc(p.identity?.aadhaarMasked||`${p.identity?.frontName||'No front'} / ${p.identity?.backName||'No back'}`)}</span><span>Licence: ${tag(v.driving)} · ${esc(masked(d.licence?.number||''))} · expiry ${esc(d.licence?.expiry||'N/A')} · ${esc(d.licence?.frontName||'')}</span><span>Vehicle: ${tag(v.vehicle)} · ${esc(p.vehicle?.number||p.vehicle?.type||'')} · RC ${esc(d.rc?.documentName||'N/A')} · insurance ${esc(d.insurance?.expiry||'N/A')} · PUC ${esc(d.puc?.expiry||'N/A')}</span><span>PAN ${esc(p.panMasked||'N/A')} · bank ${esc(p.bank?.masked||'N/A')} · ${tag(v.payout)}</span></div><form id="delivery-review-form"><label class="check-row"><input type="checkbox" name="background"> Demo background review complete</label><label class="check-row"><input type="checkbox" name="training"> Demo delivery training complete</label><label><span>Section to correct</span><select name="section"><option value="identity">Identity</option><option value="driving">Licence</option><option value="vehicle">Vehicle</option><option value="payout">Payout</option></select></label><label><span>Reason for correction or rejection</span><textarea name="reason"></textarea></label><div class="form-actions"><button type="button" class="button secondary" data-commerce="delivery-review-correction" data-ws="${esc(ws)}">Request correction</button><button type="button" class="button danger" data-commerce="delivery-review-reject" data-ws="${esc(ws)}">Reject</button><button type="button" class="button primary" data-commerce="delivery-review-approve" data-ws="${esc(ws)}">Approve partner</button></div></form></section>`;
+}
+export function deliveryReviewDecision(s,ws,decision,section='identity',reason='',checks={}){
+ const p=currentDeliveryPartner(s,ws);if(!p||p.status!=='submitted')return 'Nothing to review for this delivery partner.';
+ if(!['approve','correction','reject'].includes(decision))return 'Choose a review decision.';
+ if(decision!=='approve'&&!String(reason).trim())return 'Give a reason.';
+ if(decision==='correction'&&!['identity','driving','vehicle','payout'].includes(section))return 'Choose a section.';
+ if(decision==='approve'){
+  if(!p.identity||!p.verification?.driving||!p.verification?.vehicle||!p.verification?.payout)return 'Review all application steps first.';
+  for(const x of ['licence','insurance','puc'])if(p.documents?.[x]?.expiry&&p.documents[x].expiry<today())return `${x} expired. Request a renewed document.`;
+  if(!checks.background||!checks.training)return 'Complete background review and delivery training first.';
+  p.verification.background=true;p.verification.training=true;p.verification.reviewedAt=new Date().toISOString();p.status='approved';p.available=true;
+ }else if(decision==='reject'){p.status='rejected';p.available=false;p.rejectionReason=String(reason).trim();}
+ else{p.status='correction_required';p.available=false;p.correctionSection=section;p.correctionReason=String(reason).trim();p.onboardingStep=section;p.verification[section]=null;}
+ return '';
 }

@@ -6,6 +6,7 @@ import * as Orders from '../js/product-orders.js';
 import * as Commerce from '../js/commerce.js';
 import * as PickerPay from '../js/grocery-picker-pay.js';
 import * as Staff from '../js/grocery-staff.js';
+import * as Geo from '../js/geo.js';
 
 const s=structuredClone(SEED),ok=result=>assert.equal(result,'');
 assert.match(Orders.searchScreen(s),/Order by voice/);
@@ -50,6 +51,8 @@ ok(Staff.respondPickOffer(s,'picker',second.id,false));assert.equal(second.picke
 s.activePicker.picker='PICK-NEW';ok(Staff.respondPickOffer(s,'picker',second.id,true));ok(Commerce.pickerAction(s,'picker',second.id,'start'));
 ok(Commerce.pickerAction(s,'picker',second.id,'check',milk.id));ok(Commerce.pickerAction(s,'picker',second.id,'complete'));
 ok(Commerce.sellerAction(s,'grocery',second.id,'pack',1));ok(Commerce.deliveryAction(s,'deliveryPartner',second.id,'accept'));
+assert.match(Commerce.deliveryAction(s,'deliveryPartner',second.id,'pickup',second.pickupCode,1),/Share your live location/);
+ok(Geo.startDemoLocation(s,second));
 ok(Commerce.deliveryAction(s,'deliveryPartner',second.id,'pickup',second.pickupCode,1));
 ok(Commerce.deliveryAction(s,'deliveryPartner',second.id,'deliver',second.deliveryCode));assert.equal(second.status,'delivered');
 assert.match(Orders.trackingScreen({...s,selectedTrackingOrderId:second.id}),/Delivered/);
