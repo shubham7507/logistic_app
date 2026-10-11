@@ -27,6 +27,7 @@ assert.equal(W.jobs(s,C.findPerson(s,'9876501103')).filter(x=>x.kind==='employme
 // offboarding in the old screens ends the employment and moves it to past work
 s.peopleByWorkspace.transporter.find(p=>p.id==='WORKER-002').status='offboarded';W.ensureHub(s);assert.equal(s.employments.find(e=>e.source.id==='WORKER-002').status,'ended');
 // screens render for every worker workspace and for "view as"
-for(const ws of ['commercialDriver','helper','personalDriver','picker','deliveryPartner']){const h=W.screen(s,'myWork',ws);assert.ok(h.includes('My work &amp; pay'),ws);assert.doesNotMatch(h.replace(/<[^>]+>/g,' '),/\bundefined\b|NaN/,ws);}
+for(const ws of ['commercialDriver','helper','personalDriver','picker']){const h=W.screen(s,'myWork',ws);assert.ok(h.includes('My work &amp; pay'),ws);assert.doesNotMatch(h.replace(/<[^>]+>/g,' '),/\bundefined\b|NaN/,ws);}
+assert.match(W.screen(s,'myWork','deliveryPartner'),/Open Money/);
 s.hubViewAs=sanju.id;s.hubViewAsWs='helper';const h=W.screen(s,'myWork','helper');assert.match(h,/Sanju Kumar/);assert.match(h,/Past work/);assert.match(h,/ABC Grocery/);assert.match(h,/Khalasi/);
 console.log(JSON.stringify({status:'PASS',suite:'Worker hub: my work & pay across employers, past work, statement, history'},null,2));

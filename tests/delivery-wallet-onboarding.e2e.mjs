@@ -8,12 +8,12 @@ const fresh=()=>structuredClone(SEED);
 const s=fresh(), ws='deliveryPartner', partner=s.deliveryPartners[ws];
 record(s,{type:'wallet_credit',payer:'moveai',payee:partner.id,amount:37,status:'confirmed',orderId:'ORD-PREPAID'},'Demo');
 s.customerOrders=[{id:'ORD-COD',party:'ABC Grocery',items:[{productId:'PRD-103',quantity:1}],deliveryAssignment:{partnerId:partner.id},deliveryPayoutStatus:'awaiting_cod_reconciliation',feeBreakdown:{deliveryPartnerEarning:37},codCash:{status:'collected'}}];
-let html=screen(s,'deliveryProfile',ws);
+let html=screen(s,'deliveryEarnings',ws);
 assert.match(html,/Available to transfer<\/span><b>₹37/);
 assert.match(html,/Waiting for COD handover and review<\/span><b>₹37/);
-assert.match(html,/ORD-COD · ₹37/);
-assert.match(html,/ORD-PREPAID · Earned ₹37/);
-assert.match(html,/Admin can run a free weekly mock payout/);
+assert.match(html,/ORD-COD · earning ₹37 waiting for cash review/);
+assert.match(html,/Earned from deliveries<\/span><b>₹37/);
+assert.match(html,/free weekly mock payout/);
 assert.match(html,/Bank account ending 7801/);
 assert.match(html,/UPI ravi@upi/);
 
@@ -33,9 +33,9 @@ try{
  const payout=s.ledger.find(e=>e.type==='payout'&&e.payee===partner.id);
  assert.equal(payout.amount,27);assert.equal(payout.fee,10);assert.equal(payout.status,'paid');
  assert.equal(payout.method,'bank');
- html=screen(s,'deliveryProfile',ws);
- assert.match(html,/ORD-COD · ₹37/);
- assert.match(html,/Payout ₹27 · Fee ₹10 · paid/);
+ html=screen(s,'deliveryEarnings',ws);
+ assert.match(html,/ORD-COD · earning ₹37 waiting for cash review/);
+ assert.match(html,/₹27 · bank · paid · Fee ₹10/);
  s.currentWorkspace='deliveryPartner2';await button.onclick();
  assert.match(message,/No available balance/);
  assert.equal(saved,1);
@@ -58,6 +58,8 @@ assert.equal(cod.ledger.find(e=>e.type==='payout').amount,25);
 const upi=fresh();record(upi,{type:'wallet_credit',payer:'moveai',payee:'DP-001',amount:37,status:'confirmed'},'Demo');
 assert.equal(instantDeliveryPayout(upi,'deliveryPartner','upi'),'');
 assert.equal(upi.ledger.find(e=>e.type==='payout').method,'upi');
+assert.doesNotMatch(screen(upi,'deliveryProfile','deliveryPartner'),/Transfer ₹27 now/);
+assert.match(screen(upi,'deliveryProfile','deliveryPartner'),/View earnings and payouts/);
 
 const joining=fresh(),newWs='deliveryPartner2';
 assert.equal(joining.deliveryPartners[newWs].status,'profile_pending');

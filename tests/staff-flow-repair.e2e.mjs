@@ -55,7 +55,7 @@ assert.ok(Payroll.balance(s,emp.personId)>0);
 assert.equal(HR.setPayout(s,pid,{method:'bank',account:'12345678901',ifsc:'SBIN0001234',name:'Asha Picker'}),'');
 const run=Payroll.runMonthlyPayroll(s,store,m);
 assert.ok(run.lines.some(l=>l.personId===emp.personId&&l.verified&&l.amount>0));
-assert.match(Payroll.monthlyPayrollScreen(s,store,m),/Submit mock bank batch/);
+assert.match(Payroll.monthlyPayrollScreen(s,store,m),/Approve payday/);
 const result=Payroll.approveMonthlyPayroll(s,run.id);
 assert.equal(result.ok,true);
 assert.ok(result.results.some(r=>r.personId===emp.personId&&r.outcome==='paid'));

@@ -456,6 +456,30 @@ export function payMonthlySalary(s,business,personId,period,method='cash'){
 // different name on purpose, to avoid colliding with that already-established field.
 function runs(s) { return (s.unifiedPayrollRuns ||= []); }
 
+export function loadSamplePayday(s,business,period){
+ if(!PC.STORES.includes(business)||period!==new Date(clock()).toISOString().slice(0,7))return 'Choose the current month for a seller store.';
+ if(s.payrollExampleSeeded?.[`${business}:${period}`])return 'The sample payday is already loaded for this store and month.';
+ if(runs(s).some(r=>r.business===business&&r.period===period&&r.status==='completed'))return 'This month already has an approved payroll. Reset demo data to try the sample.';
+ const index=PC.STORES.indexOf(business)+1;
+ const names=['Demo Bank Worker','Demo UPI Worker','Demo Cash Worker'],amounts=[10000,8000,6000];
+ for(let i=0;i<3;i++){
+  const id=`PICK-PAY-${index}-${i+1}`,mobile=`98769900${index}${i+1}`;
+  if(!(s.pickerStaff||[]).some(x=>x.id===id)){
+   const worker={id,store:business,name:names[i],mobile,status:'active',role:'staff',payPlan:{type:'monthly',rate:amounts[i]},bankStatus:i===0?'verified':'pending_staff',branchIds:[PC.branchesFor(s,business)[0]?.id]};
+   if(i===0)worker.bank={accountName:names[i],accountNumber:`1234567890${index}`,ifsc:'SBIN0001234'};
+   (s.pickerStaff||=[]).push(worker);
+  }
+  if(i===1)(s.staffHR||={})[id]={...(s.staffHR?.[id]||{}),payout:{method:'upi',upi:`demo${index}@okaxis`,verified:true}};
+ }
+ ensurePayrollCore(s);
+ for(let i=0;i<3;i++){
+  const id=`PICK-PAY-${index}-${i+1}`,e=s.employments.find(x=>x.business===business&&x.source.kind==='picker'&&x.source.id===id);
+  if(e&&!events(s).some(x=>x.source==='sample-payday'&&x.personId===e.personId&&x.period===period))events(s).push({id:uid('PE'),personId:e.personId,business,type:'earning',amount:amounts[i],status:'posted',at:stamp(),note:`Sample wages for ${period}`,source:'sample-payday',period});
+ }
+ (s.payrollExampleSeeded||={})[`${business}:${period}`]=true;
+ touch(s);return '';
+}
+
 // Computes a draft, does not pay anyone yet. Idempotent — calling it again for the same business and
 // period while a draft already exists returns that same draft rather than creating a duplicate.
 export function runMonthlyPayroll(s, business, period) {
@@ -463,7 +487,7 @@ export function runMonthlyPayroll(s, business, period) {
   const existing = runs(s).find(r => r.business === business && r.period === period && r.status === 'draft');
   const emps = s.employments.filter(e => e.business === business && e.status === 'active' && e.payPlan?.type === 'monthly');
   const lines = emps.map(e => ({
-    personId: e.personId, name: personName(s, e.personId),
+    personId: e.personId, name: personName(s, e.personId), branch: e.homeBranch,
     ...(() => { const p=monthlyPayPreview(s,business,e.personId,period);return {gross:p.gross,recovery:p.recovery,recoveryTotal:p.recoveryTotal,amount:p.net}; })(),
     // A batch run can only ever pay via bank transfer — UPI needs a per-person interactive app
     // confirmation (exactly why the two-sided flow exists) and genuinely can't be done unattended in
@@ -471,9 +495,13 @@ export function runMonthlyPayroll(s, business, period) {
     // payoutVerified() generally — someone verified only for UPI would otherwise misleadingly show as
     // "ready" for a batch they can't actually be included in.
     verified: payoutVerified(s, e.personId) && !!resolveBankRecord(s, e.personId)?.accountNumber,
+    upiReady: payoutVerified(s, e.personId) && !!resolveBankRecord(s, e.personId)?.upi,
+    method: payoutVerified(s, e.personId) && resolveBankRecord(s, e.personId)?.accountNumber ? 'bank' : payoutVerified(s, e.personId) && resolveBankRecord(s, e.personId)?.upi ? 'upi' : 'bank',
     hold: false,
   }));
-  if(existing){existing.lines=lines.map(line=>({...line,hold:existing.lines.find(x=>x.personId===line.personId)?.hold||false}));return existing;}
+  if(existing){existing.lines=lines.map(line=>{const old=existing.lines.find(x=>x.personId===line.personId);return {...line,method:old?.method||line.method,hold:old?.hold||false};});return existing;}
+  const latest=runs(s).filter(r=>r.business===business&&r.period===period).at(-1);
+  if(latest?.status==='completed'&&latest.results?.some(r=>['awaiting_upi','awaiting_cash','pending_confirmation','awaiting_worker'].includes(resultStatus(s,r))))return latest;
   const run = {id: uid('RUN'), business, period, status: 'draft', lines, createdAt: stamp()};
   runs(s).push(run);
   touch(s);
@@ -490,6 +518,40 @@ export function toggleHold(s, runId, personId) {
   return '';
 }
 
+export function setPayrollMethod(s,runId,personId,method){
+ const run=runs(s).find(r=>r.id===runId&&r.status==='draft');if(!run)return 'Payroll draft not found.';
+ const line=run.lines.find(l=>l.personId===personId);if(!line)return 'Worker not found in this payroll.';
+ if(!['bank','upi','cash'].includes(method))return 'Choose bank, UPI or cash.';
+ line.method=method;touch(s);return '';
+}
+
+function resultStatus(s,r){
+ if(!['pending_confirmation','awaiting_worker','disputed'].includes(r.outcome))return r.outcome;
+ const e=events(s).find(x=>x.id===r.eventId);
+ return e?.status==='posted'?'paid':e?.status==='disputed'?'disputed':e?.status==='cancelled'?'failed':r.outcome;
+}
+export function refreshPayrollResults(s,run){
+ if(!run?.results)return run;
+ for(const r of run.results){const next=resultStatus(s,r);if(next!==r.outcome)r.outcome=next;}
+ return run;
+}
+export function startPayrollPayment(s,runId,personId){
+ const run=runs(s).find(r=>r.id===runId&&r.status==='completed');if(!run)return {error:'Approved payroll not found.'};
+ refreshPayrollResults(s,run);
+ const r=run.results.find(x=>x.personId===personId),line=run.lines.find(x=>x.personId===personId);
+ if(!r||!line||!['awaiting_upi','awaiting_cash'].includes(r.outcome))return {error:'This payment is not waiting for handover.'};
+ const method=r.outcome==='awaiting_upi'?'upi':'cash';
+ // Recalculate from the shared ledger so a payment made on another screen cannot be repeated.
+ const preview=monthlyPayPreview(s,run.business,personId,run.period);
+ if(preview.net!==line.amount||events(s).some(e=>e.personId===personId&&e.business===run.business&&e.type==='payment'&&e.payroll?.period===run.period&&['posted','pending_ack','pending_confirmation'].includes(e.status)))return {error:'Amount changed or a payment is already in progress. Review worker pay before continuing.'};
+ const payment=payMonthlySalary(s,run.business,personId,run.period,method);
+ if(typeof payment==='string'&&payment)return {error:payment};
+ const entry=events(s).filter(e=>e.personId===personId&&e.business===run.business&&e.type==='payment'&&e.payroll?.period===run.period).at(-1);
+ if(!entry)return {error:'Payment entry missing.'};
+ r.eventId=entry.id;r.outcome=method==='upi'?'pending_confirmation':'awaiting_worker';r.amount=line.amount;
+ touch(s);return {ok:true,upiLink:payment?.upiLink||null};
+}
+
 // One click processes everyone not on hold, through the same payNow() used for individual payments —
 // not a separate code path that could drift from it. Anyone without a verified bank account, or with
 // nothing due, is skipped with a clear reason rather than silently failing or silently paying nothing.
@@ -503,11 +565,17 @@ export function approveMonthlyPayroll(s, runId) {
     if (line.hold) { results.push({personId: line.personId, name: line.name, outcome: 'held'}); continue; }
     if (!(line.gross > 0)) { results.push({personId: line.personId, name: line.name, outcome: 'skipped', reason: 'Nothing due'}); continue; }
     if (!line.amount && line.recoveryTotal) {applyRecovery(s,run.business,line.personId,run.period,line.recovery);results.push({personId:line.personId,name:line.name,outcome:'paid',amount:0,recovery:line.recoveryTotal});continue;}
+    if(line.method==='cash'||line.method==='upi'){
+      if(line.method==='upi'&&!line.upiReady){results.push({personId:line.personId,name:line.name,outcome:'skipped',reason:'No verified UPI ID'});continue;}
+      results.push({personId:line.personId,name:line.name,outcome:line.method==='upi'?'awaiting_upi':'awaiting_cash',amount:line.amount,recovery:line.recoveryTotal,method:line.method});continue;
+    }
+    if(!line.verified){results.push({personId:line.personId,name:line.name,outcome:'skipped',reason:'No verified bank account'});continue;}
     const r = payNow(s, run.business, line.personId, line.amount, 'bank', '', {period:run.period,recovery:line.recovery});
-    if (r === '') results.push({personId: line.personId, name: line.name, outcome: 'paid', amount: line.amount,recovery:line.recoveryTotal});
-    else results.push({personId: line.personId, name: line.name, outcome: 'failed', reason: r});
+    if (r === '') results.push({personId: line.personId, name: line.name, outcome: 'paid', amount: line.amount,recovery:line.recoveryTotal,method:'bank'});
+    else results.push({personId: line.personId, name: line.name, outcome: 'failed', reason: r,method:'bank'});
   }
   run.status = 'completed';
+  run.approvedAmount=results.filter(r=>!['held','skipped'].includes(r.outcome)).reduce((sum,r)=>sum+(r.amount||0),0);
   run.completedAt = stamp();
   run.results = results;
   touch(s);
@@ -520,18 +588,23 @@ export function monthlyPayrollScreen(s, business, period) {
   const saved=history.at(-1);
   if(period!==new Date(clock()).toISOString().slice(0,7)&&!saved)return `<section class="panel"><h2>${esc(period)}</h2><p>No saved pay run for this month. Choose the current demo month to prepare a batch.</p></section>`;
   const run = saved?.status==='draft' ? runMonthlyPayroll(s,business,period) : saved || runMonthlyPayroll(s,business,period);
+  refreshPayrollResults(s,run);
   const isDraft = run.status === 'draft';
-  const ready=run.lines.filter(l=>!l.hold&&((l.verified&&l.amount>0)||(!l.amount&&l.recoveryTotal>0)));
-  const blocked=run.lines.filter(l=>!l.hold&&!l.verified&&l.amount>0);
+  const ready=run.lines.filter(l=>!l.hold&&((l.amount>0&&(l.method==='cash'||l.method==='upi'&&l.upiReady||l.method==='bank'&&l.verified))||(!l.amount&&l.recoveryTotal>0)));
+  const blocked=run.lines.filter(l=>!l.hold&&l.amount>0&&!(l.method==='cash'||l.method==='upi'&&l.upiReady||l.method==='bank'&&l.verified));
   const held=run.lines.filter(l=>l.hold&&l.amount>0);
   const totalDue = ready.reduce((sum, l) => sum + l.amount, 0);
-  const rows = isDraft ? run.lines.map(l => `<div class="ledger-row static"><span><b>${esc(l.name)}</b><small>Earned ${inr(l.gross)} − advance this month ${inr(l.recoveryTotal)} = pay ${inr(l.amount)} · ${l.amount?(l.verified?'Bank verified':'⚠ No verified bank account — will be skipped'):'No bank payment needed'}${l.hold?' · on hold':''}</small></span><span class="row-actions"><b>${inr(l.amount)}</b><button type="button" class="button secondary compact" data-payroll-hold="${esc(run.id)}" data-person="${esc(l.personId)}">${l.hold?'Resume':'Hold'}</button></span></div>`).join('')
-    : (run.results||[]).map(r => `<div class="ledger-row static"><span><b>${esc(r.name)}</b><small>${r.outcome==='paid'?`Paid ${inr(r.amount)} · advance repaid ${inr(r.recovery||0)}`:r.outcome==='held'?'Held — not processed this run':r.outcome==='skipped'?esc(r.reason):`Failed — ${esc(r.reason)} · advance not recovered`}</small></span></div>`).join('');
-  const pending=run.status==='completed'&&s.employments.some(e=>e.business===business&&e.status==='active'&&e.payPlan?.type==='monthly'&&balance(s,e.personId)>0);
-  return `<section class="panel"><h2>GIRO style bank batch · ${esc(period)}</h2><p class="info-banner">Demo payroll for monthly workers across all branches. Bank responses and ledger entries are simulated. No money is transferred.</p><p class="muted">${isDraft?`Ready: ${ready.length} · ${inr(totalDue)}. Bank details missing: ${blocked.length}. On hold: ${held.length}. Review each line before submitting.`:`Batch ${esc(run.id)} completed ${esc(run.completedAt)}. Paid ${(run.results||[]).filter(r=>r.outcome==='paid').length}, failed ${(run.results||[]).filter(r=>r.outcome==='failed').length}, held ${(run.results||[]).filter(r=>r.outcome==='held').length}.`}</p>
+  const rows = isDraft ? run.lines.map(l => `<div class="ledger-row static payroll-row"><span><b>${esc(l.name)}</b><small>${esc(l.branch||'Branch')} · Earned ${inr(l.gross)} − advance this month ${inr(l.recoveryTotal)} = pay ${inr(l.amount)} · ${l.amount?(l.method==='cash'?'Cash handover after approval':l.method==='upi'?(l.upiReady?'UPI ready':'⚠ No verified UPI ID — will be skipped'):(l.verified?'Bank verified':'⚠ No verified bank account — will be skipped')):'No transfer needed'}${l.hold?' · on hold':''}</small></span><span class="row-actions"><b>${inr(l.amount)}</b><label>Pay by <select data-payroll-method="${esc(run.id)}" data-person="${esc(l.personId)}"><option value="bank" ${l.method==='bank'?'selected':''}>Bank</option><option value="upi" ${l.method==='upi'?'selected':''}>UPI</option><option value="cash" ${l.method==='cash'?'selected':''}>Cash</option></select></label><button type="button" class="button secondary compact" data-payroll-hold="${esc(run.id)}" data-person="${esc(l.personId)}">${l.hold?'Resume':'Hold'}</button></span></div>`).join('')
+    : (run.results||[]).map(r => `<div class="ledger-row static payroll-row"><span><b>${esc(r.name)}</b><small>${r.outcome==='paid'?`Paid ${inr(r.amount)} · advance repaid ${inr(r.recovery||0)}`:r.outcome==='held'?'Held — not processed this run':r.outcome==='skipped'?`Skipped — ${esc(r.reason)}`:r.outcome==='failed'?`Failed — ${esc(r.reason)} · advance not recovered`:r.outcome==='awaiting_upi'?'UPI transfer to start · not paid':r.outcome==='awaiting_cash'?'Cash to hand over · not paid':r.outcome==='pending_confirmation'?'UPI awaiting owner and worker confirmation':r.outcome==='awaiting_worker'?'Cash handed over · awaiting worker receipt':'Disputed · review with worker'}</small></span><span class="row-actions">${r.outcome==='awaiting_upi'?`<button class="button primary compact" data-payroll-start="${esc(run.id)}" data-person="${esc(r.personId)}">Open UPI payment</button>`:r.outcome==='awaiting_cash'?`<button class="button primary compact" data-payroll-start="${esc(run.id)}" data-person="${esc(r.personId)}">I handed over cash</button>`:''}${['pending_confirmation','awaiting_worker'].includes(r.outcome)?`<button class="button secondary compact" data-payroll-open-person="${esc(r.personId)}" data-business="${esc(business)}">Check confirmation</button>`:''}</span></div>`).join('');
+  const unresolved=!isDraft&&run.results?.some(r=>['awaiting_upi','awaiting_cash','pending_confirmation','awaiting_worker'].includes(r.outcome));
+  const pending=run.status==='completed'&&!unresolved&&s.employments.some(e=>e.business===business&&e.status==='active'&&e.payPlan?.type==='monthly'&&balance(s,e.personId)>0);
+  const totals=(run.results||[]).reduce((a,r)=>{if(r.outcome==='paid')a.paid+=r.amount||0;else if(['awaiting_upi','awaiting_cash','pending_confirmation','awaiting_worker'].includes(r.outcome))a.waiting+=r.amount||0;return a;},{paid:0,waiting:0});
+  const approvedAmount=run.approvedAmount??(run.results||[]).filter(r=>!['held','skipped'].includes(r.outcome)).reduce((sum,r)=>sum+(r.amount||0),0);
+  return `<section class="panel"><h2>Monthly payroll · ${esc(period)}</h2><p class="info-banner">Approve salaries across branches in one review. Bank results are simulated; UPI and cash need handover and confirmation. No money is sent by this demo.</p><p class="muted">${isDraft?`Ready: ${ready.length} · ${inr(totalDue)}. Missing details: ${blocked.length}. On hold: ${held.length}. Review each line before approving.`:`Approved ${inr(approvedAmount)} · batch ${esc(run.id)} · ${esc(run.completedAt)}. Paid ${inr(totals.paid)} · waiting ${inr(totals.waiting)} · failed ${(run.results||[]).filter(r=>r.outcome==='failed').length} · skipped ${(run.results||[]).filter(r=>r.outcome==='skipped').length} · held ${(run.results||[]).filter(r=>r.outcome==='held').length}.`}</p>
   ${rows || '<p class="muted">No one with a monthly pay plan found for this business.</p>'}
-  ${isDraft && ready.length ? `<button class="button primary full" data-payroll-approve-run="${esc(run.id)}">Submit mock bank batch · ${inr(totalDue)}</button>` : ''}
-  ${isDraft && !ready.length?'<p class="info-banner">No bank-ready amount yet. Open Attendance & leave to finish the month, post earnings above, then ask each worker to add a verified bank account in My work & pay. UPI-only workers can be paid individually from Pay workers.</p>':''}
+  ${isDraft && ready.length ? `<button class="button primary full" data-payroll-approve-run="${esc(run.id)}">Approve payday · ${inr(totalDue)}</button>` : ''}
+  ${isDraft && !ready.length?'<p class="info-banner">No ready wages yet. Review attendance, post earnings, choose cash, or ask workers to add verified payout details.</p>':''}
+  ${!isDraft&&unresolved?'<p class="info-banner">Finish pending UPI and cash handovers before preparing another batch. Held or skipped workers remain due.</p>':''}
   ${!isDraft&&pending?`<button class="button secondary" data-payroll-retry="${esc(period)}">Prepare another batch for remaining dues</button>`:''}
   ${history.length>1?`<details><summary>Earlier batches (${history.length-1})</summary>${history.slice(0,-1).reverse().map(r=>`<div class="ledger-row static"><span><b>${esc(r.id)}</b><small>${esc(r.completedAt||r.createdAt)} · ${esc(r.status)} · ${(r.results||[]).filter(x=>x.outcome==='paid').length} paid, ${(r.results||[]).filter(x=>x.outcome==='failed').length} failed</small></span></div>`).join('')}</details>`:''}
   </section>`;

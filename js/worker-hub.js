@@ -51,7 +51,8 @@ export function whoAmI(s, ws) {
 
 // ---------- jobs, money, partner roles ----------
 export function jobs(s, person) {
-  const emps = s.employments.filter(e => e.personId === person.id).map(e => {
+  const delivery = Object.entries(s.deliveryPartners || {}).find(([, d]) => d.mobile === person.mobile);
+  const emps = s.employments.filter(e => e.personId === person.id && !(delivery && e.business === 'platform' && e.role === 'delivery')).map(e => {
     // One calculation regardless of vertical — e.personId is already the real shared id, no resolution
     // needed. Previously retail and logistics each had their own separate computation here (HR.balance
     // / WF.khata), neither going through the unified engine — this card and the screen it links to
@@ -64,8 +65,8 @@ export function jobs(s, person) {
     };
     return {kind: 'employment', e, employer: PC.bizName(s, e.business), branch: PC.branchesFor(s, e.business).find(b => b.id === e.homeBranch)?.name || '', teams: (s.teams || []).filter(t => t.members.includes(e.id) && !t.ended).map(t => t.name), money, home: e.role === 'picker' || e.source.kind === 'picker' ? 'pickTasks' : ['driver', 'helper'].includes(e.role) ? 'myJobs' : 'work'};
   });
-  const dp = Object.entries(s.deliveryPartners || {}).find(([, d]) => d.mobile === person.mobile);
-  if (dp) emps.push({kind: 'partner', role: 'Delivery partner', employer: 'MoveAI Delivery', status: dp[1].status === 'approved' ? 'active' : dp[1].status, ws: dp[0], money: {wallet: Pay.wallet(s, dp[0])?.balance ?? 0}, home: 'deliveryJobs'});
+  const dp = delivery;
+  if (dp) emps.push({kind: 'partner', role: 'Delivery partner', employer: 'MoveAI Delivery', status: dp[1].status === 'approved' ? 'active' : dp[1].status, ws: dp[0], partyId: dp[1].id, money: {wallet: Pay.wallet(s, dp[1].id)?.balance ?? 0}, home: 'deliveryJobs'});
   const pd = (s.candidates || []).find(c => c.id === 'CAND-004' && c.mobile === person.mobile);
   if (pd) emps.push({kind: 'partner', role: 'Personal driver', employer: 'MoveAI customers', status: 'active', ws: 'personalDriver', money: {wallet: Pay.wallet(s, 'personalDriver')?.balance ?? 0}, home: 'myJobs'});
   return emps;
@@ -77,7 +78,7 @@ export function yearly(s, person) {
     if (PC.STORES.includes(e.business)) for (const x of (s.staffLedger || []).filter(x => x.personId === e.source.id && x.type === 'payment' && x.status !== 'not_received')) add(yearOf(x.ts || x.at), who, x.amount);
     else for (const x of (s.ledger || []).filter(x => x.owner === e.business && x.payee === `staff:${e.source.id}` && ['salary'].includes(x.type) && x.ack !== 'not_received')) add(yearOf(x.createdAt || x.history?.[0]?.at), who, Number(x.amount));
   }
-  for (const j of jobs(s, person).filter(j => j.kind === 'partner')) for (const x of (s.ledger || []).filter(x => x.type === 'payout' && x.payee === j.ws && x.status === 'paid')) add(yearOf(x.createdAt), j.employer, Number(x.amount));
+  for (const j of jobs(s, person).filter(j => j.kind === 'partner')) for (const x of (s.ledger || []).filter(x => x.type === 'payout' && x.payee === (j.partyId || j.ws) && x.status === 'paid')) add(yearOf(x.createdAt), j.employer, Number(x.amount));
   return out;
 }
 export function historyLines(s, person) {
@@ -87,6 +88,7 @@ export function historyLines(s, person) {
 // ---------- screen ----------
 export function screen(s, route, ws) {
   if (route !== 'myWork' || !WORKER_WS.includes(ws) && !s.deliveryPartners?.[ws]) return '';
+  if (s.deliveryPartners?.[ws]) return `${head('Delivery money', 'See delivery earnings, wallet payouts and COD cash in Money.')}<section class="panel"><button class="button primary" data-route="deliveryEarnings">Open Money</button></section>`;
   const person = whoAmI(s, ws); if (!person) return `${head('My work & pay', 'No worker profile on this account yet.')}`;
   const all = jobs(s, person), active = all.filter(j => j.kind === 'partner' ? j.status === 'active' : j.e.status === 'active'), past = all.filter(j => j.kind === 'employment' && j.e.status === 'ended');
   const pick = active.find(j => (j.kind === 'partner' ? j.ws : j.e.id) === s.hubJob) || active[0], yrs = yearly(s, person);
