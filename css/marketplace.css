@@ -65,4 +65,9 @@
 .help-status{white-space:nowrap;font-weight:700}
 .help-update{border-left:3px solid var(--brand);padding:.6rem .8rem;background:#f7faf9;overflow-wrap:anywhere}
 .help-decision{border-top:1px solid var(--line);margin-top:1rem;padding-top:1rem}
+.claim-evidence{display:grid;justify-items:start;gap:.5rem;padding:.75rem;border:1px solid var(--line);border-radius:12px;background:#f8fbfa;max-width:380px;overflow-wrap:anywhere}
+.claim-evidence img{display:block;width:min(100%,320px);max-height:240px;object-fit:contain;border-radius:8px;background:white}
+.claim-evidence small{color:var(--muted)}
+.claim-timeline{margin:.6rem 0}.claim-timeline summary{cursor:pointer;font-weight:700}.claim-timeline p{border-left:2px solid var(--brand);padding:.25rem .65rem;margin:.4rem 0}
+.claim-row h3{margin:.3rem 0}.claim-row p{margin:.3rem 0;overflow-wrap:anywhere}.claim-row form{margin:.5rem 0}.claim-row input,.claim-row select{max-width:100%}
 @media(max-width:720px){.help-form-grid{grid-template-columns:1fr}.help-list-row{align-items:start;flex-direction:column}.help-status{white-space:normal}}

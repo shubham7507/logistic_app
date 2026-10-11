@@ -18,6 +18,8 @@ import * as Inventory from './grocery-inventory.js';
 import {selectedBranch,defaultBranch,branch} from './seller-branches.js';
 import {operatorStore} from './grocery-workforce.js';
 import {rcLookup, gstLookup, pennyDrop} from './verify-sim.js';
+import {readEvidence, evidenceHtml} from './claim-evidence.js';
+import * as Help from './help-desk.js';
 
 const DAY = 86400000, H = 3600000;
 const stamp = () => new Date(clock()).toLocaleString('en-IN', {day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit'});
@@ -284,12 +286,44 @@ export function eligibility(s, o, item) {
   return {p, g, rule, left, open, kinds, warranty: g === 'electrical' && !open ? `Window closed. Manufacturer warranty: ${p.details?.['Warranty (months)'] || 12} months — contact ${p.brand}.` : ''};
 }
 const KIND_LABEL = {missing: 'Missing item', damaged: 'Damaged', poor_quality: 'Poor quality / not fresh', wrong_item: 'Wrong item', expired: 'Expired at delivery', defective: 'Defective — replace', return: 'Return for refund', exchange: 'Exchange size'};
+const STORE_MANAGER = {grocery:'groceryManager',groceryFresh:'groceryFreshManager',electrical:'electricalManager',fashion:'fashionManager'};
+const storeKey = (s,c) => Object.keys(s.shopPartners || {}).find(k => s.shopPartners[k].party === c.party);
+function claimUpdate(s,c,message,{customer=true,store=true,admin=false,courier=false}={}) {
+  c.history.push({at:stamp(),text:message});
+  if(customer)notify(s,'personal',`${c.id}: ${message}`,c.orderId,'orders');
+  const key=storeKey(s,c);
+  if(store&&key){notify(s,key,`${c.id}: ${message}`,c.orderId,'plusReturns');if(STORE_MANAGER[key])notify(s,STORE_MANAGER[key],`${c.id}: ${message}`,c.orderId,'plusReturns');}
+  if(admin)notify(s,'admin',`${c.id}: ${message}`,c.orderId,'plusClaims');
+  if(courier){const ws=Object.keys(s.deliveryPartners||{}).find(k=>s.deliveryPartners[k].id===c.pickup?.partnerId);if(ws)notify(s,ws,`${c.id}: ${message}`,c.orderId,'deliveryJobs');}
+}
+const claimStatus = c => ({pickup_assigned:c.pickup?.status==='waiting'?'Waiting for return partner':c.pickup?.status==='accepted'?'Pickup accepted':'Pickup offered',review:'Under review',appealed:'Appeal under review',qc_failed:'Pickup check failed',refund_started:'Refund started',refunded:'Refund completed',replaced:'Replacement sent',exchanged:'Exchange sent',rejected:'Not approved'})[c.status] || String(c.status).replaceAll('_',' ');
+const claimHistory = c => `<details class="claim-timeline"><summary>View claim updates (${c.history?.length||0})</summary>${(c.history||[]).map(h=>`<p><small>${esc(h.at)} · ${esc(h.text)}</small></p>`).join('')}</details>`;
+const claimHelp = c => `<button class="button secondary compact" data-plus="claim-help" data-id="${esc(c.id)}">${c.helpCaseId ? `Open Help Desk case ${esc(c.helpCaseId)}` : 'Ask for help about this claim'}</button>`;
+const claimSupportLink = c => c.helpCaseId ? `<button class="button secondary compact" data-plus="claim-open-help" data-id="${esc(c.id)}">Open linked Help Desk case ${esc(c.helpCaseId)}</button>` : '';
+function claimEvidence(c) { return evidenceHtml(c.evidence,c.photo,'Damage evidence'); }
+function preparationEvidence(s,c) {
+  const o=(s.customerOrders||[]).find(x=>x.id===c.orderId);if(!o)return '';
+  const checked=Object.keys(o.pick?.checked||{}).length;
+  return `<details class="claim-timeline"><summary>Original picking and packing record</summary><p>${checked}/${o.items?.length||0} item lines confirmed by ${esc(o.pick?.picker||'store staff')}</p>${o.packPhoto?`<p>Packing photo recorded as ${esc(o.packPhoto)} (older filename only)</p>`:'<p>No packing photo recorded.</p>'}${(o.history||[]).filter(h=>/pick|pack|collected from store/i.test(h.text||'')).slice(-6).map(h=>`<p><small>${esc(h.at)} · ${esc(h.text)}</small></p>`).join('')}</details>`;
+}
+export function helpForClaim(s,c) {
+  if(c.helpCaseId&&(s.supportCases||[]).some(x=>x.id===c.helpCaseId))return {caseId:c.helpCaseId};
+  const category={missing:'missing_item',wrong_item:'wrong_item',expired:'expired_item'}[c.kind]||'damaged_item';
+  const result=Help.createCase(s,'personal',{category,reference:c.orderId,description:`Please review claim ${c.id}: ${c.reason||KIND_LABEL[c.kind]||'item problem'}.`,attachment:c.evidence?.name||c.photo||'',evidence:c.evidence,linkedClaimId:c.id});
+  if(result.case){c.helpCaseId=result.case.id;return {caseId:result.case.id};}
+  if(result.caseId){c.helpCaseId=result.caseId;const old=s.supportCases.find(x=>x.id===result.caseId);if(old){old.linkedClaimId=c.id;old.evidence ||= c.evidence;}return {caseId:result.caseId};}
+  return result;
+}
+function customerClaimCard(c) {
+  const next=c.status==='pickup_assigned' ? c.pickup?.status==='waiting'?'We are finding a return partner. You can ask Help Desk for an update.':c.pickup?.status==='accepted'?`Keep the item and show return code ${c.pickup.code} when ${c.pickup.partnerName} arrives.`:`${c.pickup.partnerName} has been offered the pickup. Keep the item; show code ${c.pickup.code} after acceptance.`:c.status==='review'||c.status==='appealed'?'Platform review is next.':c.status==='refund_started'?'Mock refund initiated; the platform must confirm its completion.':c.status==='qc_failed'||c.status==='rejected'?'You can appeal with a reason.':'No action needed from you.';
+  return `<div class="claim-row"><b>${esc(c.id)} · ${esc(claimStatus(c))}</b><span>${esc(KIND_LABEL[c.kind]||c.kind)} · ${inr(c.amount)}</span><p>${esc(next)}</p>${claimEvidence(c)}${claimHistory(c)}<div class="row-actions">${claimHelp(c)}${['qc_failed','rejected'].includes(c.status)&&!c.appealCount?`<form class="inline-form" data-plus-form="claim-appeal" data-id="${esc(c.id)}"><input name="reason" required minlength="10" placeholder="Why should we review again?"><button class="button secondary compact">Appeal</button></form>`:''}</div></div>`;
+}
 export function orderHelp(s, o) {
   ensurePlus(s);
   if (!['delivered', 'collected', 'return_requested', 'returned'].includes(o.status)) return '';
   const claims = s.claims.filter(c => c.orderId === o.id);
   const rows = o.items.map(i => { const e = eligibility(s, o, i), vs = variantsOf(s, e.p).filter(v => v.id !== i.productId); return `<div class="help-item"><b>${esc(i.name)}</b> <small class="muted">· ${esc(e.rule.label)} · ${esc(e.rule.policy)}</small>${e.warranty ? `<small class="block">${esc(e.warranty)}</small>` : ''}${e.kinds.length && e.left > 0 ? `<form class="inline-form" data-plus-form="claim" data-id="${esc(o.id)}" data-product="${esc(i.productId)}"><select name="kind">${e.kinds.map(k => `<option value="${k}">${KIND_LABEL[k]}</option>`).join('')}</select><input name="qty" type="number" min="1" max="${e.left}" value="${e.left}" title="Quantity"><input name="reason" placeholder="What happened?"><input name="photo" type="file" accept="image/*"><input name="serial" placeholder="${e.g === 'electrical' ? 'Serial number on the product' : ''}" ${e.g === 'electrical' ? '' : 'hidden'}>${e.g === 'fashion' ? `<select name="exchangeTo"><option value="">Exchange to size…</option>${vs.map(v => `<option value="${esc(v.id)}">${esc(v.variantLabel || v.size)}</option>`).join('')}</select><label><input type="checkbox" name="tags"> Tags intact, unused</label>` : ''}<select name="refundTo"><option value="wallet">Refund to MoveAI wallet (instant)</option><option value="source">${o.cod ? 'Refund to UPI' : 'Refund to original payment (3–5 days)'}</option></select>${o.cod ? '<input name="upi" placeholder="UPI ID for refund">' : ''}<button class="button secondary compact">Submit</button></form>` : `<small class="block muted">${e.left <= 0 ? 'Already raised for all units.' : 'The return window for this item has closed.'}</small>`}</div>`; }).join('');
-  return `<details class="order-help" ${claims.some(c => !['refunded', 'replaced', 'exchanged', 'rejected', 'qc_failed', 'closed'].includes(c.status)) ? 'open' : ''}><summary class="button secondary compact">Help with this order</summary>${rows}<p class="plus-error field-error" hidden></p>${claims.map(c => `<div class="claim-row">${pill(c.status)} <b>${esc(c.id)}</b> · ${esc(KIND_LABEL[c.kind])} · ${c.items.map(x => `${x.qty} × ${esc(s.products.find(p => p.id === x.productId)?.name || x.productId)}`).join(', ')} · ${inr(c.amount)}<small class="block muted">${esc(c.history.at(-1)?.text || '')}</small></div>`).join('')}${reviewForm(s, o)}</details>`;
+  return `<details class="order-help" ${claims.some(c => !['refunded', 'replaced', 'exchanged', 'rejected', 'qc_failed', 'closed'].includes(c.status)) ? 'open' : ''}><summary class="button secondary compact">Report a problem or view claims</summary>${rows}<p class="plus-error field-error" hidden></p>${claims.map(c => customerClaimCard(c)).join('')}${reviewForm(s, o)}</details>`;
 }
 export function raiseClaim(s, o, pid, v) {
   const item = o.items.find(i => i.productId === pid), e = eligibility(s, o, item); if (!e.open) return 'The window for this item has closed.';
@@ -302,16 +336,36 @@ export function raiseClaim(s, o, pid, v) {
   if (o.cod && v.refundTo === 'source' && !/^[\w.-]+@[a-z]{2,}$/i.test(String(v.upi || ''))) return 'Enter a UPI ID for the refund.';
   const unit = item.finalAmount != null ? item.finalAmount / item.quantity : item.unitPrice, amount = Math.round(unit * qty);
   const recent = s.claims.filter(c => clock() - c.createdAt < 30 * DAY).length;
-  const c = {id: uid('CLM'), orderId: o.id, store: o.fulfilmentPartner, party: o.party, kind: v.kind, group: e.g, items: [{productId: pid, qty}], reason: String(v.reason || '').trim(), photo: v.photo || '', serial: v.serial || '', exchangeTo: v.exchangeTo || '', refundTo: v.refundTo || 'wallet', upi: v.upi || '', amount, createdAt: clock(), status: 'requested', history: [{at: stamp(), text: `${KIND_LABEL[v.kind]} raised by customer`}]};
+  const c = {id: uid('CLM'), orderId: o.id, store: o.fulfilmentPartner, party: o.party, kind: v.kind, group: e.g, items: [{productId: pid, qty}], reason: String(v.reason || '').trim(), photo: v.photo || '', evidence: v.evidence || null, serial: v.serial || '', exchangeTo: v.exchangeTo || '', refundTo: v.refundTo || 'wallet', upi: v.upi || '', amount, createdAt: clock(), status: 'requested', history: [{at: stamp(), text: `${KIND_LABEL[v.kind]} raised by customer`}]};
   s.claims.unshift(c);
   const needsPickup = !['missing', 'poor_quality'].includes(v.kind) && e.g !== 'fresh';
   if (!needsPickup && amount <= settings(s).claimAutoLimit && recent < settings(s).claimMax30d) { refundClaim(s, c, o, 'Auto-approved small claim'); return ''; }
-  if (needsPickup) { const courier = pickCourier(s, {...o, id: c.id}); c.pickup = {partnerId: courier?.id || null, partnerName: courier?.name || 'Waiting for a partner', code: String(1000 + hash(c.id) % 9000), status: courier ? 'assigned' : 'waiting'}; c.status = 'pickup_assigned'; c.history.push({at: stamp(), text: `Return pickup assigned to ${c.pickup.partnerName}. Show code ${c.pickup.code} to the partner.`}); }
-  else { c.status = 'review'; c.history.push({at: stamp(), text: recent >= settings(s).claimMax30d ? 'Sent for review (several claims this month)' : 'Sent to the store and MoveAI for review'}); }
-  notify(s, 'personal', `${c.id}: ${c.history.at(-1).text}`, o.id);
+  if (needsPickup) { const courier = pickReturnCourier(s,c); c.pickup = {partnerId: courier?.id || null, partnerName: courier?.name || 'Waiting for a partner', code: String(1000 + hash(c.id) % 9000), status: courier ? 'offered' : 'waiting'}; c.status = 'pickup_assigned'; claimUpdate(s,c,courier?`Return pickup offered to ${courier.name}. Await their acceptance.`:'Waiting for an available return partner.',{admin:!courier,courier:!!courier}); }
+  else { c.status = 'review'; claimUpdate(s,c,recent >= settings(s).claimMax30d ? 'Sent for review (several claims this month)' : 'Sent to the store and MoveAI for review',{admin:true}); }
   return '';
 }
 export function walletCredit(s, amount, note) { s.customerWallet.balance += amount; s.customerWallet.entries.unshift({amount, note, at: stamp()}); }
+function pickReturnCourier(s,c) {
+  const busy=id=>(s.claims||[]).filter(x=>x.id!==c.id&&x.pickup?.partnerId===id&&x.status==='pickup_assigned'&&['offered','accepted'].includes(x.pickup.status)).length;
+  return Object.values(s.deliveryPartners||{}).find(p=>!deliveryEligibility(p)&&p.available&&!c.declinedBy?.includes(p.id)&&busy(p.id)<settings(s).capacityPerCourier)||null;
+}
+export function returnPartnerAction(s,c,ws,action) {
+  const partner=s.deliveryPartners?.[ws];
+  if(!partner||c?.status!=='pickup_assigned'||c.pickup?.partnerId!==partner.id)return 'This return pickup is not assigned to you.';
+  if(action==='accept'&&c.pickup.status==='offered'){c.pickup.status='accepted';claimUpdate(s,c,`${partner.name} accepted the return pickup. Show the return code at collection.`,{admin:false,courier:true});return '';}
+  if(action==='decline'&&c.pickup.status==='offered'){
+    (c.declinedBy||=[]).push(partner.id);const next=pickReturnCourier(s,c);
+    Object.assign(c.pickup,{partnerId:next?.id||null,partnerName:next?.name||'Waiting for a partner',status:next?'offered':'waiting'});
+    claimUpdate(s,c,next?`Pickup declined; offered to ${next.name}.`:'Pickup declined; waiting for another available partner.',{admin:!next,courier:!!next});return '';
+  }
+  return 'This pickup cannot be updated now.';
+}
+export function assignReturnPartner(s,c,partnerId) {
+  if(c?.status!=='pickup_assigned'||!['waiting','offered'].includes(c.pickup?.status))return 'This claim is not waiting for a return partner.';
+  const p=partnerId==='auto'?pickReturnCourier(s,c):Object.values(s.deliveryPartners||{}).find(x=>x.id===partnerId&&!deliveryEligibility(x)&&x.available);
+  if(!p)return 'No eligible available partner; leave the claim waiting and try again.';
+  Object.assign(c.pickup,{partnerId:p.id,partnerName:p.name,status:'offered'});claimUpdate(s,c,`Return pickup offered to ${p.name}. Await acceptance.`,{courier:true});return '';
+}
 export function refundClaim(s, c, o, why) {
   if (c.refundTo === 'wallet') walletCredit(s, c.amount, `Refund ${c.id} · ${o.id}`);
   record(s, {owner: 'personal', orderId: o.id, sourceType: 'claim', sourceId: c.id, type: 'refund', payer: 'moveai', payee: 'personal', responsible: o.party, amount: c.amount, method: c.refundTo === 'wallet' ? 'moveai_wallet' : o.cod ? 'upi' : o.method, reference: gateway.refund(c.id, c.amount).ref, status: c.refundTo === 'wallet' ? 'refunded' : 'refund_initiated', expectedBy: clock() + 5 * DAY, gatewayFinal: 'refunded', note: `${KIND_LABEL[c.kind]} · ${c.id}`}, 'MoveAI');
@@ -319,16 +373,25 @@ export function refundClaim(s, c, o, why) {
   const recover = Math.round(c.amount * (1 - commissionRate(s, o)));
   if (o.settlementStatus === 'paid') record(s, {owner: o.party, orderId: o.id, sourceType: 'claim', sourceId: c.id, type: 'return_recovery', payer: o.party, payee: 'moveai', responsible: o.party, amount: recover, method: 'next_payout', reference: `RR-${c.id}`, status: 'due', note: `Recovered from next payout · ${c.id}`}, 'MoveAI');
   else o.sellerDue = Math.max(0, (o.sellerDue || 0) - recover);
-  c.status = 'refunded'; c.refundedAt = clock(); c.history.push({at: stamp(), text: `${why} · ${inr(c.amount)} ${c.refundTo === 'wallet' ? 'added to your MoveAI wallet' : 'refund started (3–5 days)'}`});
+  c.status = c.refundTo === 'wallet' ? 'refunded' : 'refund_started'; if(c.status==='refunded')c.refundedAt=clock();
+  claimUpdate(s,c,`${why} · ${inr(c.amount)} ${c.refundTo === 'wallet' ? 'added to your MoveAI wallet' : 'mock refund initiated (3–5 days)'}`,{admin:c.status==='refund_started'});
 }
-export function pickupAction(s, c, action, v = {}) {
+export function completeClaimRefund(s,c) {
+  if(c?.status!=='refund_started')return 'Only an initiated refund can be confirmed.';
+  const line=(s.ledger||[]).find(x=>x.sourceId===c.id&&x.type==='refund');
+  if(!line)return 'Refund ledger entry is missing.';
+  line.status='refunded';c.status='refunded';c.refundedAt=clock();claimUpdate(s,c,'Mock refund marked completed by platform',{admin:false});return '';
+}
+export function pickupAction(s, c, action, v = {}, ws = '') {
   const o = (s.customerOrders || []).find(x => x.id === c.orderId);
   if (action === 'collect') {
+    if(!c?.pickup||c.status!=='pickup_assigned')return 'This return pickup is no longer open.';
+    if(ws && (s.deliveryPartners?.[ws]?.id!==c.pickup.partnerId||c.pickup.status!=='accepted'))return 'Accept your assigned return pickup before collecting it.';
     if (String(v.code) !== c.pickup.code) return 'Enter the return code the customer shows.';
-    const checks = QC[c.group] || QC.food; if (checks.some((_, i) => !v[`qc${i}`])) { c.status = 'qc_failed'; c.history.push({at: stamp(), text: `Pickup refused at the door: ${checks.filter((_, i) => !v[`qc${i}`]).join(', ')}`}); return ''; }
-    c.pickup.status = 'collected'; c.status = 'picked_up'; c.history.push({at: stamp(), text: 'Collected · condition check passed at the door'});
-    if (c.kind === 'exchange') { c.status = 'exchanged'; const to = s.products.find(p => p.id === c.exchangeTo); if (to) to.quantity = Math.max(0, to.quantity - c.items[0].qty); restock(s, c); c.history.push({at: stamp(), text: `Size ${to?.variantLabel || ''} dispatched with the partner`}); return ''; }
-    if (c.kind === 'defective') { c.status = 'replaced'; const p = s.products.find(x => x.id === c.items[0].productId); if (p) p.quantity = Math.max(0, p.quantity - c.items[0].qty); c.history.push({at: stamp(), text: 'Replacement unit dispatched; defective unit returned to the store as damaged stock'}); return ''; }
+    const checks = QC[c.group] || QC.food; if (checks.some((_, i) => !v[`qc${i}`])) { c.status = 'qc_failed';c.pickup.status='failed';claimUpdate(s,c,`Pickup check failed: ${checks.filter((_, i) => !v[`qc${i}`]).join(', ')}. Customer may appeal.`,{admin:true,courier:true}); return ''; }
+    c.pickup.status = 'collected'; c.status = 'picked_up';claimUpdate(s,c,'Returned item collected · condition check passed',{courier:true});
+    if (c.kind === 'exchange') { c.status = 'exchanged'; const to = s.products.find(p => p.id === c.exchangeTo); if (to) to.quantity = Math.max(0, to.quantity - c.items[0].qty); restock(s, c); claimUpdate(s,c,`Size ${to?.variantLabel || ''} dispatched with the partner`); return ''; }
+    if (c.kind === 'defective') { c.status = 'replaced'; const p = s.products.find(x => x.id === c.items[0].productId); if (p) p.quantity = Math.max(0, p.quantity - c.items[0].qty); claimUpdate(s,c,'Replacement unit dispatched; defective unit returned to the store as damaged stock'); return ''; }
     if (['return', 'damaged', 'wrong_item', 'expired'].includes(c.kind)) { if (c.kind === 'return' || c.kind === 'wrong_item') restock(s, c); refundClaim(s, c, o, 'Refund on pickup'); }
     return '';
   }
@@ -336,12 +399,24 @@ export function pickupAction(s, c, action, v = {}) {
 }
 const QC = {fashion: ['Tags intact', 'Unused and unwashed', 'Same item and size'], electrical: ['Serial number matches', 'All parts and box present'], food: ['Same product and batch', 'Damage / expiry visible as reported'], household: ['Same product', 'Damage / leak visible as reported']};
 function restock(s, c) { for (const x of c.items) { const p = s.products.find(y => y.id === x.productId); if (p) { p.quantity += x.qty; (p.stockLog ||= []).push({at: stamp(), text: `+${x.qty} returned (${c.id})`}); } } }
-export function storeDispute(s, c, note) { if (!['refunded', 'picked_up'].includes(c.status)) return 'Only refunded returns can be disputed.'; if (!String(note || '').trim()) return 'Explain what is wrong with the returned item.'; c.dispute = {note: note.trim(), at: stamp(), status: 'open'}; c.history.push({at: stamp(), text: 'Store disputed the return'}); return ''; }
-export function adminDecide(s, c, decision) {
+export function storeDispute(s, c, note) { if (!['refunded', 'picked_up'].includes(c.status)) return 'Only refunded returns can be disputed.'; if (!String(note || '').trim()) return 'Explain what is wrong with the returned item.'; c.dispute = {note: note.trim(), at: stamp(), status: 'open'}; claimUpdate(s,c,'Store disputed the refund; platform review required',{admin:true}); return ''; }
+export function sellerClaimResponse(s,c,ws,note,evidence) {
+  if(!c||storeWs(ws)!==storeKey(s,c))return 'This claim belongs to another store.';
+  if(!String(note||'').trim()||String(note).trim().length<10)return 'Write at least 10 characters about what you checked.';
+  (c.sellerResponses||=[]).push({at:stamp(),note:String(note).trim().slice(0,1000),evidence:evidence||null});
+  claimUpdate(s,c,'Store added packing or product evidence for platform review',{admin:true});return '';
+}
+export function appealClaim(s,c,reason) {
+  if(!c||!['qc_failed','rejected'].includes(c.status)||c.appealCount)return 'This claim cannot be appealed again.';
+  if(String(reason||'').trim().length<10)return 'Explain the appeal in at least 10 characters.';
+  c.appealCount=1;c.status='appealed';c.appealReason=String(reason).trim().slice(0,1000);claimUpdate(s,c,`Customer appealed: ${c.appealReason}`,{admin:true});return '';
+}
+export function adminDecide(s, c, decision, note = '') {
   if (c.service) return decideService(s, c, decision);
   const o = (s.customerOrders || []).find(x => x.id === c.orderId);
-  if (c.status === 'review') { if (decision === 'approve') refundClaim(s, c, o, 'Approved after review'); else { c.status = 'rejected'; c.history.push({at: stamp(), text: 'Not approved after review'}); } return ''; }
-  if (c.dispute?.status === 'open') { c.dispute.status = decision === 'approve' ? 'store_upheld' : 'store_rejected'; if (decision === 'approve') { record(s, {owner: o.party, orderId: o.id, sourceType: 'claim', sourceId: c.id, type: 'claim_compensation', payer: 'moveai', payee: o.party, responsible: 'moveai', amount: Math.round(c.amount * (1 - commissionRate(s, o))), method: 'next_payout', reference: `CC-${c.id}`, status: 'due', note: `MoveAI covers ${c.id} after the store's dispute was upheld`}, 'Admin'); } c.history.push({at: stamp(), text: decision === 'approve' ? 'Dispute upheld: MoveAI compensates the store' : 'Dispute rejected: refund stands'}); return ''; }
+  if(c.status==='appealed'&&decision==='retry'&&c.pickup){c.pickup.status='waiting';c.pickup.partnerId=null;c.pickup.partnerName='Waiting for a partner';c.pickup.code=String(1000+hash(`${c.id}-${clock()}`)%9000);c.status='pickup_assigned';claimUpdate(s,c,'Platform approved a new return pickup. Waiting for a partner.',{admin:true});return '';}
+  if (['review','appealed'].includes(c.status)) { if (decision === 'approve') refundClaim(s, c, o, 'Approved after review'); else { if(String(note||'').trim().length<10)return 'Explain the rejection in at least 10 characters.'; c.status = 'rejected';claimUpdate(s,c,`Not approved: ${String(note).trim().slice(0,500)}`); } return ''; }
+  if (c.dispute?.status === 'open') { c.dispute.status = decision === 'approve' ? 'store_upheld' : 'store_rejected'; if (decision === 'approve') { record(s, {owner: o.party, orderId: o.id, sourceType: 'claim', sourceId: c.id, type: 'claim_compensation', payer: 'moveai', payee: o.party, responsible: 'moveai', amount: Math.round(c.amount * (1 - commissionRate(s, o))), method: 'next_payout', reference: `CC-${c.id}`, status: 'due', note: `MoveAI covers ${c.id} after the store's dispute was upheld`}, 'Admin'); } claimUpdate(s,c,decision === 'approve' ? 'Store dispute upheld: MoveAI compensates the store' : 'Store dispute rejected: customer refund stands',{admin:false}); return ''; }
   return 'Nothing to decide.';
 }
 function reviewForm(s, o) {
@@ -351,7 +426,7 @@ function reviewForm(s, o) {
 }
 
 // ---------- notifications outbox (simulated SMS / WhatsApp / push) ----------
-export function notify(s, to, text, ref) { (s.notifications ||= []).unshift({id: uid('NT'), to, text, ref, at: stamp(), read: false}); channelLog(s, to, text); }
+export function notify(s, to, text, ref, route) { (s.notifications ||= []).unshift({id: uid('NT'), to, text, ref, route, at: stamp(), read: false}); channelLog(s, to, text); }
 export function channelLog(s, to, text) { (s.outbox ||= []).unshift({to, text, channels: NC.channelsFor(s, to, text), at: stamp()}); s.outbox.length = Math.min(s.outbox.length, 200); }
 
 // ---------- seller tools ----------
@@ -458,8 +533,8 @@ function analyticsScreen(s, ws) {
   <div class="grid two"><section class="panel"><h2>Top products</h2>${a.top.map(([n, q]) => `<div class="ledger-row static"><span><b>${esc(n)}</b></span><span>${q} sold</span></div>`).join('') || '<p class="muted">No delivered orders yet.</p>'}</section><section class="panel"><h2>Payouts</h2><table class="price-table"><tbody><tr><td>Waiting (return window / hold)</td><td>${inr(a.pendingPayout)}</td></tr><tr><td>Paid</td><td>${inr(a.paidPayout)}</td></tr><tr><td>TCS collected (GST, ${settings(s).tcsPct}%)</td><td>${inr(a.tcs)}</td></tr><tr><td>TDS (194-O, ${settings(s).tdsPct}%)</td><td>${inr(a.tds)}</td></tr></tbody></table><p class="muted">Tax rates are settings to confirm with a CA. Certificates are issued quarterly in a real launch.</p></section></div>${sellerStatementHtml(s, p.name)}`;
 }
 function sellerReturnsScreen(s, ws) {
-  const p = s.shopPartners[ws], list = (s.claims || []).filter(c => c.store === p.name);
-  return `${head('Returns & claims', `${p.name} · refunds are deducted from your payout minus the commission charged`)}<section class="panel">${list.map(c => `<div class="claim-row">${pill(c.status)} <b>${esc(c.id)}</b> · ${esc(KIND_LABEL[c.kind])} · ${c.items.map(x => `${x.qty} × ${esc(s.products.find(pp => pp.id === x.productId)?.name || '')}`).join(', ')} · ${inr(c.amount)}<small class="block muted">${esc(c.reason)}${c.photo ? ` · photo ${esc(c.photo)}` : ''}${c.serial ? ` · serial ${esc(c.serial)}` : ''}</small>${c.dispute ? `<small class="block">Dispute: ${esc(c.dispute.note)} · ${esc(c.dispute.status)}</small>` : ['refunded', 'picked_up'].includes(c.status) ? `<form class="inline-form" data-plus-form="dispute" data-id="${esc(c.id)}"><input name="note" placeholder="Why the return is not valid (e.g. item used, wrong item returned)"><button class="button secondary compact">Dispute</button></form>` : ''}</div>`).join('') || '<p class="muted">No returns or claims.</p>'}</section><p class="plus-error field-error" hidden></p>`;
+  const p=s.shopPartners[ws],list=(s.claims||[]).filter(c=>!c.service&&c.store===p.name);
+  return `${head('Returns & claims',`${p.name} · review the item, evidence and next step`)}<section class="panel">${list.map(c=>`<article class="claim-row"><h3>${esc(c.id)} · ${esc(claimStatus(c))}</h3><p>${esc(KIND_LABEL[c.kind]||c.kind)} · ${c.items.map(x=>`${x.qty} × ${esc(s.products.find(pp=>pp.id===x.productId)?.name||x.productId)}`).join(', ')} · ${inr(c.amount)}</p><p>Customer: ${esc(c.reason||'No description provided')}</p>${claimEvidence(c)}${preparationEvidence(s,c)}${c.pickup?`<p>Return pickup: ${esc(c.pickup.partnerName)} · ${esc(c.pickup.status)}</p>`:''}<p>Next: ${c.status==='pickup_assigned'?'Return partner accepts and checks the item.':c.status==='review'||c.status==='appealed'?'Platform reviews the claim and your evidence.':c.status==='refund_started'?'Platform confirms the mock external refund.':'Review the outcome and payout adjustment.'}</p>${(c.sellerResponses||[]).map(r=>`<p class="info-banner">Store evidence · ${esc(r.at)}: ${esc(r.note)}${evidenceHtml(r.evidence)}</p>`).join('')}${claimHistory(c)}${claimSupportLink(c)}<form class="form-grid" data-plus-form="claim-response" data-id="${esc(c.id)}"><label>What did you check? <input name="note" required minlength="10" placeholder="For example: packing checklist and seal were checked"></label><label>Optional packing photo <input name="photo" type="file" accept="image/png,image/jpeg,image/webp"></label><button class="button secondary compact">Send evidence to platform</button></form>${c.dispute?`<p>Store dispute: ${esc(c.dispute.note)} · ${esc(c.dispute.status)}</p>`:['refunded','picked_up'].includes(c.status)?`<form class="inline-form" data-plus-form="dispute" data-id="${esc(c.id)}"><input name="note" placeholder="Why is this return invalid?"><button class="button secondary compact">Dispute refund</button></form>`:''}</article>`).join('')||'<p>No returns or claims.</p>'}</section><p class="plus-error field-error" hidden></p>`;
 }
 function approvalsScreen(s) {
   const pend = s.products.filter(p => ['pending', 'changes_needed'].includes(p.approval)), reqs = Object.entries(s.shopPartners || {}).flatMap(([k, p]) => (p.categoryRequests || []).map(g => ({k, p, g}))), ob = Object.entries(s.shopPartners || {}).filter(([, p]) => p.onboarding?.status === 'pending');
@@ -469,9 +544,9 @@ function approvalsScreen(s) {
   <section class="panel"><h2>Seller verification (${ob.length})</h2>${ob.map(([k, p]) => `<div class="claim-row"><b>${esc(p.name)}</b> · GSTIN ${esc(p.onboarding.gstin)} · PAN ${esc(p.onboarding.pan)} · bank ${p.onboarding.bankVerified ? 'verified' : 'not verified'}<span class="row-actions"><button class="button primary compact" data-plus="onboard-approve" data-id="${k}">Approve</button></span></div>`).join('') || '<p class="muted">None.</p>'}</section>`;
 }
 function claimsScreen(s) {
-  const list = s.claims || [];
-  return `${head('Returns & claims centre', 'Customer claims, return pickups and store disputes.')}<div class="metrics"><div class="metric"><span>Open</span><b>${list.filter(c => !['refunded', 'replaced', 'exchanged', 'rejected', 'qc_failed'].includes(c.status)).length}</b></div><div class="metric"><span>Refunded</span><b>${inr(list.filter(c => c.status === 'refunded').reduce((a, c) => a + c.amount, 0))}</b></div><div class="metric"><span>Store disputes</span><b>${list.filter(c => c.dispute?.status === 'open').length}</b></div></div>
-  <section class="panel">${list.map(c => `<div class="claim-row">${pill(c.status)} <b>${esc(c.id)}</b> · ${esc(c.store)} · ${esc(KIND_LABEL[c.kind])} · ${inr(c.amount)}${c.dispute ? ` · dispute ${esc(c.dispute.status)}` : ''}<small class="block muted">${esc(c.reason)} · ${esc(c.history.at(-1)?.text || '')}</small>${c.status === 'review' || c.dispute?.status === 'open' ? `<span class="row-actions"><button class="button primary compact" data-plus="claim-approve" data-id="${esc(c.id)}">${c.dispute?.status === 'open' ? 'Uphold store' : 'Approve refund'}</button><button class="button secondary compact" data-plus="claim-reject" data-id="${esc(c.id)}">${c.dispute?.status === 'open' ? 'Reject dispute' : 'Reject'}</button></span>` : ''}</div>`).join('') || '<p class="muted">No claims yet.</p>'}</section>`;
+  const list=(s.claims||[]).filter(c=>!c.service);
+  const ready=(s.ledger||[]).filter(x=>x.sourceType==='claim'&&x.type==='refund'&&x.status==='refunded').reduce((n,x)=>n+x.amount,0);
+  return `${head('Returns & claims centre','Review customer evidence, return exceptions and simulated refunds.')}<div class="metrics"><div class="metric"><span>Needs review</span><b>${list.filter(c=>['review','appealed','qc_failed'].includes(c.status)||c.pickup?.status==='waiting'||c.dispute?.status==='open').length}</b></div><div class="metric"><span>Refunds completed</span><b>${inr(ready)}</b></div><div class="metric"><span>Refunds started</span><b>${list.filter(c=>c.status==='refund_started').length}</b></div></div><section class="panel">${list.map(c=>`<article class="claim-row"><h3>${esc(c.id)} · ${esc(claimStatus(c))}</h3><p>${esc(c.store)} · ${esc(KIND_LABEL[c.kind]||c.kind)} · ${inr(c.amount)} · Order ${esc(c.orderId)}</p><p>Customer: ${esc(c.reason||'No description provided')}</p>${claimEvidence(c)}${preparationEvidence(s,c)}${c.pickup?`<p>Return pickup: ${esc(c.pickup.partnerName)} · ${esc(c.pickup.status)}</p>`:''}${c.appealReason?`<p>Appeal: ${esc(c.appealReason)}</p>`:''}${(c.sellerResponses||[]).map(r=>`<div class="info-banner"><b>Store response · ${esc(r.at)}</b><p>${esc(r.note)}</p>${evidenceHtml(r.evidence)}</div>`).join('')}${claimHistory(c)}${claimSupportLink(c)}${['review','appealed'].includes(c.status)?`<div class="row-actions"><button class="button primary compact" data-plus="claim-approve" data-id="${esc(c.id)}">Approve refund</button>${c.status==='appealed'&&c.pickup?`<button class="button secondary compact" data-plus="claim-retry" data-id="${esc(c.id)}">Arrange another pickup</button>`:''}<form class="inline-form" data-plus-form="claim-reject" data-id="${esc(c.id)}"><input name="reason" required minlength="10" placeholder="Reason for rejection"><button class="button secondary compact">Reject</button></form></div>`:''}${c.status==='qc_failed'?'<p>Pickup failed. The customer can appeal, or support can investigate.</p>':''}${c.status==='refund_started'?`<button class="button primary compact" data-plus="claim-complete-refund" data-id="${esc(c.id)}">Demo: confirm external refund</button>`:''}${c.status==='pickup_assigned'&&['waiting','offered'].includes(c.pickup?.status)?`<form class="inline-form" data-plus-form="claim-assign" data-id="${esc(c.id)}"><select name="partnerId"><option value="auto">Find available partner</option>${Object.values(s.deliveryPartners||{}).filter(p=>!deliveryEligibility(p)&&p.available).map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select><button class="button secondary compact">Assign / reoffer pickup</button></form>`:''}${c.dispute?.status==='open'?`<div class="row-actions"><p>Store dispute: ${esc(c.dispute.note)}</p><button class="button secondary compact" data-plus="claim-approve" data-id="${esc(c.id)}">Uphold store</button><button class="button secondary compact" data-plus="claim-reject" data-id="${esc(c.id)}">Reject dispute</button></div>`:''}</article>`).join('')||'<p>No claims yet.</p>'}</section><p class="plus-error field-error" hidden></p>`;
 }
 function settingsScreen(s) {
   const st = settings(s);
@@ -496,7 +571,7 @@ export function deliveryExtras(s, ws) {
   const jobs = (s.customerOrders || []).filter(o => o.deliveryAssignment?.partnerId === me.id && ['accepted', 'picked_up'].includes(o.deliveryAssignment.status));
   const pickups = (s.claims || []).filter(c => c.pickup?.partnerId === me.id && c.status === 'pickup_assigned');
   return `${courierIncentiveHtml(s, ws)}<section class="panel"><h2>Delivery details</h2>${jobs.map(o => `<div class="claim-row"><b>${esc(o.id)}</b> · ${(o.deliveryKm || distanceKm(o.pickupAddress || '', o.address)).toFixed(1)} km · you earn ${inr(o.feeBreakdown?.deliveryPartnerEarning ?? deliveryPay(s, o))}${o.tip ? ` (incl. ${inr(o.tip)} tip)` : ''}<small class="block muted">Call customer: masked number +91 80 4${String(hash(o.id)).slice(0, 3)} XX${String(hash(o.id)).slice(-2)} · attempts ${o.attempts || 0}/2</small><form class="inline-form" data-plus-form="pod" data-id="${esc(o.id)}"><select name="mode"><option value="customer" ${o.podMode === 'customer' ? 'selected' : ''}>Handed to customer (code)</option><option value="door" ${o.podMode === 'door' ? 'selected' : ''}>Left at door</option><option value="guard" ${o.podMode === 'guard' ? 'selected' : ''}>With guard / reception</option></select><input type="file" name="photo" accept="image/*" capture="environment"><button class="button secondary compact">Save proof</button>${o.podPhoto ? `<small>Photo ✓ ${esc(o.podPhoto)}</small>` : ''}</form></div>`).join('') || '<p class="muted">No active deliveries.</p>'}</section>
-  <section class="panel"><h2>Return pickups</h2>${pickups.map(c => `<form class="claim-row" data-plus-form="pickup" data-id="${esc(c.id)}"><b>${esc(c.id)}</b> · ${esc(KIND_LABEL[c.kind])} · ${c.items.map(x => `${x.qty} × ${esc(s.products.find(p => p.id === x.productId)?.name || '')}`).join(', ')}<div class="chip-row">${(QC[c.group] || QC.food).map((q, i) => `<label><input type="checkbox" name="qc${i}"> ${esc(q)}</label>`).join('')}</div><input name="code" placeholder="Customer's return code"><button class="button primary compact">Collect</button></form>`).join('') || '<p class="muted">No return pickups.</p>'}</section><p class="plus-error field-error" hidden></p>`;
+  <section class="panel"><h2>Return pickups</h2>${pickups.map(c=>`<article class="claim-row"><h3>${esc(c.id)} · ${esc(KIND_LABEL[c.kind]||c.kind)}</h3><p>${c.items.map(x=>`${x.qty} × ${esc(s.products.find(p=>p.id===x.productId)?.name||x.productId)}`).join(', ')} · ${esc(c.store)}</p><p>Pickup status: ${esc(c.pickup.status)}. ${c.pickup.status==='offered'?'Accept the offer before going to the customer.':'Ask the customer for the return code at collection.'}</p>${claimEvidence(c)}${c.pickup.status==='offered'?`<div class="row-actions"><button class="button primary compact" data-plus="return-accept" data-id="${esc(c.id)}">Accept return pickup</button><button class="button secondary compact" data-plus="return-decline" data-id="${esc(c.id)}">Decline</button></div>`:''}${c.pickup.status==='accepted'?`<form data-plus-form="pickup" data-id="${esc(c.id)}"><div class="chip-row">${(QC[c.group]||QC.food).map((q,i)=>`<label><input type="checkbox" name="qc${i}"> ${esc(q)}</label>`).join('')}</div><label>Customer return code <input name="code" inputmode="numeric" required></label><button class="button primary compact">Collect returned item</button></form>`:''}</article>`).join('')||'<p class="muted">No return pickups assigned to you.</p>'}</section><p class="plus-error field-error" hidden></p>`;
 }
 
 // ---------- bindings ----------
@@ -526,14 +601,23 @@ export function bind(root, api) {
     if (a === 'listing-reject') { const p = s.products.find(x => x.id === id); p.approval = 'changes_needed'; p.approvalNote = listingCheck(s, p).join('; ') || 'Sent back by MoveAI'; return done(''); }
     if (a === 'group-approve') { const [k, g] = id.split('|'), p = s.shopPartners[k]; p.approvedGroups.push(g); p.categoryRequests = p.categoryRequests.filter(x => x !== g); return done('', 'Category approved'); }
     if (a === 'onboard-approve') { s.shopPartners[id].onboarding.status = 'approved'; return done('', 'Seller verified'); }
-    if (a === 'claim-approve' || a === 'claim-reject') { const c = s.claims.find(x => x.id === id); return done(adminDecide(s, c, a === 'claim-approve' ? 'approve' : 'reject'), 'Decision recorded'); }
+    if (a === 'claim-approve' || a === 'claim-reject') { if(ws()!=='admin')return err('Platform review required.');const c = s.claims.find(x => x.id === id); return done(adminDecide(s, c, a === 'claim-approve' ? 'approve' : 'reject'), 'Decision recorded'); }
+    if (a === 'claim-complete-refund') { if(ws()!=='admin')return err('Platform review required.');return done(completeClaimRefund(s,s.claims.find(x=>x.id===id)),'Mock refund completed'); }
+    if (a === 'claim-retry') { if(ws()!=='admin')return err('Platform review required.');return done(adminDecide(s,s.claims.find(x=>x.id===id),'retry'),'New pickup requested'); }
+    if (a === 'claim-help') { if(ws()!=='personal')return err('Customer access required.');const c=s.claims.find(x=>x.id===id&&s.customerOrders.some(o=>o.id===x.orderId&&(o.channel!=='counter_delivery'||o.customerId===s.person?.id)));if(!c)return err('Claim unavailable.');const result=helpForClaim(s,c);if(result.error)return err(result.error);s.selectedSupportCaseId=result.caseId;api.save();return api.navigate('helpDesk'); }
+    if (a === 'claim-open-help') {const c=s.claims.find(x=>x.id===id),caseFile=(s.supportCases||[]).find(x=>x.id===c?.helpCaseId);if(!Help.canSee(s,ws(),caseFile))return err('Case access denied.');s.selectedSupportCaseId=caseFile.id;api.save();return api.navigate('helpDesk');}
+    if (a === 'return-accept' || a === 'return-decline') return done(returnPartnerAction(s,s.claims.find(x=>x.id===id),ws(),a==='return-accept'?'accept':'decline'),'Return pickup updated');
     if (a === 'cancel-item') { const o = s.customerOrders.find(x => x.id === id); return done(cancelItem(s, o, b.dataset.product), 'Item cancelled'); }
     if (a === 'print') return window.print();
     if (a === 'coupon-toggle') { const c = s.coupons[Number(id)]; c.active = !c.active; return done(''); }
   });
-  root.querySelectorAll('form[data-plus-form]').forEach(f => f.onsubmit = e => { e.preventDefault(); const s = S(), fd = new FormData(f), v = Object.fromEntries(fd), k = f.dataset.plusForm;
+  root.querySelectorAll('form[data-plus-form]').forEach(f => f.onsubmit = async e => { e.preventDefault(); const s = S(), fd = new FormData(f), v = Object.fromEntries(fd), k = f.dataset.plusForm;
     if (k === 'filters') { s.shopFilters = {sort: v.sort, brand: v.brand, maxPrice: v.maxPrice, minRating: v.minRating, veg: Boolean(v.veg), discount: Boolean(v.discount)}; return done(''); }
-    if (k === 'claim') { const o = s.customerOrders.find(x => x.id === f.dataset.id); return done(raiseClaim(s, o, f.dataset.product, {...v, photo: fd.get('photo')?.name, tags: Boolean(v.tags)}), 'Request submitted'); }
+    if (k === 'claim') { if(ws()!=='personal')return err('Customer access required.');const o=s.customerOrders.find(x=>x.id===f.dataset.id);let evidence;try{evidence=await readEvidence(fd.get('photo'));}catch(ex){return err(ex.message);}return done(raiseClaim(s,o,f.dataset.product,{...v,photo:evidence?.name,evidence,tags:Boolean(v.tags)}),'Claim created · follow the next step below'); }
+    if (k === 'claim-response') { if(!sw())return err('Store access required.');let evidence;try{evidence=await readEvidence(fd.get('photo'));}catch(ex){return err(ex.message);}return done(sellerClaimResponse(s,s.claims.find(x=>x.id===f.dataset.id),ws(),v.note,evidence),'Evidence sent to platform'); }
+    if (k === 'claim-appeal') { if(ws()!=='personal')return err('Customer access required.');const c=s.claims.find(x=>x.id===f.dataset.id);if(!c||!s.customerOrders.some(o=>o.id===c.orderId&&(o.channel!=='counter_delivery'||o.customerId===s.person?.id)))return err('Claim unavailable.');return done(appealClaim(s,c,v.reason),'Appeal sent to platform'); }
+    if (k === 'claim-assign') { if(ws()!=='admin')return err('Platform access required.');return done(assignReturnPartner(s,s.claims.find(x=>x.id===f.dataset.id),v.partnerId),'Pickup offered'); }
+    if (k === 'claim-reject') { if(ws()!=='admin')return err('Platform access required.');return done(adminDecide(s,s.claims.find(x=>x.id===f.dataset.id),'reject',v.reason),'Decision recorded'); }
     if (k === 'svc-claim') { const r = s.serviceRequests.find(x => x.id === f.dataset.id); return done(raiseServiceClaim(s, r, {...v, photo: fd.get('photo')?.name}), 'Claim submitted'); }
     if (k === 'review') { const o = s.customerOrders.find(x => x.id === f.dataset.id); s.reviews.push({id: uid('RV'), orderId: o.id, productId: v.productId, rating: Number(v.rating), text: String(v.text || '').trim() || 'No comment', by: s.person?.name?.split(' ')[0] || 'Customer', at: stamp(), store: o.fulfilmentPartner, storeRating: Number(v.storeRating) || null, deliveryRating: Number(v.deliveryRating) || null}); return done('', 'Thanks for your review'); }
     if (k === 'save-list') { if (!s.productCart?.length) return err('Your cart is empty.'); s.savedLists.push({name: String(v.name || 'My list').trim(), items: s.productCart.map(c => ({productId: c.productId, quantity: c.quantity}))}); return done('', 'List saved'); }
@@ -546,7 +630,7 @@ export function bind(root, api) {
     if (k === 'areas') { s.mapMode = v.streets ? 'streets' : 'sketch'; for (const [key, p] of Object.entries(s.shopPartners || {})) { p.radiusKm = Number(v[`r:${key}`]) || p.radiusKm; const pts = String(v[`a:${key}`] || '').split(/\n+/).map(l => l.split(',').map(Number)).filter(x => x.length === 2 && x.every(Number.isFinite)); if (pts.length && pts.length < 3) return err(`${p.name}: a shape needs at least 3 points.`); p.area = pts.length >= 3 ? pts : undefined; } return done('', 'Maps and delivery areas saved'); }
     if (k === 'coupon') { const code = String(v.code || '').trim().toUpperCase(); if (!/^[A-Z0-9]{4,12}$/.test(code) || !(Number(v.value) > 0)) return err('Enter a 4–12 character code and a value.'); s.coupons.push({code, label: `${v.type === 'flat' ? `₹${v.value}` : `${v.value}%`} off above ₹${Number(v.min) || 0}${v.store ? ` at ${v.store}` : ''}`, type: v.type, value: Number(v.value), max: v.type === 'pct' ? 200 : undefined, min: Number(v.min) || 0, fundedBy: v.fundedBy, store: v.store || undefined, expires: v.expires || undefined, budget: Number(v.budget) || undefined, perCustomer: Number(v.perCustomer) || undefined, active: true}); return done('', 'Coupon added'); }
     if (k === 'pod') { const o = s.customerOrders.find(x => x.id === f.dataset.id); o.podMode = v.mode; if (fd.get('photo')?.name) o.podPhoto = fd.get('photo').name; return done(podRequired(o) ? 'Add a photo when leaving the order at the door or with a guard.' : '', 'Proof saved'); }
-    if (k === 'pickup') { const c = s.claims.find(x => x.id === f.dataset.id); return done(pickupAction(s, c, 'collect', v), c.status === 'qc_failed' ? 'Pickup refused — condition check failed' : 'Return collected'); }
+    if (k === 'pickup') { const c = s.claims.find(x => x.id === f.dataset.id); const result=pickupAction(s,c,'collect',v,ws());return done(result,c.status==='qc_failed'?'Pickup check failed; customer can appeal':'Returned item collected'); }
   });
 }
 

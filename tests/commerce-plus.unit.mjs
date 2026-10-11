@@ -68,7 +68,8 @@ assert.equal(X.raiseClaim(s,f,'PRD-107',{kind:'missing',qty:1,refundTo:'wallet'}
 let g=deliver('PRD-103',2);assert.match(X.raiseClaim(s,g,'PRD-103',{kind:'damaged',qty:1}),/photo/);
 assert.equal(X.raiseClaim(s,g,'PRD-103',{kind:'damaged',qty:1,photo:'p.jpg',refundTo:'source'}),'');let c=s.claims[0];assert.equal(c.status,'pickup_assigned');
 const due=g.sellerDue;assert.match(X.pickupAction(s,c,'collect',{code:'0000'}),/return code/);
-assert.equal(X.pickupAction(s,c,'collect',{code:c.pickup.code,qc0:'on',qc1:'on'}),'');assert.equal(c.status,'refunded');assert.ok(g.sellerDue<due);
+assert.equal(X.pickupAction(s,c,'collect',{code:c.pickup.code,qc0:'on',qc1:'on'}),'');assert.equal(c.status,'refund_started');assert.ok(g.sellerDue<due);
+assert.equal(X.completeClaimRefund(s,c),'');assert.equal(c.status,'refunded');
 assert.equal(X.storeDispute(s,c,'Pack was intact when returned'),'');assert.equal(X.adminDecide(s,c,'approve'),'');assert.equal(c.dispute.status,'store_upheld');
 // electrical: replacement needs serial; after the window, warranty message
 let e=deliver('PRD-201');assert.ok(X.eligibility(s,e,e.items[0]).kinds.includes('defective'));
@@ -87,5 +88,5 @@ assert.ok(X.analytics(s,'ABC Grocery').orders>0);
 // every new screen renders without leaking undefined/NaN
 for(const [route,ws] of [['wishlist','personal'],['moveaiWallet','personal'],['plusStore','grocery'],['plusAnalytics','grocery'],['plusReturns','grocery'],['plusApprovals','admin'],['plusClaims','admin'],['plusSettings','admin'],['plusReports','admin']]){const html=X.screen(s,route,ws);assert.ok(html.length>200,route);assert.doesNotMatch(html.replace(/<[^>]+>/g,' '),/\bundefined\b|NaN/,`${route} leaks`);}
 for(const p of s.products.slice(0,8))assert.doesNotMatch(X.productExtras(s,p).replace(/<[^>]+>/g,' '),/\bundefined\b|NaN/);
-assert.match(X.orderHelp(s,h2),/Help with this order/);assert.match(X.deliveryExtras(s,'deliveryPartner'),/Return pickups/);
+assert.match(X.orderHelp(s,h2),/Report a problem or view claims/);assert.match(X.deliveryExtras(s,'deliveryPartner'),/Return pickups/);
 console.log(JSON.stringify({status:'PASS',suite:'E-commerce additions (catalogue, search, checkout, picking, courier, returns, money, admin)'},null,2));

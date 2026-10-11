@@ -29,7 +29,7 @@ export function actions(s, ws) {
       if (o.pendingItemId && o.status !== 'cancelled') out.push({ref: o.id, text: 'An item is unavailable — choose a replacement or remove it', route: 'orders', cta: 'Choose'});
       if (['delivered', 'collected'].includes(o.status) && o.deliveredAt && Date.now() - o.deliveredAt < 7 * 864e5 && !(s.reviews || []).some(r => r.orderId === o.id)) out.push({ref: o.id, text: 'Rate your items, store and delivery', route: 'orders', cta: 'Rate'});
     }
-    for (const c of s.claims || []) if (c.status === 'pickup_assigned') out.push({ref: c.orderId, text: `Return pickup: show code ${c.pickup.code} to ${c.pickup.partnerName}`, route: 'orders', cta: 'View'});
+    for (const c of s.claims || []) if (c.status === 'pickup_assigned') out.push({ref: c.orderId, text: c.pickup?.status==='waiting'?'Return pickup: waiting for an available partner':c.pickup?.status==='accepted'?`Return pickup: show code ${c.pickup.code} to ${c.pickup.partnerName}`:`Return pickup offered to ${c.pickup.partnerName}; wait for acceptance`, route: 'orders', cta: 'View'});
     for (const r of (s.serviceRequests || []).filter(x => x.customer === 'personal')) {
       if ((r.extras || []).some(x => x.status === 'proposed')) out.push({ref: r.id, text: 'Approve or reject extra charges', route: 'serviceDetail', id: r.id, cta: 'Review'});
       if (r.status === 'provider_done') out.push({ref: r.id, text: 'Partner marked the work done — confirm and pay', route: 'serviceDetail', id: r.id, cta: 'Confirm'});
@@ -42,15 +42,16 @@ export function actions(s, ws) {
       if (['paid', 'confirmed'].includes(o.status)) out.push({ref: o.id, text: `New order ${inr(o.itemTotal)} — accept it`, route: 'shopOrders', cta: 'Open'});
       if (o.status === 'ready_for_pickup' && o.deliveryAssignment && o.geo?.live) out.push({ref: o.id, text: `Courier arriving in about ${Geo.etaMin(s, o)} min — keep the bags ready`, route: 'shopOrders', cta: 'Open'});
     }
+    for (const c of (s.claims || []).filter(x => x.store === store.name && ['pickup_assigned','review','appealed','qc_failed'].includes(x.status) && !x.sellerResponses?.length)) out.push({ref:c.orderId,text:`Claim ${c.id}: review item and add store evidence`,route:'plusReturns',cta:'Review'});
     for (const c of (s.claims || []).filter(x => x.store === store.name && x.status === 'refunded' && !x.dispute && Date.now() - (x.refundedAt || 0) < 2 * 864e5)) out.push({ref: c.orderId, text: `Return ${c.id} refunded ${inr(c.amount)} — dispute within 48 h if not valid`, route: 'plusReturns', cta: 'Review'});
   }
   const courier = s.deliveryPartners?.[ws];
   if (courier) {
     for (const o of (s.customerOrders || []).filter(x => x.deliveryAssignment?.partnerId === courier.id && x.deliveryAssignment.status === 'offered')) out.push({ref: o.id, text: `New delivery offer · ${(o.deliveryKm || 0).toFixed(1)} km · earn ${inr(o.feeBreakdown?.deliveryPartnerEarning || 0)}`, route: 'deliveryJobs', cta: 'Open'});
-    for (const c of (s.claims || []).filter(x => x.pickup?.partnerId === courier.id && x.status === 'pickup_assigned')) out.push({ref: c.id, text: 'Return pickup assigned', route: 'deliveryJobs', cta: 'Open'});
+    for (const c of (s.claims || []).filter(x => x.pickup?.partnerId === courier.id && x.status === 'pickup_assigned')) out.push({ref: c.id, text: c.pickup.status==='offered'?'Return pickup offer — accept or decline':'Return pickup accepted — collect from customer', route: 'deliveryJobs', cta: 'Open'});
   }
   if (ws === 'admin') {
-    const pend = (s.products || []).filter(p => p.approval === 'pending').length, rev = (s.claims || []).filter(c => c.status === 'review' || c.dispute?.status === 'open').length, iss = (s.customerOrders || []).filter(o => o.status === 'delivery_issue').length;
+    const pend = (s.products || []).filter(p => p.approval === 'pending').length, rev = (s.claims || []).filter(c => ['review','appealed','refund_started'].includes(c.status) || c.pickup?.status==='waiting' || c.dispute?.status === 'open').length, iss = (s.customerOrders || []).filter(o => o.status === 'delivery_issue').length;
     if (pend) out.push({ref: 'approvals', text: `${pend} listing(s) waiting for approval`, route: 'plusApprovals', cta: 'Review'});
     if (rev) out.push({ref: 'claims', text: `${rev} claim(s) or store dispute(s) to decide`, route: 'plusClaims', cta: 'Review'});
     if (iss) out.push({ref: 'issues', text: `${iss} delivery problem(s)`, route: 'commerceIssues', cta: 'Open'});
