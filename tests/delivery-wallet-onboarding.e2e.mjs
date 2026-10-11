@@ -1,0 +1,71 @@
+import assert from 'node:assert/strict';
+import {SEED} from '../js/mock-data.js';
+import {screen, bind, deliveryWallet, instantDeliveryPayout, deliveryAction, reconcileCash} from '../js/commerce.js';
+import {record, wallet, runWeeklyPayouts} from '../js/pay.js';
+import {deliveryOnboardingScreen, requestAadhaarOtp, confirmAadhaarOtp, ensureDeliveryPartners} from '../js/delivery-onboarding.js';
+
+const fresh=()=>structuredClone(SEED);
+const s=fresh(), ws='deliveryPartner', partner=s.deliveryPartners[ws];
+record(s,{type:'wallet_credit',payer:'moveai',payee:partner.id,amount:37,status:'confirmed',orderId:'ORD-PREPAID'},'Demo');
+s.customerOrders=[{id:'ORD-COD',party:'ABC Grocery',items:[{productId:'PRD-103',quantity:1}],deliveryAssignment:{partnerId:partner.id},deliveryPayoutStatus:'awaiting_cod_reconciliation',feeBreakdown:{deliveryPartnerEarning:37},codCash:{status:'collected'}}];
+let html=screen(s,'deliveryProfile',ws);
+assert.match(html,/Available to transfer<\/span><b>₹37/);
+assert.match(html,/Waiting for COD handover and review<\/span><b>₹37/);
+assert.match(html,/ORD-COD · ₹37/);
+assert.match(html,/ORD-PREPAID · Earned ₹37/);
+assert.match(html,/Admin can run a free weekly mock payout/);
+assert.match(html,/Bank account ending 7801/);
+assert.match(html,/UPI ravi@upi/);
+
+// Exercise the actual button binding, including role selection and the saved ledger.
+const button={dataset:{commerce:'instant-delivery-payout'}};
+const root={querySelectorAll:selector=>selector==='[data-commerce]'?[button]:[],querySelector:()=>null};
+let saved=0,rendered=0,message='';
+const api={getState:()=>s,save:()=>saved++,render:()=>rendered++,toast:x=>message=x};
+const originalConfirm=globalThis.confirm;globalThis.confirm=()=>true;
+try{
+ s.currentWorkspace=ws;bind(root,api);
+ assert.equal(typeof button.onclick,'function');
+ await button.onclick();
+ assert.equal(saved,1);assert.equal(rendered,1);
+ assert.match(message,/Mock payout of ₹27 recorded/);
+ assert.equal(deliveryWallet(s,ws).balance,0);
+ const payout=s.ledger.find(e=>e.type==='payout'&&e.payee===partner.id);
+ assert.equal(payout.amount,27);assert.equal(payout.fee,10);assert.equal(payout.status,'paid');
+ assert.equal(payout.method,'bank');
+ html=screen(s,'deliveryProfile',ws);
+ assert.match(html,/ORD-COD · ₹37/);
+ assert.match(html,/Payout ₹27 · Fee ₹10 · paid/);
+ s.currentWorkspace='deliveryPartner2';await button.onclick();
+ assert.match(message,/No available balance/);
+ assert.equal(saved,1);
+}finally{globalThis.confirm=originalConfirm;}
+const weekly=fresh();record(weekly,{type:'wallet_credit',payer:'moveai',payee:'DP-001',amount:37,status:'confirmed'},'Demo');
+ensureDeliveryPartners(weekly);
+assert.equal(runWeeklyPayouts(weekly).find(x=>x.party==='DP-001')?.amount,37);
+assert.equal(wallet(weekly,'DP-001').balance,0);
+const cod=fresh(), codOrder={id:'ORD-COD-TEST',party:'ABC Grocery',items:[{productId:'PRD-103',quantity:1}],total:120,status:'delivered',cod:true,history:[],deliveryAssignment:{partnerId:'DP-001',status:'delivered'},deliveryPayoutStatus:'awaiting_cod_reconciliation',feeBreakdown:{deliveryPartnerEarning:35},codCash:{partnerId:'DP-001',status:'collected',amount:120}};
+cod.customerOrders=[codOrder];
+assert.equal(deliveryWallet(cod,'deliveryPartner').balance,0);
+assert.equal(deliveryAction(cod,'deliveryPartner',codOrder.id,'remit','','',{amount:120,receiver:'Admin cash desk'}),'');
+assert.equal(codOrder.codCash.status,'handed_over');
+assert.equal(deliveryWallet(cod,'deliveryPartner').balance,0,'handover submission cannot release earnings');
+assert.equal(reconcileCash(cod,codOrder.id,120,'RECEIPT-120','Admin'), '');
+assert.equal(codOrder.codCash.status,'reconciled');
+assert.equal(deliveryWallet(cod,'deliveryPartner').balance,35);
+assert.equal(instantDeliveryPayout(cod,'deliveryPartner','bank'),'');
+assert.equal(cod.ledger.find(e=>e.type==='payout').amount,25);
+const upi=fresh();record(upi,{type:'wallet_credit',payer:'moveai',payee:'DP-001',amount:37,status:'confirmed'},'Demo');
+assert.equal(instantDeliveryPayout(upi,'deliveryPartner','upi'),'');
+assert.equal(upi.ledger.find(e=>e.type==='payout').method,'upi');
+
+const joining=fresh(),newWs='deliveryPartner2';
+assert.equal(joining.deliveryPartners[newWs].status,'profile_pending');
+assert.match(screen(joining,'deliveryProfile',newWs),/Aadhaar with demo OTP/);
+assert.match(deliveryOnboardingScreen(joining,newWs),/Verify Aadhaar/);
+assert.equal(requestAadhaarOtp(joining,newWs,'234567890123',true),'');
+assert.match(screen(joining,'deliveryProfile',newWs),/123456/);
+assert.equal(confirmAadhaarOtp(joining,newWs,'123456','1990-01-01',{name:'selfie.jpg'}),'');
+assert.equal(joining.deliveryPartners[newWs].verification.identity,'demo_verified');
+assert.equal(joining.deliveryPartners[newWs].status,'profile_pending');
+console.log('Delivery wallet payout binding and Sana demo OTP onboarding passed.');

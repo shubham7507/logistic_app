@@ -212,10 +212,12 @@ export function deliveryWallet(s,ws){const p=driver(s,ws);if(!p)return null;retu
 // own verified bank/UPI details are registered as their payout account before calling the shared
 // payout() — the same function the logistics marketplace's weekly/instant payouts already use, so
 // there is exactly one function anywhere in this app that actually moves wallet money, not two.
-export function instantDeliveryPayout(s,ws){
+export function instantDeliveryPayout(s,ws,method='bank'){
  const p=driver(s,ws);if(!p)return 'Delivery partner not found.';
- if(!p.bank?.accountNumber&&!p.bank?.upi)return 'Add a verified bank account or UPI ID before cashing out.';
- (s.payoutAccounts||={})[p.id]={method:p.bank.upi?'upi':'bank',vpa:p.bank.upi||undefined,accountNumber:p.bank.accountNumber||undefined};
+ if(!['bank','upi'].includes(method))return 'Choose bank account or UPI.';
+ if(method==='bank'&&!p.bank?.accountNumber)return 'Add a verified bank account before cashing out.';
+ if(method==='upi'&&!p.bank?.upi)return 'Add a verified UPI ID before cashing out.';
+ (s.payoutAccounts||={})[p.id]={method,vpa:method==='upi'?p.bank.upi:undefined,accountNumber:method==='bank'?p.bank.accountNumber:undefined,ifsc:p.bank.ifsc,holder:p.bank.accountName};
  const r=walletPayout(s,p.id,{instant:true,actor:p.name});
  return r.ok?'':r.error;
 }
@@ -331,7 +333,10 @@ export function screen(s,route,ws){
   if(route==='deliveryEarnings')return `${head('Delivery earnings','Completed store deliveries')}<section class="panel"><h2>COD cash</h2><p>${os.filter(o=>o.codCash?.status==='collected').length} collection(s) waiting for handover</p><button class="button secondary" data-route="deliveryCash">View COD cash and hand over</button></section>${os.filter(o=>o.deliveryPayoutStatus).map(o=>{const payout=(s.ledger||[]).find(e=>e.orderId===o.id&&e.type==='delivery_earning');return `<section class="panel"><b>${esc(o.id)} · ${inr(o.feeBreakdown?.deliveryPartnerEarning??SHOP_POLICY.deliveryEarning)}</b><p>${esc(o.deliveryPayoutStatus)}${payout?.paidAt?` · ${esc(payout.method)} · ${esc(payout.payoutReference||'')}`:''}</p></section>`}).join('')||'<section class="panel">No completed deliveries.</section>'}`;
   if(route==='deliveryProfile'){
    const w=p.status==='approved'?deliveryWallet(s,ws):null;
-   const walletHtml=w?`<section class="panel"><h2>Wallet</h2><div class="metrics"><div class="metric"><span>Available</span><b>${inr(w.balance)}</b></div><div class="metric"><span>Pending COD reconciliation</span><b>${inr(orders(s).filter(o=>o.deliveryAssignment?.partnerId===w.partnerId&&o.deliveryPayoutStatus==='awaiting_cod_reconciliation').reduce((sum,o)=>sum+(o.feeBreakdown?.deliveryPartnerEarning??SHOP_POLICY.deliveryEarning),0))}</b></div></div><p class="muted">Free weekly payout every Monday, or cash out now for a ₹10 fee.</p><button class="button primary" data-commerce="instant-delivery-payout" ${w.balance>10?'':'disabled'}>Instant payout ${w.balance>10?inr(w.balance-10)+' (₹10 fee)':''}</button></section>`:'';
+   const pendingCod=orders(s).filter(o=>o.deliveryAssignment?.partnerId===p.id&&o.deliveryPayoutStatus==='awaiting_cod_reconciliation');
+   const walletEntries=(s.ledger||[]).filter(e=>e.payee===p.id&&['wallet_credit','payout'].includes(e.type)).slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0,8);
+   const destinations=[p.bank?.accountNumber?`<option value="bank">Bank account ending ${esc(String(p.bank.accountNumber).slice(-4))}</option>`:'',p.bank?.upi?`<option value="upi">UPI ${esc(p.bank.upi)}</option>`:''].join('');
+   const walletHtml=w?`<section class="panel"><h2>Delivery wallet</h2><div class="metrics"><div class="metric"><span>Available to transfer</span><b>${inr(w.balance)}</b></div><div class="metric"><span>Waiting for COD handover and review</span><b>${inr(pendingCod.reduce((sum,o)=>sum+(o.feeBreakdown?.deliveryPartnerEarning??SHOP_POLICY.deliveryEarning),0))}</b></div></div><p class="muted">Only the available balance can be paid out. COD earnings join it after the cash handover is reconciled by admin. Admin can run a free weekly mock payout; an instant mock payout costs ₹10.</p><label>Transfer to <select data-delivery-payout-destination>${destinations||'<option value="">Add a payout account</option>'}</select></label> <button class="button primary" data-commerce="instant-delivery-payout" ${w.balance>10&&destinations?'':'disabled'}>Transfer ${w.balance>10?inr(w.balance-10)+' now (₹10 fee)':'unavailable'}</button><h3>Waiting for COD review</h3>${pendingCod.map(o=>`<p>${esc(o.id)} · ${inr(o.feeBreakdown?.deliveryPartnerEarning??SHOP_POLICY.deliveryEarning)} · ${esc(o.codCash?.status||'Cash not collected')}</p>`).join('')||'<p class="muted">No COD earnings waiting.</p>'}<h3>Wallet activity</h3>${walletEntries.map(e=>`<p>${esc(e.orderId||e.sourceId||'Wallet')} · ${e.type==='wallet_credit'?'Earned':'Payout'} ${inr(e.amount)}${e.fee?` · Fee ${inr(e.fee)}`:''} · ${esc(e.status)}${e.type==='payout'?` · ${esc(e.reference||'')}`:''}</p>`).join('')||'<p class="muted">No wallet activity yet.</p>'}</section>`:'';
    return `${head('Delivery profile',p.name)}<section class="panel"><p>Status: ${esc(p.status)} · ID: ${esc(p.id)}</p><p>Only your assigned jobs and cash collection appear here. The platform reviews approvals and suspensions — no single seller does.</p></section>${deliveryProfileDetails(p)}${walletHtml}${['profile_pending','correction_required'].includes(p.status)?deliveryOnboardingScreen(s,ws):''}${p.status==='submitted'?deliverySubmittedScreen(p):''}`;
   }
  }
@@ -374,13 +379,17 @@ const counterDeliveryScreen=(s,ws)=>{const branchId=Branches.selectedBranch(s,st
 
 export function bind(root,api){
  Voice.bindMicrophones(root,api.toast);
- root.querySelectorAll('[data-commerce="instant-delivery-payout"]').forEach(b=>b.onclick=()=>{
-   if(!confirm('Cash out your wallet balance now for a ₹10 fee instead of waiting for the free Monday payout?'))return;
-   const st=api.getState(),err=instantDeliveryPayout(st,ws);
-   if(err)return api.toast(err);api.save();api.render();api.toast('Instant payout sent');
- });
  root.querySelectorAll('[data-commerce]').forEach(b=>b.onclick=async()=>{
   const s=api.getState(),ws=s.currentWorkspace,o=orders(s).find(x=>x.id===b.dataset.id),action=b.dataset.commerce;
+  if(action==='instant-delivery-payout'){
+   if(!driverRole(ws))return api.toast('Delivery partner access required.');
+   const w=deliveryWallet(s,ws);if(!w||w.balance<=10)return api.toast('No available balance above the ₹10 instant payout fee.');
+   const method=root.querySelector('[data-delivery-payout-destination]')?.value||'bank';
+   const destination=method==='upi'?`UPI ${driver(s,ws).bank?.upi||''}`:`bank account ending ${String(driver(s,ws).bank?.accountNumber||'').slice(-4)}`;
+   if(!confirm(`Transfer ${inr(w.balance-10)} to ${destination} now? A ₹10 fee is deducted from ${inr(w.balance)}.`))return;
+   const err=instantDeliveryPayout(s,ws,method);if(err)return api.toast(err);
+   api.save();api.render();return api.toast(`Mock payout of ${inr(w.balance-10)} recorded. Check wallet activity.`);
+  }
   if(action==='load-monthly-payroll')return; // Handled by the month selector below.
   if(action==='catalog-csv-preview'){
    const file=root.querySelector('[data-catalog-csv]')?.files?.[0];if(!file)return api.toast('Choose a CSV file first.');
