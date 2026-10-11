@@ -6,6 +6,8 @@ import * as Payroll from './payroll-core.js';
 import * as HR from './store-hr.js';
 import * as CatalogCSV from './catalog-csv.js';
 import * as Geo from './geo.js';
+import * as Routes from './delivery-routes.js';
+import * as Contact from './order-contact.js';
 import * as Plus from './commerce-plus.js';
 import {clock, record, gateway, wallet, payout as walletPayout} from './pay.js';
 import {issueInvoice} from './customer-billing.js';
@@ -108,7 +110,20 @@ export function assign(s,id,partnerId){
  const o=orders(s).find(x=>x.id===id),p=Object.values(s.deliveryPartners||{}).find(x=>x.id===partnerId&&!deliveryEligibility(x)&&x.available);
  if(!o||o.status!=='ready_for_pickup'||!p)return 'Order or available partner not found.';
  if(o.deliveryAssignment?.status==='accepted')return 'The current partner already accepted. Resolve that assignment first.';
+ const routeError=Routes.canAdd(s,o,p.id);if(routeError)return routeError;
  o.deliveryAssignment={partnerId:p.id,partnerName:p.name,status:'offered',offeredAt:clock()};log(s,o,'Admin',`Delivery offered to ${p.name}`);return '';
+}
+export function reoffer(s,id){
+ const o=orders(s).find(x=>x.id===id);
+ if(!o||o.status!=='ready_for_pickup'||o.routeException?.status==='open')return 'Resolve the store or route problem before offering this package again.';
+ const previous=o.deliveryAssignment;
+ const alternatives=Object.values(s.deliveryPartners||{}).filter(p=>p.id!==previous?.partnerId&&!deliveryEligibility(p)&&p.available&&!Routes.canAdd(s,o,p.id));
+ if(!alternatives.length)return 'No other suitable and available courier. Keep the package at the store and retry later.';
+ o.deliveryAssignment=null;
+ const error=assign(s,id,alternatives[0].id);
+ if(error){o.deliveryAssignment=previous;return error;}
+ log(s,o,'Admin',`Previous courier offer or assignment released; reoffered to ${alternatives[0].name}`);
+ return '';
 }
 export function expireOffer(s,id){
  const o=orders(s).find(x=>x.id===id),a=o?.deliveryAssignment;
@@ -122,9 +137,10 @@ export function deliveryAction(s,ws,id,action,code='',bagCount='',cashHandover={
  const o=orders(s).find(x=>x.id===id);if(!o||!driverRole(ws)||!mine(s,o,ws))return 'Delivery access denied.';
  if(deliveryEligibility(driver(s,ws)))return deliveryEligibility(driver(s,ws));
  const a=o.deliveryAssignment,actor=driver(s,ws).name;
- if(action==='accept'&&a.status==='offered'){a.status='accepted';log(s,o,actor,'Delivery offer accepted');return '';}
+ if(action==='accept'&&a.status==='offered'&&o.status==='ready_for_pickup'){const routeError=Routes.canAdd(s,o,a.partnerId);if(routeError)return routeError;a.status='accepted';log(s,o,actor,'Delivery offer accepted');return '';}
  if(action==='decline'&&a.status==='offered'){a.status='declined';for(const n of s.notifications||[])if(n.ref===id&&n.to===ws&&/New delivery offer/.test(n.text))n.read=true;log(s,o,actor,'Delivery offer declined');o.deliveryAssignment=null;const choices=Object.values(s.deliveryPartners||{}).filter(p=>p.id!==driver(s,ws).id&&p.available&&p.status==='approved');if(choices[0])assign(s,id,choices[0].id);else log(s,o,'MoveAI','Waiting for an available delivery partner');return '';}
  if(action==='pickup'&&a.status==='accepted'&&o.status==='ready_for_pickup'){
+   if(o.routeException?.status==='open')return 'Resolve the reported route problem before collecting this package.';
    // Live location sharing is no longer a separate, skippable step — this is where "optional" became a
    // real precondition instead, since geolocation permission itself can only be requested from a
    // genuine user click, not silently auto-started on accept.
@@ -279,7 +295,7 @@ export function storeExceptions(s,ws){
   return reason?{order:o,reason}:null;
  }).filter(Boolean);
 }
-const orderCard=(o,ws,s)=>`<section class="panel order-card"><div class="panel-header"><div><h2>${esc(o.id)} · ${inr(o.total)}</h2><p>${o.items.map(i=>`${i.quantity} × ${esc(i.name||i.productId)}`).join(', ')} · ${esc(o.fulfilmentPartner)}${o.branchName?` · ${esc(o.branchName)}`:''}</p></div>${pill(o.status)}</div>${nextAction(o,ws)?`<p class="info-banner">${esc(nextAction(o,ws))}</p>`:''}<p class="muted">Payment: ${esc(o.paymentStatus||'legacy')} · Store settlement: ${esc(o.settlementStatus||'legacy')} · Delivery: ${esc(o.deliveryAssignment?.partnerName||'Not assigned')}${o.latestLocation?` · Last location: ${esc(o.latestLocation.label)}`:''}</p>${driverRole(ws)?driverAddresses(o,s):''}${driverRole(ws)&&['accepted','picked_up'].includes(o.deliveryAssignment?.status)?Geo.courierPanel(s,o):''}${ws==='admin'?`<p class="muted">Customer: ${esc(o.customer||'Customer')} · Address: ${esc(o.address||'Not recorded')} · Picker: ${esc(o.pick?.picker||staffFor(s,Object.keys(s.shopPartners||{}).find(k=>s.shopPartners[k].party===o.party)).find(p=>p.id===o.pickerId)?.name||'Not assigned')} (${Object.keys(o.pick?.checked||{}).length}/${o.items.length} item lines) · COD: ${esc(o.codCash?.status||'N/A')} · Delivery payout: ${esc(o.deliveryPayoutStatus||'N/A')}</p>`:''}${replacementPicker(o,ws,s)}${storeOperator(ws)&&o.status==='returned'&&!o.returnStockCondition?`<div class="info-banner"><b>Inspect returned items</b><select data-online-return-condition="${esc(o.id)}"><option value="damaged">Damaged / expired · do not restock</option><option value="sellable">Sellable · restock</option></select><button class="button secondary compact" data-commerce="return-stock" data-id="${esc(o.id)}">Record condition</button></div>`:''}<div class="row-actions">${buttons(o,ws,s)}</div><details><summary>Order history</summary>${(o.history||[]).map(h=>`<small class="block">${esc(h.at)} · ${esc(h.actor||'MoveAI')}: ${esc(h.text)}</small>`).join('')}</details></section>`;
+const orderCard=(o,ws,s)=>`<section class="panel order-card"><div class="panel-header"><div><h2>${esc(o.id)} · ${inr(o.total)}</h2><p>${o.items.map(i=>`${i.quantity} × ${esc(i.name||i.productId)}`).join(', ')} · ${esc(o.fulfilmentPartner)}${o.branchName?` · ${esc(o.branchName)}`:''}</p></div>${pill(o.status)}</div>${nextAction(o,ws)?`<p class="info-banner">${esc(nextAction(o,ws))}</p>`:''}<p class="muted">Payment: ${esc(o.paymentStatus||'legacy')} · Store settlement: ${esc(o.settlementStatus||'legacy')} · Delivery: ${esc(o.deliveryAssignment?.partnerName||'Not assigned')}${o.latestLocation?` · Last location: ${esc(o.latestLocation.label)}`:''}</p>${driverRole(ws)?driverAddresses(o,s):''}${driverRole(ws)&&['accepted','picked_up'].includes(o.deliveryAssignment?.status)?Geo.courierPanel(s,o):''}${ws==='admin'?`<p class="muted">Customer: ${esc(o.customer||'Customer')} · Address: ${esc(o.address||'Not recorded')} · Picker: ${esc(o.pick?.picker||staffFor(s,Object.keys(s.shopPartners||{}).find(k=>s.shopPartners[k].party===o.party)).find(p=>p.id===o.pickerId)?.name||'Not assigned')} (${Object.keys(o.pick?.checked||{}).length}/${o.items.length} item lines) · COD: ${esc(o.codCash?.status||'N/A')} · Delivery payout: ${esc(o.deliveryPayoutStatus||'N/A')}</p>`:''}${Contact.contactPanel(s,o,ws)}${o.routeException?.status==='open'?`<div class="info-banner"><b>Route problem: ${esc(o.routeException.kind.replaceAll('_',' '))}</b><p>${esc(o.routeException.note||'Admin review needed')}</p>${ws==='admin'?`<button class="button secondary compact" data-commerce="resolve-route" data-id="${esc(o.id)}">Mark resolved after checking</button>`:''}</div>`:''}${driverRole(ws)&&['accepted','picked_up'].includes(o.deliveryAssignment?.status)?`<details><summary>Report a pickup or route problem</summary><label>Problem <select data-route-kind="${esc(o.id)}"><option value="store_delayed">Store delayed</option><option value="missing_package">Package missing or incomplete</option><option value="oversized">Load too large for my vehicle</option><option value="route_blocked">Route blocked</option></select></label><label>Details <input class="form-control" data-route-note="${esc(o.id)}" maxlength="200"></label><button class="button secondary compact" data-commerce="route-problem" data-id="${esc(o.id)}">Report problem</button></details>`:''}${replacementPicker(o,ws,s)}${storeOperator(ws)&&o.status==='returned'&&!o.returnStockCondition?`<div class="info-banner"><b>Inspect returned items</b><select data-online-return-condition="${esc(o.id)}"><option value="damaged">Damaged / expired · do not restock</option><option value="sellable">Sellable · restock</option></select><button class="button secondary compact" data-commerce="return-stock" data-id="${esc(o.id)}">Record condition</button></div>`:''}<div class="row-actions">${buttons(o,ws,s)}</div><details><summary>Order history</summary>${(o.history||[]).map(h=>`<small class="block">${esc(h.at)} · ${esc(h.actor||'MoveAI')}: ${esc(h.text)}</small>`).join('')}</details></section>`;
 export function screen(s,route,ws){
  if(storeOperator(ws)){
   const store=storeOf(ws),p=partner(s,store),branchId=Branches.selectedBranch(s,store),os=visibleOrders(s,ws).filter(o=>!o.branchId||o.branchId===branchId),exceptions=storeExceptions(s,ws).filter(x=>!x.order.branchId||x.order.branchId===branchId),prods=s.products.filter(x=>x.fulfilmentPartner===p.name);
@@ -328,7 +344,7 @@ export function screen(s,route,ws){
  if(driverRole(ws)){
   const p=driver(s,ws),os=visibleOrders(s,ws);
   if(route==='home')return `${head(`Hi ${p.name}`,'Store deliveries assigned to you')}<section class="panel"><p>Status: ${esc(deliveryEligibility(p)?'Joining / blocked':p.available?'Available':'Offline')}</p>${deliveryEligibility(p)?`<p class="action-warning">${esc(deliveryEligibility(p))} <button class="button secondary compact" data-route="deliveryProfile">Open profile</button></p>`:''}<button class="button secondary" data-commerce="toggle-availability" ${deliveryEligibility(p)?'disabled':''}>${p.available?'Go offline':'Go online'}</button></section>${os.some(o=>o.codCash?.status==='collected')?'<div class="info-banner"><b>COD cash to hand over</b><button class="button secondary compact" data-route="deliveryCash">Open COD cash</button></div>':''}<button class="button primary" data-route="deliveryJobs">Open deliveries (${os.length})</button>${guide}`;
-  if(route==='deliveryJobs')return `${head('My deliveries','Accept, verify pickup and deliver with customer code')}${os.map(o=>orderCard(o,ws,s)).join('')||'<section class="panel">No assigned deliveries.</section>'}`;
+  if(route==='deliveryJobs')return `${head('My deliveries','Follow your route, confirm each package and delivery separately')}${Routes.routePanel(s,p.id)}${os.map(o=>orderCard(o,ws,s)).join('')||'<section class="panel">No assigned deliveries.</section>'}`;
   if(route==='deliveryCash')return `${head('COD cash','Hand over collected cash for admin reconciliation')}${os.filter(o=>o.cod).map(o=>`<section class="panel order-card"><h2>${esc(o.id)} · ${inr(o.total)}</h2><p>Cash: ${esc(o.codCash?.status||'Not collected')} · Expected ${inr(o.total)}${o.codCash?.receiver?` · Submitted to ${esc(o.codCash.receiver)}`:''}${codOverdue(o)?' · Overdue (24 hours)':''}</p><div class="row-actions">${buttons(o,ws)}</div></section>`).join('')||'<section class="panel">No COD cash assigned.</section>'}`;
   if(route==='deliveryEarnings'){
    const w=deliveryWallet(s,ws),pendingCod=os.filter(o=>o.deliveryPayoutStatus==='awaiting_cod_reconciliation');
@@ -347,7 +363,7 @@ export function screen(s,route,ws){
   }
  }
  if(ws==='admin'&&['commerceOps','commerceOrders','commercePartners','commercePayments','commerceIssues','deliveryReview'].includes(route)){
-  const os=orders(s),issues=os.filter(o=>['delivery_issue','return_requested','item_review'].includes(o.status)||o.status==='ready_for_pickup'&&(!o.deliveryAssignment||o.deliveryAssignment.status==='offered'&&clock()-o.deliveryAssignment.offeredAt>=10*60000));
+  const os=orders(s),issues=os.filter(o=>o.routeException?.status==='open'||['delivery_issue','return_requested','item_review'].includes(o.status)||o.status==='ready_for_pickup'&&(!o.deliveryAssignment||o.deliveryAssignment.status==='offered'&&clock()-o.deliveryAssignment.offeredAt>=10*60000));
   const metrics=`<div class="metrics"><div class="metric"><span>Orders</span><b>${os.length}</b></div><div class="metric"><span>Issues</span><b>${issues.length}</b></div><div class="metric"><span>COD awaiting review</span><b>${os.filter(o=>['handed_over','disputed'].includes(o.codCash?.status)).length}</b></div><div class="metric"><span>COD overdue</span><b>${os.filter(codOverdue).length}</b></div><div class="metric"><span>Pending settlement</span><b>${os.filter(o=>o.settlementStatus==='pending').length}</b></div></div>`;
   if(route==='commerceOps')return `${head('Shop operations','Choose the area to review')}${metrics}<div class="grid two">${[['commerceOrders','Orders'],['commercePartners','Partners'],['commercePayments','Payments'],['commerceIssues','Issues']].map(([r,t])=>`<button class="button secondary" data-route="${r}">${t}</button>`).join('')}</div>`;
   if(route==='commerceOrders')return `${head('Store orders','All store packages and their delivery history')}${metrics}${os.map(o=>orderCard(o,ws,s)).join('')||'<section class="panel">No orders yet.</section>'}`;
@@ -511,18 +527,20 @@ export function bind(root,api){
   else if(action==='toggle-stock')error=Inventory.setAvailability(s,ws,b.dataset.id,['paused','draft'].includes(s.products.find(p=>p.id===b.dataset.id)?.status)?'active':'paused');
   else if(action==='toggle-availability'){if(!driverRole(ws))error='Access denied.';else if(!driver(s,ws).available&&deliveryEligibility(driver(s,ws)))error=deliveryEligibility(driver(s,ws));else driver(s,ws).available=!driver(s,ws).available;}
   else if(['accept-job','decline-job','pickup','deliver','remit','issue'].includes(action))error=deliveryAction(s,ws,b.dataset.id,({'accept-job':'accept','decline-job':'decline'})[action]||action,action==='issue'?root.querySelector(`[data-issue="${b.dataset.id}"]`)?.value||'':root.querySelector(`[data-code="${b.dataset.id}"]`)?.value||'',root.querySelector(`[data-collected-bags="${b.dataset.id}"]`)?.value||'',{amount:root.querySelector(`[data-cod-handover-amount="${b.dataset.id}"]`)?.value,receiver:root.querySelector(`[data-cod-handover-receiver="${b.dataset.id}"]`)?.value});
+  else if(action==='route-problem')error=Routes.flagException(s,ws,b.dataset.id,root.querySelector(`[data-route-kind="${b.dataset.id}"]`)?.value,root.querySelector(`[data-route-note="${b.dataset.id}"]`)?.value);
   else if(action==='location')error=updateLocation(s,ws,b.dataset.id,root.querySelector(`[data-location="${b.dataset.id}"]`)?.value||'');
   else if(ws!=='admin')error='Admin access required.';
   else if(action==='reconcile')error=reconcileCash(s,b.dataset.id,root.querySelector(`[data-cod-received="${b.dataset.id}"]`)?.value,root.querySelector(`[data-cod-ref="${b.dataset.id}"]`)?.value,root.querySelector(`[data-cod-receiver="${b.dataset.id}"]`)?.value,root.querySelector(`[data-cod-reason="${b.dataset.id}"]`)?.value);
   else if(action==='cod-refund')error=recordCodRefund(s,b.dataset.id,root.querySelector(`[data-cod-refund-ref="${b.dataset.id}"]`)?.value);
   else if(action==='record-platform-fee')error=recordPlatformFee(s,b.dataset.id,root.querySelector(`[data-platform-fee-ref="${b.dataset.id}"]`)?.value);
+  else if(action==='resolve-route')error=Routes.resolveException(s,b.dataset.id);
   else if(action==='retry')error=retryDelivery(s,b.dataset.id);
   else if(action==='cancel-failed')error=cancelFailedDelivery(s,b.dataset.id);
   else if(action==='expire-offer')error=expireOffer(s,b.dataset.id);
   else if(action==='settle')error=settle(s,b.dataset.id);
   else if(action==='pay-driver')error=payDelivery(s,b.dataset.id,root.querySelector(`[data-driver-pay-method="${b.dataset.id}"]`)?.value||'bank',root.querySelector(`[data-driver-pay-ref="${b.dataset.id}"]`)?.value||'');
   else if(['suspend-store','approve-store','suspend-driver','approve-driver'].includes(action))error=setPartnerStatus(s,action.endsWith('store')?'store':'delivery',b.dataset.id,action.startsWith('approve')?'approved':'suspended');
-  else if(action==='reassign'){const next=Object.values(s.deliveryPartners).find(p=>p.id!==o?.deliveryAssignment?.partnerId&&p.available&&p.status==='approved');error=next?assign(s,b.dataset.id,next.id):'No other partner available.';}
+  else if(action==='reassign')error=reoffer(s,b.dataset.id);
   else if(action==='approve-return'||action==='decline-return')error=resolveReturn(s,b.dataset.id,action==='approve-return');
   else if(action==='advance-clock')advanceDemoClock(s);
   if(error)return api.toast(error);api.save();api.render();api.toast('Updated');

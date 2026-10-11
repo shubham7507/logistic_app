@@ -8,6 +8,7 @@
 // store disputes. Money: commission & payout hold by category, seller- vs platform-funded discounts, TCS/TDS settings,
 // HSN/MRP on invoices. Admin: approvals, claims centre, settings, reports, fraud flags, notification outbox.
 import {esc, pill, inr} from './ops.js';
+import {canAdd as canAddToRoute} from './delivery-routes.js';
 import {deliveryEligibility} from './delivery-onboarding.js';
 import * as NC from './notify-center.js';
 import * as Geo from './geo.js';
@@ -263,7 +264,7 @@ export const packPhotoHtml = (s, o) => needsPackPhoto(s, o) ? `<div class="pack-
 export function pickCourier(s, o) {
   const cap = settings(s).capacityPerCourier, active = id => (s.customerOrders || []).filter(x => x.deliveryAssignment?.partnerId === id && ['offered', 'accepted', 'picked_up'].includes(x.deliveryAssignment.status)).length;
   const sameStore = id => (s.customerOrders || []).some(x => x.id !== o.id && x.fulfilmentPartner === o.fulfilmentPartner && x.deliveryAssignment?.partnerId === id && ['offered', 'accepted'].includes(x.deliveryAssignment.status));
-  const list = Object.values(s.deliveryPartners || {}).filter(p => !deliveryEligibility(p) && p.available && active(p.id) < cap).map((p, order) => ({p, order, km: courierKm(p.id, o.pickupAddress || o.fulfilmentPartner), batch: sameStore(p.id)})).sort((a, b) => (b.batch - a.batch) || (Math.abs(a.km - b.km) < 1 ? a.order - b.order : a.km - b.km));
+  const list = Object.values(s.deliveryPartners || {}).filter(p => !deliveryEligibility(p) && p.available && active(p.id) < cap && !canAddToRoute(s,o,p.id)).map((p, order) => ({p, order, km: courierKm(p.id, o.pickupAddress || o.fulfilmentPartner), batch: sameStore(p.id)})).sort((a, b) => (b.batch - a.batch) || (Math.abs(a.km - b.km) < 1 ? a.order - b.order : a.km - b.km));
   if (list[0]) (o.history ||= []).push({at: stamp(), text: `Courier chosen: ${list[0].p.name} · ${list[0].km.toFixed(1)} km from the store${list[0].batch ? ' · batched with another order from this store' : ''}`});
   return list[0]?.p || null;
 }
