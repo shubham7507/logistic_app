@@ -9,7 +9,7 @@ import {ensureDeliveryPartners} from '../js/delivery-onboarding.js';
 const state=structuredClone(SEED);
 Hub.ensureHub(state);
 for(const ws of ['deliveryPartner','deliveryPartner2']){
-  assert.deepEqual(ROLE_CONFIG[ws].nav.map(([route])=>route),['home','deliveryJobs','deliveryEarnings','deliveryCash','deliveryProfile']);
+  assert.deepEqual(ROLE_CONFIG[ws].nav.map(([route])=>route),['home','deliveryJobs','deliveryEarnings','deliveryCash','deliveryProfile','helpDesk']);
   assert.equal(allowedRoutes(ws).has('myWork'),false);
 }
 const ravi=state.deliveryPartners.deliveryPartner;

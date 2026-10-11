@@ -52,3 +52,17 @@
 .contact-conversation label{display:grid;gap:.3rem;max-width:36rem}
 .contact-conversation .button{justify-self:start}
 .order-card>details:not(.order-contact){margin-top:.8rem}
+
+/* Shared Help Desk */
+.help-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin:1rem 0}
+.help-form-grid label,.help-case-detail label{display:grid;gap:.4rem;font-weight:650}
+.help-wide{grid-column:1/-1}
+.help-form-grid textarea,.help-case-detail textarea{min-height:95px;resize:vertical}
+.help-list-row{width:100%;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-align:left;padding:1rem;border:0;border-top:1px solid var(--line);background:transparent;color:inherit;cursor:pointer}
+.help-list-row:hover,.help-list-row:focus-visible{background:var(--brand-soft)}
+.help-list-row b,.help-list-row small{display:block}
+.help-list-row small,.help-status{color:var(--muted)}
+.help-status{white-space:nowrap;font-weight:700}
+.help-update{border-left:3px solid var(--brand);padding:.6rem .8rem;background:#f7faf9;overflow-wrap:anywhere}
+.help-decision{border-top:1px solid var(--line);margin-top:1rem;padding-top:1rem}
+@media(max-width:720px){.help-form-grid{grid-template-columns:1fr}.help-list-row{align-items:start;flex-direction:column}.help-status{white-space:normal}}

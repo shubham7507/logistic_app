@@ -41,6 +41,7 @@ export const PERSONAL_NAV = {
   partner: [['home', 'Home'], ['work', 'Find work'], ['workerStatus', 'Verification'], ['messages', 'Messages'], ['candidateProfile', 'Profile']],
   business: [['home', 'Home'], ['businessStart', 'Business setup'], ['applicationStatus', 'Application'], ['invitations', 'Invitations'], ['messages', 'Messages']],
 };
+for(const items of Object.values(PERSONAL_NAV))items.push(['helpDesk','Help']);
 export const PERSONAL_LABEL = {
   customer: {label: 'My account', subtitle: 'Customer'},
   partner: {label: 'My partner profile', subtitle: 'New partner'},

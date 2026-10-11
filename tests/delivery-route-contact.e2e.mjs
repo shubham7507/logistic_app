@@ -35,11 +35,14 @@ assert.ok(s.notifications.some(n=>n.to==='deliveryPartner'&&n.ref==='A'&&/messag
 assert.match(ordersScreen(s),/Message about this package/);
 s.selectedTrackingOrderId='A';assert.match(trackingScreen(s),/Message about this package/);
 assert.equal(R.flagException(s,'deliveryPartner','B','missing_package','Bag is not sealed'), '');
+assert.ok(b.routeException.caseId,'route report creates a linked support case');
+assert.equal(s.supportCases.find(x=>x.id===b.routeException.caseId).category,'missing_bag');
 assert.equal(Contact.sendOrderMessage(s,'deliveryPartner','B','store','Ravi private message'), '');
 assert.match(C.screen(s,'commerceIssues','admin'),/Package missing or incomplete|missing package/);
 assert.match(C.deliveryAction(s,'deliveryPartner','B','pickup','1234',1),/Resolve the reported route problem/);
 assert.match(C.reoffer(s,'B'),/Resolve the store or route problem/);
 assert.equal(R.resolveException(s,'B'),'');
+assert.equal(s.supportCases.find(x=>x.id===b.routeException.caseId).status,'resolved');
 assert.match(C.reoffer(s,'B'),/No other suitable/,'Sana is busy with an incompatible customer');
 c.geo={everStarted:true,live:true};assert.equal(C.deliveryAction(s,'deliveryPartner2','C','pickup','1234',1),'');
 assert.equal(C.deliveryAction(s,'deliveryPartner2','C','deliver','4567'),'');

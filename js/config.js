@@ -24,8 +24,11 @@ const nav={
   pickerFashion:[['home','Home'],['pickTasks','Tasks'],['pickSchedule','My schedule'],['myHR','My work & pay'],['pickProfile','Profile']],
   deliveryPartner:[['home','Home'],['deliveryJobs','Deliveries'],['deliveryEarnings','Money'],['deliveryCash','COD cash'],['deliveryProfile','Profile']],
   deliveryPartner2:[['home','Home'],['deliveryJobs','Deliveries'],['deliveryEarnings','Money'],['deliveryCash','COD cash'],['deliveryProfile','Profile']],
-  admin:[['home','Overview'],['commerceOrders','Orders'],['commercePartners','Partners'],['commercePayments','Payments'],['commerceIssues','Issues'],['plusApprovals','Listing approvals'],['plusClaims','Returns & claims'],['plusSettings','Commerce settings'],['plusReports','Commerce reports'],['verification','Verification'],['payOps','MoveAI Pay'],['approvals','Approvals'],['cases','Cases'],['documents','Documents'],['users','Users'],['audit','Audit']],
+  admin:[['home','Overview'],['commerceOrders','Orders'],['commercePartners','Partners'],['commercePayments','Payments'],['commerceIssues','Issues'],['plusApprovals','Listing approvals'],['plusClaims','Returns & claims'],['plusSettings','Commerce settings'],['plusReports','Commerce reports'],['verification','Verification'],['payOps','MoveAI Pay'],['approvals','Approvals'],['cases','Operations cases'],['documents','Documents'],['users','Users'],['audit','Audit']],
 };
+
+for(const items of Object.values(nav))items.push(['helpDesk',items===nav.admin?'Help Desk':'Help']);
+ICONS.helpDesk='?';
 
 export const ROLE_CONFIG={
   personal:{label:'Personal',subtitle:'Customer and personal activities',icon:'P',nav:nav.personal,branches:false,homePhase:'P1'},
@@ -55,6 +58,7 @@ export const ROLE_CONFIG={
 };
 
 export const ROUTES={
+  helpDesk:{title:'Help Desk',phase:'P16'},
   home:{title:'Home',phase:'P0'}, search:{title:'Search products',phase:'P4'},productDetail:{title:'Product details',phase:'P16'},cartAdded:{title:'Added to cart',phase:'P16'},cart:{title:'Cart',phase:'P16'},orders:{title:'My orders',phase:'P4'},orderTracking:{title:'Track order',phase:'P16'},pickSchedule:{title:'My schedule',phase:'P16'},pickTasks:{title:'Preparation tasks',phase:'P16'},pickEarnings:{title:'My earnings',phase:'P16'},pickProfile:{title:'Store staff profile',phase:'P16'},
   shopSchedule:{title:'Staff schedule',phase:'P16'},shopOffboarding:{title:'Staff offboarding',phase:'P16'},managerTimecards:{title:'Timecards',phase:'P16'},managerProfile:{title:'Manager profile',phase:'P16'},shopOrders:{title:'Store orders',phase:'P16'},shopIssues:{title:'Store exceptions',phase:'P16'},shopBranches:{title:'Store branches',phase:'P16'},shopTeam:{title:'Store team',phase:'P16'},shopCounter:{title:'In-store sale',phase:'P16'},shopSales:{title:'Store sales',phase:'P16'},shopCounterDelivery:{title:'Counter delivery',phase:'P16'},shopCatalog:{title:'Products and stock',phase:'P16'},shopEarnings:{title:'Store settlements',phase:'P16'},shopProfile:{title:'Store profile',phase:'P16'},
   deliveryJobs:{title:'Delivery jobs',phase:'P16'},deliveryCash:{title:'COD cash',phase:'P16'},deliveryEarnings:{title:'Delivery earnings',phase:'P16'},deliveryProfile:{title:'Delivery profile',phase:'P16'},commerceOps:{title:'Shop operations',phase:'P16'},commerceOrders:{title:'Store orders',phase:'P16'},commercePartners:{title:'Store partners',phase:'P16'},commercePayments:{title:'Store payments',phase:'P16'},commerceIssues:{title:'Store issues',phase:'P16'},
@@ -71,7 +75,7 @@ export const ROUTES={
   vehicleDetail:{title:'Vehicle details',phase:'P5'},addVehicle:{title:'Add vehicle',phase:'P5'},movingJob:{title:'Moving job',phase:'P6'},
   myJobs:{title:'My jobs',phase:'P6'},driverJob:{title:'Driver job',phase:'P6'},upgradeDriver:{title:'Upgrade to Commercial Driver',phase:'P6'},
   conversation:{title:'Conversation',phase:'P7'},payment:{title:'Record payment',phase:'P7'},paymentDetail:{title:'Payment details',phase:'P7'},
-  exceptions:{title:'Exceptions',phase:'P8'},exceptionDetail:{title:'Exception details',phase:'P8'},verification:{title:'Verification queue',phase:'P8'},verificationItem:{title:'Verification review',phase:'P8'},cases:{title:'Cases and appeals',phase:'P8'},
+  exceptions:{title:'Exceptions',phase:'P8'},exceptionDetail:{title:'Exception details',phase:'P8'},verification:{title:'Verification queue',phase:'P8'},verificationItem:{title:'Verification review',phase:'P8'},cases:{title:'Operations cases and appeals',phase:'P8'},
   staffEvents:{title:'Leave and rehire',phase:'P8'},notifications:{title:'Notifications',phase:'P7'},
 };
 

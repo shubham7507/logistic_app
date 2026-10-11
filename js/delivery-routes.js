@@ -1,6 +1,7 @@
 // Small, deterministic route planner for the browser demo. Each order remains its own package,
 // payment and proof of delivery. Real travel times need backend routing before launch.
 import {esc,inr} from './ops.js';
+import * as Help from './help-desk.js';
 
 const active=o=>['offered','accepted','picked_up'].includes(o.deliveryAssignment?.status)&&!['cancelled','delivered','returned','delivery_issue'].includes(o.status);
 const distance=(a,b)=>a&&b&&a.length===2&&b.length===2?111*Math.hypot(a[0]-b[0],(a[1]-b[1])*Math.cos(a[0]*Math.PI/180)):null;
@@ -50,6 +51,8 @@ export function flagException(s,ws,id,kind,note=''){
  if(!o||!p||o.deliveryAssignment?.partnerId!==p.id||!['accepted','picked_up'].includes(o.deliveryAssignment.status)||['cancelled','delivered'].includes(o.status))return 'Only an active assigned package can report a route problem.';
  if(!['store_delayed','missing_package','oversized','route_blocked'].includes(kind))return 'Choose a route problem.';
  o.routeException={kind,note:String(note).trim().slice(0,200),at:Date.now(),status:'open'};
+ const result=Help.createCase(s,ws,{category:kind==='missing_package'?'missing_bag':kind,reference:id,description:`Courier reported ${kind.replaceAll('_',' ')} at ${o.fulfilmentPartner||'the store'}. ${String(note||'').trim()||'Admin review is needed before this package is collected.'}`});
+ if(result.case)o.routeException.caseId=result.case.id;
  (o.history||=[]).push({at:new Date().toLocaleString('en-IN'),actor:p.name,text:`Route problem: ${kind.replaceAll('_',' ')}${o.routeException.note?` · ${o.routeException.note}`:''}`});
  const store=Object.keys(s.shopPartners||{}).find(k=>s.shopPartners[k].party===o.party);
  for(const [to,route] of [['admin','commerceIssues'],[store,'shopOrders']])if(to)(s.notifications||=[]).unshift({id:`NT-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,to,ref:o.id,text:`${o.id}: Courier reported ${kind.replaceAll('_',' ')}`,route,priority:'action',at:new Date().toLocaleString('en-IN'),read:false});
@@ -59,6 +62,7 @@ export function resolveException(s,id){
  const o=(s.customerOrders||[]).find(x=>x.id===id);
  if(!o?.routeException||o.routeException.status!=='open')return 'No open route problem to resolve.';
  o.routeException.status='resolved';o.routeException.resolvedAt=Date.now();
+ if(o.routeException.caseId)Help.changeStatus(s,'admin',o.routeException.caseId,'resolved','The reported route problem was reviewed and corrected before pickup.');
  (o.history||=[]).push({at:new Date().toLocaleString('en-IN'),actor:'Admin',text:'Route problem resolved after review'});
  return '';
 }
