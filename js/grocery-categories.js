@@ -43,3 +43,17 @@ export function guessCategory(name){
  const rules=[[/rice|oats|poha|rava|quinoa/,'Rice, grains & cereals'],[/salt|masala|spice|turmeric|chilli/,'Spices & masala'],[/atta|flour|maida|besan/,'Flour & atta'],[/milk|paneer|cheese|curd|butter/,'Dairy & paneer'],[/dal|lentil|chana|rajma/,'Pulses, dal & beans'],[/bread|bun|rusk/,'Bakery'],[/oil|ghee/,'Cooking oil & ghee'],[/soap|shampoo|toothpaste/,'Personal care'],[/tomato|potato|onion|spinach/,'Fresh vegetables'],[/apple|banana|mango/,'Fresh fruits']];
  return rules.find(([re])=>re.test(text))?.[1]||'Rice, grains & cereals';
 }
+
+// Items no seller may list (medicines, alcohol, tobacco, firecrackers, weapons). Shared by onboarding and the catalogue.
+export const RESTRICTED=/\b(medicine|tablet|syrup|capsule|antibiotic|alcohol|beer|whisky|wine|vodka|rum|cigarette|tobacco|gutkha|bidi|vape|firecracker|crackers|pistol|knife set)\b/i;
+
+// Seller category group of a product (fresh, food, household, electrical, fashion). Used by Store setup and the catalogue.
+export function productGroup(p) {
+  const c = `${p?.category || ''} ${p?.subcategory || ''}`.toLowerCase();
+  if (/shoe care|garden|fragrance|home safety/.test(c)) return 'household';
+  if (/\bfresh\b|dairy|paneer|\bmilk\b|bakery|bread|\beggs?\b/.test(c)) return 'fresh';
+  if (/electric|lighting|bulb|batter|hardware/.test(c)) return 'electrical';
+  if (/fashion|apparel|shirt|footwear/.test(c)) return 'fashion';
+  if (/personal care|laundry|cleaning|dish|paper|garbage|pest|kitchen|storage|bath|bed|baby|pet|tools/.test(c)) return 'household';
+  return 'food';
+}

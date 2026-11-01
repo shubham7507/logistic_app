@@ -6,7 +6,7 @@
 // transfers, approver fallback to the owner, and trips / moving jobs assigned to a team.
 // Built on top of the existing records (peopleByWorkspace, pickerStaff, storeManagers) without changing them.
 import {esc, pill} from './ops.js';
-import {STORE_BY_MANAGER} from './seller-roles.js';
+import {STORE_BY_MANAGER, SELLER_WORKSPACES} from './seller-roles.js';
 import {clock} from './pay.js';
 import {ROLE_TEMPLATES} from './people-rules.js';
 
@@ -15,7 +15,8 @@ const stamp = () => new Date(clock()).toLocaleString('en-IN', {day: '2-digit', m
 const uid = p => `${p}-${Date.now().toString().slice(-5)}${Math.random().toString(36).slice(2, 4).toUpperCase()}`;
 const head = (t, x, a = '') => `<div class="page-header"><div><h1>${esc(t)}</h1><p>${esc(x)}</p></div>${a}</div>`;
 export const BUSINESS = ['transporter', 'goods', 'vehicle', 'movers'];
-export const STORES = ['grocery', 'groceryFresh', 'electrical', 'fashion'];
+// Live list: includes stores created through seller onboarding.
+export const STORES = SELLER_WORKSPACES;
 const MANAGER_STORE = STORE_BY_MANAGER;
 export const TEAM_KINDS = {shift: 'Shift team', function: 'Department / desk', crew: 'Crew', temporary: 'Temporary (one job or day)'};
 export const EMP_TYPES = {permanent: 'Permanent', temporary: 'Temporary', one_job: 'One trip / job only', contractor: 'Through a contractor'};
@@ -116,7 +117,7 @@ export function reusableIdentity(s, mobile, excludeBusiness) {
 // actually read (pickerStaff/storeManagers for retail, peopleByWorkspace for logistics) — extracted
 // out of app.js's inline DOM handler so this decision is unit-testable on its own, not only reachable
 // by driving a real click event. Returns true if a record was created, false if one already existed.
-const RETAIL_HIRE_VERTICALS = ['grocery', 'groceryFresh', 'electrical', 'fashion'];
+const RETAIL_HIRE_VERTICALS = SELLER_WORKSPACES;
 export function hireIntoStaff(s, ws, job, candidate, applicationId) {
   if (RETAIL_HIRE_VERTICALS.includes(ws)) {
     if (job.role === 'manager') {

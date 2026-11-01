@@ -1,5 +1,14 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-01 — Seller listing fix and delivery settings
+- **Fix:** sellers who joined through "Sell products" can now add, edit and CSV-import products. The catalogue used a fixed list of the four demo stores.
+- **Listing checks:** approved categories only; MRP required for packaged goods; price ≤ MRP; restricted items blocked; locked categories labelled.
+- **Step 5 redesign:**
+  - Explained option cards with nothing preselected; several modes at once.
+  - Details for each mode; pincode coverage; category rules.
+- **Store setup → Delivery:** change requests go to admin review; checkout follows pickup and COD settings.
+- Step numbering, seller header, and a shared category grouping. See `SELLER-LISTING-AND-DELIVERY-REPORT.md`.
+
 ## 2026-11-01 — Onboarding: anyone can become a seller
 
 - "Sell products" option on the purpose screen, customer home, Account and Add your business.

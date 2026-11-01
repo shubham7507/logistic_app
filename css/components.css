@@ -82,3 +82,23 @@ body.demo-off .mock-hint,body.demo-off #reset-demo,body.demo-off [data-action="r
 .sell-summary{display:grid;gap:8px;margin:0}.sell-summary div{display:grid;grid-template-columns:130px 1fr;gap:10px}.sell-summary dt{color:var(--muted)}.sell-summary dd{margin:0;font-weight:600}
 .sell-sections{display:grid;gap:4px;margin:8px 0}.sell-banner{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.join-entry{margin-bottom:14px}
 .info-banner.warning{background:var(--warning-soft)}
+/* Seller delivery settings (onboarding step 5, Store setup → Delivery) */
+.delivery-modes{grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))}
+.delivery-mode{align-items:flex-start}
+.delivery-mode input{margin-top:3px;flex:none}
+.delivery-facts{display:grid;gap:6px;margin:8px 0 0}
+.delivery-facts div{display:grid;grid-template-columns:88px minmax(0,1fr);gap:8px;font-size:12px}
+.delivery-facts dt{color:var(--muted)}
+.delivery-facts dd{margin:0;overflow-wrap:anywhere}
+.delivery-detail{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:12px 0;display:grid;gap:10px;min-width:0}
+.delivery-detail legend{font-weight:700;padding:0 6px}
+.delivery-detail[hidden]{display:none}
+.radio-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:8px}
+.radio-row small{display:block;color:var(--muted);font-size:11px}
+.chip-row{display:flex;flex-wrap:wrap;gap:6px}
+.chip-check{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer}
+.chip-check:has(input:checked){border-color:var(--brand);background:var(--brand-soft)}
+.chip-check input{width:16px;height:16px}
+.delivery-tip{margin:8px 0}
+.store-delivery details summary{cursor:pointer;font-weight:600;margin:6px 0}
+.catalog-listing-rules{display:grid;gap:4px}

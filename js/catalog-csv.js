@@ -3,10 +3,13 @@ import {categoryFor, categoryOptions, HOUSEHOLD_CATEGORIES} from './grocery-cate
 import {selectedBranch} from './seller-branches.js';
 
 export const HEADERS=['sku','name','size','category','subcategory','veg_status','price','quantity','low_stock_at','brand','status'];
-export const template=store=>{
- const category=store==='electrical'?'Electrical & lighting':store==='fashion'?'Fashion & clothing':'Pulses, dal & beans';
- const veg=store==='electrical'||store==='fashion'?'not_applicable':'vegetarian';
- return `${HEADERS.join(',')}\r\nEXAMPLE-001,Example item,1 piece,"${category}",,${veg},99,10,3,Example,draft\r\n`;
+// Optional last column: mrp (printed MRP). Files without it still import.
+export const HEADERS_MRP=[...HEADERS,'mrp'];
+// `category` lets stores created through onboarding get an example in one of their approved categories.
+export const template=(store,category)=>{
+ category||=store==='electrical'?'Electrical & lighting':store==='fashion'?'Fashion & clothing':'Pulses, dal & beans';
+ const veg=HOUSEHOLD_CATEGORIES.has(category)?'not_applicable':'vegetarian';
+ return `${HEADERS_MRP.join(',')}\r\nEXAMPLE-001,Example item,1 piece,"${category}",,${veg},99,10,3,Example,draft,199\r\n`;
 };
 export function parseCsv(input){
  const text=String(input||'').replace(/^\uFEFF/,'');let rows=[],row=[],field='',quoted=false;
@@ -22,10 +25,12 @@ export function parseCsv(input){
  row.push(field);if(row.some(x=>x.trim()))rows.push(row);
  if(rows.length<2)return {error:'Add a header and at least one product row.'};
  const header=rows.shift().map(x=>x.trim().toLowerCase());
- if(header.length!==HEADERS.length||HEADERS.some((x,i)=>x!==header[i]))return {error:`Use this header in order: ${HEADERS.join(',')}`} ;
+ const same=list=>header.length===list.length&&list.every((x,i)=>x===header[i]);
+ if(!same(HEADERS)&&!same(HEADERS_MRP))return {error:`Use this header in order: ${HEADERS_MRP.join(',')} (mrp is optional)`} ;
  if(rows.length>100)return {error:'Import at most 100 products at a time.'};
  const values=[];
  for(const [i,fields] of rows.entries()){
+  if(fields.length===header.length-1&&header.at(-1)==='mrp')fields.push('');
   if(fields.length!==header.length)return {error:`Row ${i+2}: expected ${header.length} columns, found ${fields.length}.`};
   values.push(Object.fromEntries(header.map((k,j)=>[k,fields[j].trim()])));
  }
@@ -48,7 +53,7 @@ export function preview(state,store,text,inventory){
   if(byName&&matches[0]&&byName.id!==matches[0].id)return {error:`Row ${number}: SKU belongs to another product with the same name and pack.`};
   if(byName&&!matches.length)return {error:`Row ${number}: this name and pack already exist with another SKU. Edit it manually.`};
   const id=matches[0]?.id||null;
-  const v={sku:row.sku,name:row.name,size:row.size,category:row.category,subcategory:row.subcategory,vegStatus:row.veg_status,price:row.price,quantity:row.quantity,lowStockAt:row.low_stock_at,brand:row.brand,status:row.status};
+  const v={sku:row.sku,name:row.name,size:row.size,category:row.category,subcategory:row.subcategory,vegStatus:row.veg_status,price:row.price,quantity:row.quantity,lowStockAt:row.low_stock_at,brand:row.brand,status:row.status,mrp:row.mrp};
   const error=inventory.saveProduct(draft,store,id,v);
   if(error)return {error:`Row ${number}: ${error}`};
   items.push({number,action:id?'Update':'New',name:row.name,size:row.size,sku:row.sku,price:row.price,quantity:row.quantity,status:row.status,v,id});

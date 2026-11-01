@@ -9,7 +9,7 @@ import * as WH from '../js/workspace-hub.js';
 
 const fresh = (person = {id: 'P-NEW', name: 'Ramesh Gupta'}) => ({...JSON.parse(JSON.stringify(SEED)), person});
 const GOOD = {pan: 'ABCDE1234F', gstin: '09ABCDE1234F1Z5', account: '123456789012', ifsc: 'SBIN0001234'};
-const STORE = {storeName: 'Gupta Mart', branchName: 'Sector 62', address: '12 Sector 62, Noida', city: 'Noida', stateCode: '09', open: '08:00', close: '21:00', radiusKm: 5};
+const STORE = {storeName: 'Gupta Mart', branchName: 'Sector 62', address: '12 Sector 62, Noida', city: 'Noida', pincode: '201301', stateCode: '09', open: '08:00', close: '21:00', radiusKm: 5};
 function filled(s, {type = 'shop', cats = ['food', 'electrical'], kyc = GOOD, fssai = true, brand = false, store = STORE, mode = 'moveai', products = [['Toor Dal', 'food'], ['LED Bulb 12W', 'electrical']], source = null} = {}) {
   const a = SO.startApplication(s, {sourceBusiness: source});
   assert.equal(SO.saveType(s, a, {sellerType: type, categories: cats, legalName: source ? a.legalName : 'Gupta Traders'}), '');
@@ -143,8 +143,9 @@ const approveAll = (s, a) => { for (const k of Object.keys(a.sections)) if (a.se
 // 21–23. Delivery choice: outside courier coverage; pickup-only enforced at checkout.
 {
   const s = fresh(), a = SO.startApplication(s); SO.saveType(s, a, {sellerType: 'shop', categories: ['food'], legalName: 'Test Co'}); SO.saveKyc(s, a, {...GOOD, gstin: '08ABCDE1234F1Z5'});
-  assert.equal(SO.saveStore(s, a, {...STORE, storeName: 'Ajmer Kirana', city: 'Ajmer', stateCode: '08'}), '');
-  assert.match(SO.saveDelivery(s, a, {mode: 'moveai'}), /do not cover Ajmer/);
+  assert.match(SO.saveStore(s, a, {...STORE, storeName: 'Ajmer Kirana', city: 'Ajmer', stateCode: '08', pincode: ''}), /pincode/);
+  assert.equal(SO.saveStore(s, a, {...STORE, storeName: 'Ajmer Kirana', city: 'Ajmer', stateCode: '08', pincode: '305001'}), '');
+  assert.match(SO.saveDelivery(s, a, {mode: 'moveai'}), /do not cover pincode 305001/);
   assert.equal(SO.saveDelivery(s, a, {mode: 'pickup'}), '');
   const s3 = fresh(), c = filled(s3, {cats: ['food'], mode: 'pickup', products: [['Toor Dal', 'food']]}); SO.submit(s3, c); approveAll(s3, c);
   assert.equal(SO.deliveryModeOf(s3, 'Gupta Mart'), 'pickup');

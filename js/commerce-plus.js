@@ -8,6 +8,8 @@
 // store disputes. Money: commission & payout hold by category, seller- vs platform-funded discounts, TCS/TDS settings,
 // HSN/MRP on invoices. Admin: approvals, claims centre, settings, reports, fraud flags, notification outbox.
 import {esc, pill, inr} from './ops.js';
+import {productGroup} from './grocery-categories.js';
+import * as SD from './seller-delivery.js';
 import {canAdd as canAddToRoute} from './delivery-routes.js';
 import {deliveryEligibility} from './delivery-onboarding.js';
 import * as NC from './notify-center.js';
@@ -17,6 +19,7 @@ import * as Commerce from './commerce.js';
 import * as Inventory from './grocery-inventory.js';
 import {selectedBranch,defaultBranch,branch} from './seller-branches.js';
 import {operatorStore} from './grocery-workforce.js';
+import {sellerRole, STORE_BY_MANAGER} from './seller-roles.js';
 import {rcLookup, gstLookup, pennyDrop} from './verify-sim.js';
 import {readEvidence, evidenceHtml} from './claim-evidence.js';
 import * as Help from './help-desk.js';
@@ -37,14 +40,8 @@ export const GROUPS = {
   electrical: {label: 'Electricals', returns: 'replace', windowH: 10 * 24, holdDays: 7, commission: 0.08, gst: 18, hsn: '8539', details: ['Brand', 'Model', 'Wattage / rating', 'Warranty (months)', 'Manufacturer', 'Country of origin'], policy: 'Replacement within 10 days if defective (serial number checked). After that, manufacturer warranty.'},
   fashion: {label: 'Fashion', returns: 'return_or_exchange', windowH: 15 * 24, holdDays: 7, commission: 0.08, gst: 5, hsn: '6205', details: ['Fabric', 'Fit', 'Size chart', 'Wash care', 'Country of origin'], policy: 'Return or exchange size within 15 days, tags intact and unused.'},
 };
-export function groupOf(p) {
-  const c = `${p?.category || ''} ${p?.subcategory || ''}`.toLowerCase();
-  if (/vegetable|fruit|dairy|paneer|milk|bakery|bread|egg/.test(c)) return 'fresh';
-  if (/electric|lighting|bulb|batter|hardware/.test(c)) return 'electrical';
-  if (/fashion|cloth|apparel|wear|shirt|footwear/.test(c)) return 'fashion';
-  if (/personal care|laundry|cleaning|dish|paper|garbage|pest|kitchen|storage|bath|bed|baby|pet|tools/.test(c)) return 'household';
-  return 'food';
-}
+// Moved to grocery-categories.js so the catalogue and Store setup share one grouping.
+export const groupOf = productGroup;
 export const settings = s => (s.plusSettings ||= {commission: {}, holdDays: {}, tcsPct: 0, tdsPct: 0, claimAutoLimit: 200, claimMax30d: 3, codRefusalLimit: 2, newSellerExtraHoldDays: 0, capacityPerCourier: 2, peakStart: '18:00', peakEnd: '22:00', peakBonus: 10, dailyTarget: 10, dailyBonus: 100});
 export const RECOMMENDED = {commission: {fresh: 6, food: 7, household: 8, electrical: 8, fashion: 18}, holdDays: {fresh: 3, food: 9, household: 9, electrical: 12, fashion: 17}, tcsPct: 0.5, tdsPct: 0.1};
 export const commissionRate = (s, o) => { const g = orderGroup(s, o), st = settings(s); return st.commission[g] ?? GROUPS[g].commission; };
@@ -499,8 +496,8 @@ export function analytics(s, name) {
 }
 
 // ---------- screens ----------
-const SELLER_WS = ['grocery', 'groceryFresh', 'electrical', 'fashion'];
-const storeWs = ws => SELLER_WS.includes(ws) ? ws : SELLER_WS.find(k => ws === `${k}Manager`) || null;
+// Live registry, so stores created through seller onboarding work too.
+const storeWs = ws => sellerRole(ws) ? ws : STORE_BY_MANAGER[ws] || null;
 export function screen(s, route, ws) {
   ensurePlus(s);
   if (route === 'wishlist' && ws === 'personal') return wishlistScreen(s);
@@ -547,7 +544,7 @@ function storeScreen(s, ws) {
   return `${head('Store setup', `${p.name} · onboarding, categories, hours and order intake`)}
   <div class="grid two"><section class="panel"><h2>Verification ${pill(ob.status)}</h2><form class="form-grid" data-plus-form="onboard"><label><span>GSTIN</span><input name="gstin" value="${esc(ob.gstin || '')}"></label><label><span>PAN</span><input name="pan" value="${esc(ob.pan || '')}"></label><label><span>Payout account (₹1 check)</span><input name="account" value="${esc(p.payoutAccount?.accountNumber || '')}"></label><label><span>IFSC</span><input name="ifsc" value="SBIN0001234"></label><label><span>FSSAI licence (food sellers)</span><input name="fssai" value="${esc(ob.fssai || '')}" placeholder="14 digits"></label><button class="button secondary">Verify and submit</button></form><p class="muted">Changes go to MoveAI for approval; payouts continue to the verified account meanwhile.</p></section>
   <section class="panel"><h2>Categories you can sell</h2>${groups.map(g => `<div class="ledger-row static"><span><b>${GROUPS[g].label}</b><small>Commission ${Math.round((settings(s).commission[g] ?? GROUPS[g].commission) * 100)}% · payout after ${settings(s).holdDays[g] ?? GROUPS[g].holdDays} days</small></span>${p.approvedGroups.includes(g) ? pill('approved') : (p.categoryRequests || []).includes(g) ? pill('pending') : `<button class="button secondary compact" data-plus="request-group" data-id="${g}">Request</button>`}</div>`).join('')}</section></div>
-  <section class="panel"><h2>Order intake</h2><form class="inline-form" data-plus-form="hours"><label>Opens <input type="time" name="open" value="${esc(p.hours.open)}"></label><label>Closes <input type="time" name="close" value="${esc(p.hours.close)}"></label><button class="button secondary compact">Save hours</button></form><div class="row-actions"><button class="button ${p.paused ? 'primary' : 'secondary'}" data-plus="toggle-pause">${p.paused ? 'Resume orders' : 'Pause new orders'}</button><button class="button secondary" data-plus="toggle-busy">${p.busy ? 'Back to normal prep time' : 'Busy: add 15 min to delivery estimates'}</button></div></section><p class="plus-error field-error" hidden></p>${globalThis.__moveaiHR?.storeSetupExtras?.(s, ws) || ''}`;
+  ${SD.storePanelHtml(s, ws, s.sellerBranches?.[ws] || [])}<section class="panel"><h2>Order intake</h2><form class="inline-form" data-plus-form="hours"><label>Opens <input type="time" name="open" value="${esc(p.hours.open)}"></label><label>Closes <input type="time" name="close" value="${esc(p.hours.close)}"></label><button class="button secondary compact">Save hours</button></form><div class="row-actions"><button class="button ${p.paused ? 'primary' : 'secondary'}" data-plus="toggle-pause">${p.paused ? 'Resume orders' : 'Pause new orders'}</button><button class="button secondary" data-plus="toggle-busy">${p.busy ? 'Back to normal prep time' : 'Busy: add 15 min to delivery estimates'}</button></div></section><p class="plus-error field-error" hidden></p>${globalThis.__moveaiHR?.storeSetupExtras?.(s, ws) || ''}`;
 }
 function analyticsScreen(s, ws) {
   const p = s.shopPartners[ws], a = analytics(s, p.name);

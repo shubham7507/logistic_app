@@ -16,6 +16,7 @@ import * as Voice from './grocery-voice.js';
 import {categoryFor,categoryOptions} from './grocery-categories.js';
 import {ROLE_CONFIG} from './config.js';
 import {buyingProfiles, buyingDefaults, rememberBuying} from './workspace-hub.js';
+import * as SD from './seller-delivery.js';
 
 export const PRODUCT_POLICY = {commission: 0.08, freeDeliveryAbove: 499, deliveryFee: 40, codLimit: 5000, returnDays: 7};
 const DAY = 86400000;
@@ -73,6 +74,12 @@ export function placeOrder(state, v) {
   if(v.fulfilment==='pickup'&&stores.length>1)return {error:'Store pickup requires one seller per checkout. Remove other sellers or choose home delivery.'};
   const pickupOnly=stores.find(n=>Object.values(state.shopPartners||{}).find(p=>p.name===n)?.deliveryMode==='pickup');
   if(pickupOnly&&v.fulfilment!=='pickup')return {error:`${pickupOnly} offers store pickup only. Choose “Store pickup” or remove its items.`};
+  // Each store's delivery settings (seller onboarding step 5 / Store setup → Delivery).
+  const planOf=n=>Object.values(state.shopPartners||{}).find(p=>p.name===n)?.deliveryPlan;
+  const noPickup=v.fulfilment==='pickup'&&stores.find(n=>!SD.allowsPickup(planOf(n)));
+  if(noPickup)return {error:`${noPickup} does not offer store pickup. Choose home delivery.`};
+  const noCod=v.method==='cod'&&stores.find(n=>!SD.codAllowed(planOf(n)));
+  if(noCod)return {error:`${noCod} does not accept cash on delivery. Pay by UPI or card.`};
   const payAtStore=v.fulfilment==='pickup'&&String(v.method).startsWith('store_');
   if(payAtStore&&!['store_cash','store_upi','store_card'].includes(v.method))return {error:'Choose a valid store payment method.'};
   const branchByStore={};for(const name of stores){const store=Object.keys(state.shopPartners||{}).find(k=>state.shopPartners[k].name===name),own=lines.filter(i=>i.product.fulfilmentPartner===name);own.forEach(i=>Inventory.ensureProductBranches(state,i.product));const chosen=routeBranch(state,store,own,v.fulfilment==='pickup'?'':v.address,Inventory.available);if(!chosen)return {error:`${name} has no active branch with all items in stock. Review your cart.`};branchByStore[store]=chosen.id;}

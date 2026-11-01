@@ -60,10 +60,20 @@ async function step(p) { await p.click('form[data-sell-step] button[type=submit]
   assert.match(await step(p), /cancelled/, 'cancelled GSTIN');
   await p.fill('input[name=gstin]', '09ABCDE1234F1Z5'); assert.equal(await step(p), '');
   await p.fill('input[name=fssai]', '12345678901234'); await p.fill('input[name=fssaiExpiry]', '2030-01-01'); assert.equal(await step(p), '', 'brand papers left out on purpose');
-  await p.fill('input[name=storeName]', 'Gupta Mart'); await p.fill('input[name=branchName]', 'Sector 62'); await p.fill('input[name=address]', '12 Sector 62, Noida'); await p.fill('input[name=city]', 'Noida');
+  await p.fill('input[name=storeName]', 'Gupta Mart'); await p.fill('input[name=branchName]', 'Sector 62'); await p.fill('input[name=address]', '12 Sector 62, Noida'); await p.fill('input[name=city]', 'Noida'); await p.fill('input[name=pincode]', '201301');
   await p.selectOption('select[name=stateCode]', '27'); assert.match(await step(p), /registered in Uttar Pradesh/, 'address must be in the GSTIN state');
   await p.selectOption('select[name=stateCode]', '09'); assert.equal(await step(p), '');
-  await p.check('input[name=mode][value=pickup]'); assert.equal(await step(p), '');
+  // Step 5: delivery. Header and numbering are seller-specific; nothing is preselected; each card explains the mode.
+  assert.match(await p.textContent('main h1 + p, .page-header p'), /Step 5 of 8 · How orders reach customers/);
+  assert.equal(await p.textContent('#workspace-name'), 'Sell on MoveAI');
+  assert.equal(await p.$$eval('.delivery-modes input:checked', x => x.length), 0, 'no mode preselected');
+  assert.match(await p.textContent('.delivery-modes'), /Cost to you[\s\S]*COD/);
+  assert.match(await p.textContent('form[data-sell-step="5"]'), /MoveAI couriers cover 201301 \(Noida\)/);
+  assert.match(await step(p), /at least one/);
+  assert.ok(await p.$eval('.delivery-detail[data-for="pickup"]', e => e.hidden));
+  await p.check('input[name=pickup]'); assert.ok(!(await p.$eval('.delivery-detail[data-for="pickup"]', e => e.hidden)), 'details open for the ticked mode');
+  await p.check('input[name=own]'); await p.fill('input[name=ownRadius]', '9'); assert.match(await step(p), /1 to 5 km/);
+  await p.uncheck('input[name=own]'); assert.equal(await step(p), '');
   assert.match(await step(p), /Accept/); await p.check('input[name=accept]'); assert.equal(await step(p), '');
   const add = async (name, category, price, mrp, size) => { await p.fill('form[data-sell-product] input[name=name]', name); await p.selectOption('form[data-sell-product] select[name=category]', category); await p.fill('form[data-sell-product] input[name=price]', String(price)); await p.fill('form[data-sell-product] input[name=mrp]', String(mrp)); await p.fill('form[data-sell-product] input[name=size]', size); await p.click('form[data-sell-product] button'); await p.waitForTimeout(250); return sellErr(p); };
   assert.match(await add('Kingfisher Beer', 'food', 150, 160, '650 ml'), /restricted/);
@@ -100,14 +110,41 @@ async function step(p) { await p.click('form[data-sell-step] button[type=submit]
   for (const r of ['shopOrders', 'shopCatalog', 'shopTeam', 'plusStore']) { await go(p, `business.html#/${r}`); assert.notEqual(await p.textContent('#page-title'), 'Access denied', r); assert.equal(await p.textContent('#workspace-name'), 'Gupta Mart'); }
   assert.match(await p.textContent('main'), /Store setup|Verification/);
 
+  // The new store owner lists a product from Products and stock (was impossible before: form hidden).
+  await go(p, 'business.html#/shopCatalog');
+  assert.ok(await p.$('#catalog-add-product'), 'Add product form for the new store');
+  assert.match(await p.textContent('.catalog-listing-rules'), /You can list in: Packaged food[\s\S]*Locked until approved: Electricals/);
+  assert.ok(!(await p.$$eval('[data-catalog-category] option', o => o.map(x => x.value))).includes('Electrical & lighting'));
+  const list = async (name, price, mrp) => { await p.fill('[data-catalog-name]', name); await p.fill('[data-catalog-size]', '5 kg'); await p.selectOption('[data-catalog-category]', 'Rice, grains & cereals'); await p.selectOption('[data-catalog-veg]', 'vegetarian'); await p.fill('[data-catalog-price]', String(price)); await p.fill('[data-catalog-mrp]', String(mrp)); await p.fill('[data-catalog-quantity]', '20'); await p.click('[data-commerce="catalog-add"]'); await p.waitForTimeout(350); };
+  await list('Basmati Rice', 600, 520); assert.ok(!(await p.textContent('main')).includes('Basmati Rice 5 kg'), 'price above MRP refused');
+  await list('Basmati Rice', 450, 520);
+  assert.ok((await p.$$eval('.catalog-row-main', e => e.map(x => x.textContent))).some(x => /Basmati Rice/.test(x)), 'listed');
+
   // Customer side: approved product is in the shop; the locked electrical product is not; pickup-only enforced.
   await go(p, 'index.html#/search');
-  const shop = await p.textContent('main'); assert.ok(shop.includes('Toor Dal')); assert.ok(!shop.includes('LED Bulb 12W'));
+  const shop = await p.textContent('main'); assert.ok(shop.includes('Toor Dal')); assert.ok(shop.includes('Basmati Rice'), 'new listing visible to customers'); assert.ok(!shop.includes('LED Bulb 12W'));
   await p.evaluate(() => { const k = 'moveai-vnext-p1', s = JSON.parse(localStorage.getItem(k)); const prod = s.products.find(x => x.name === 'Toor Dal' && x.fulfilmentPartner === 'Gupta Mart'); s.productCart = [{productId: prod.id, quantity: 1, priceAtAdd: prod.price}]; s.checkoutFromCart = true; s.currentWorkspace = 'personal'; localStorage.setItem(k, JSON.stringify(s)); });
   await go(p, 'index.html#/productCheckout');
   const fulfil = await p.$('select[name=fulfilment]'); if (fulfil) await fulfil.selectOption('delivery').catch(() => {});
   await p.click('form[data-po-form] button[type=submit], #po-form button[type=submit], .form-actions .button.primary[type=submit]'); await p.waitForTimeout(300);
   assert.match(await p.textContent('#po-error'), /Gupta Mart offers store pickup only/);
+
+  // Store setup → Delivery: the seller adds MoveAI couriers; MoveAI approves; home delivery opens up.
+  await go(p, 'business.html#/plusStore?ws=' + (await state(p)).onboardedStores[0].key);
+  assert.match(await p.textContent('#store-delivery'), /Now: Store pickup \(ready in 20 min\)/);
+  await p.click('#store-delivery summary');
+  await p.check('#store-delivery input[name=moveai]'); await p.check('#store-delivery input[name=handover][value=pickup]'); await p.check('#store-delivery input[name=windows][value="15-18"]'); await p.check('#store-delivery input[name=packaging]');
+  await p.click('#store-delivery button.primary'); await p.waitForTimeout(300);
+  assert.match(await p.textContent('#store-delivery'), /Change waiting for MoveAI review/);
+  await go(p, 'admin.html#/sellerReview'); assert.match(await p.textContent('main'), /Delivery change requests[\s\S]*Gupta Mart/);
+  await p.click('form[data-delivery-decide] button[value=approved]'); await p.waitForTimeout(300);
+  const after = await state(p), gm = Object.values(after.shopPartners).find(x => x.name === 'Gupta Mart');
+  assert.equal(gm.deliveryMode, 'moveai'); assert.ok(gm.deliveryPlan.modes.pickup && gm.deliveryPlan.modes.moveai);
+  await p.evaluate(() => { const k = 'moveai-vnext-p1', s = JSON.parse(localStorage.getItem(k)); s.currentWorkspace = 'personal'; localStorage.setItem(k, JSON.stringify(s)); });
+  await go(p, 'index.html#/productCheckout');
+  const fulfil2 = await p.$('select[name=fulfilment]'); if (fulfil2) await fulfil2.selectOption('delivery').catch(() => {});
+  await p.click('form[data-po-form] button[type=submit], #po-form button[type=submit], .form-actions .button.primary[type=submit]').catch(() => {}); await p.waitForTimeout(300);
+  assert.doesNotMatch(await p.textContent('body'), /offers store pickup only/, 'home delivery allowed after the change');
 
   // 7. An approved logistics business adds "Sell products": KYC reused, nothing re-entered.
   await p.evaluate(() => { const k = 'moveai-vnext-p1'; localStorage.removeItem(k); });
@@ -116,6 +153,9 @@ async function step(p) { await p.click('form[data-sell-step] button[type=submit]
   assert.match(await p.textContent('h1'), /Add “Sell products” to Raj Logistics/);
   await p.check('input[name=sellerType][value=shop]'); await p.check('input[name=categories][value=household]'); assert.equal(await step(p), '');
   assert.match(await p.textContent('main'), /Using Raj Logistics's verified details/); assert.equal(await step(p), '');
+  // No licence step for household only: chips are numbered 1–7 with no gap.
+  assert.deepEqual((await p.$$eval('.sell-steps button', x => x.map(b => b.textContent.split('.')[0]))), ['1', '2', '3', '4', '5', '6', '7']);
+  assert.match(await p.textContent('.page-header p'), /Step 3 of 7 · Store and first branch/);
   assert.match(await p.textContent('#page-title'), /Sell products/);
 
   // 8. Mobile: the seller application fits without sideways scrolling.
