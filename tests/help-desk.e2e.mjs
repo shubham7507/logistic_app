@@ -12,8 +12,8 @@ for(const ws of Object.keys(ROLE_CONFIG))assert.equal(allowedRoutes(ws).has('hel
 for(const nav of Object.values(PERSONAL_NAV))assert.ok(nav.some(([id])=>id==='helpDesk'));
 assert.match(H.screen(s,'personal'),/Get help/);
 assert.match(H.screen(s,'admin'),/Support queue/);
-assert.match(ordersScreen(s),/Get help with this package/);
-s.selectedTrackingOrderId=order.id;assert.match(trackingScreen(s),/Get help with this package/);
+assert.match(ordersScreen(s),/Get help with this order/);
+s.selectedTrackingOrderId=order.id;assert.match(trackingScreen(s),/Get help with this order/);
 assert.match(commerceScreen(s,'shopOrders','grocery'),/Get help with this package/);
 const customer=H.createCase(s,'personal',{category:'missing_item',reference:order.id,description:'One rice pack was missing from the bag.'});assert.ok(customer.case);
 assert.equal(customer.case.owner,'platform');assert.equal(customer.case.status,'received');

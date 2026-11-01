@@ -1,5 +1,9 @@
 # MoveAI One vNext — Phases P5–P8 (complete application flow)
 
+## Workspace switching (November 2026)
+
+People now see four apps: customer (`index.html`), Partner (`partner.html`, incl. store delivery partners), Business (`business.html`, incl. store owners, managers and pickers) and Admin. The switcher groups workspaces by business with unread badges, search, invitations and a colour per business; tap the page title on mobile to open it. Delivery partners and pickers cannot switch away mid-job. Links like `business.html#/shopOrders?ws=groceryManager` open the right workspace. Checkout offers **Buying for: Personal / your business** with GSTIN. Store owners can hand a shared device to staff with a PIN (demo `1234`). Round 2 adds branches and real roles on every row, one staff row per employer, a block during live trips and moves, money confirmations naming payer and payee, branch-aware alerts and per-profile payment defaults. Add `?demo=off` to hide demo-only tools. See `WORKSPACE-SWITCHING-REPORT.md`; run `npm run test:workspace` with the folder served on port 4177.
+
 ## Current static demo (October 2026)
 
 Open `index.html` (customer), `seller.html` (grocery, electrical, fashion), `picker.html` (store staff), `delivery.html` (courier), or `admin.html` (operations). `business.html` and `partner.html` cover the other marketplace roles. Serve the folder over HTTP (for example `python3 -m http.server 8000`) rather than opening files directly. The pages can also be published together on GitHub Pages.

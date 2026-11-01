@@ -40,10 +40,15 @@ assert.match(Claims.pickupAction(s,c,'collect',{code:c.pickup.code,qc0:'on',qc1:
 assert.equal(Claims.pickupAction(s,c,'collect',{code:c.pickup.code,qc0:'on',qc1:'on'},'deliveryPartner2'),'');
 assert.equal(c.status,'refund_started');
 const ledger=s.ledger.find(x=>x.sourceId===c.id&&x.type==='refund');assert.equal(ledger.status,'refund_initiated');
-assert.match(Claims.storeDispute(s,c,'The returned item does not match'),/Only refunded/);
+assert.equal(c.liability,'pending');assert.equal(ledger.responsible,'pending_review');
+assert.match(Claims.storeDispute(s,c,'The returned item does not match'),/seller-funded/);
+const due=o.sellerDue;assert.equal(Claims.assignClaimLiability(s,c,'seller','Store packing seal was damaged'),'');assert.ok(o.sellerDue<due);
+assert.match(Claims.screen(s,'plusReturns','grocery'),/Store adjustment/);assert.match(Claims.screen(s,'plusClaims','admin'),/Who funds the remedy/);
+assert.match(Claims.assignClaimLiability(s,c,'seller','Repeat deduction must fail'),/already decided/);
 assert.equal(Claims.completeClaimRefund(s,c),'');assert.equal(c.status,'refunded');assert.equal(ledger.status,'refunded');
 assert.equal(Claims.storeDispute(s,c,'The returned item does not match'),'');
-assert.equal(Claims.adminDecide(s,c,'approve'),'');assert.equal(c.dispute.status,'store_upheld');
+assert.equal(Claims.adminDecide(s,c,'approve'),'');assert.equal(c.dispute.status,'store_upheld');assert.equal(o.sellerDue,due);
+assert.equal(Claims.adminDecide(s,c,'approve'),'Nothing to decide.');
 
 // A failed condition check has a visible appeal and admin can arrange another pickup.
 s=seed();o=order(s);Claims.raiseClaim(s,o,'PRD-103',{kind:'damaged',qty:1,reason:'Packet burst open',photo:photo.name,evidence:photo});c=s.claims[0];
@@ -60,5 +65,24 @@ c=s.claims[0];assert.equal(c.status,'review');assert.match(Claims.adminDecide(s,
 assert.equal(Claims.adminDecide(s,c,'reject','The evidence does not show damage'),'');assert.equal(c.status,'rejected');
 assert.equal(Claims.appealClaim(s,c,'The seal is torn in the photo'),'');
 assert.equal(Claims.adminDecide(s,c,'approve'),'');assert.equal(c.status,'refund_started');
+
+// The customer's remedy is independent of the funding decision; courier damage does not charge the store.
+s=seed();o=order(s);Claims.raiseClaim(s,o,'PRD-103',{kind:'damaged',qty:1,reason:'Crushed in transit',photo:photo.name,evidence:photo,refundTo:'wallet'});c=s.claims[0];
+Claims.returnPartnerAction(s,c,'deliveryPartner','accept');Claims.pickupAction(s,c,'collect',{code:c.pickup.code,qc0:'on',qc1:'on'},'deliveryPartner');
+const sellerDue=o.sellerDue;assert.equal(c.status,'refunded');assert.equal(Claims.assignClaimLiability(s,c,'courier','Sealed store package was crushed in transit'),'');assert.equal(o.sellerDue,sellerDue);assert.equal(s.ledger.find(x=>x.sourceId===c.id&&x.type==='refund').responsible,'courier');
+assert.match(Claims.storeDispute(s,c,'Not a seller issue to dispute'),/seller-funded/);
+
+// A small fresh refund is completed in the mock wallet, with platform funding still pending.
+s=seed();o=Orders.placeOrder(s,{productId:'PRD-107',qty:1,address:'Flat 4',method:'upi',vpa:'test@upi',billing:{name:'Shubham'}}).order;o.status='delivered';o.deliveredAt=Date.now();
+const freshDue=o.sellerDue;assert.equal(Claims.raiseClaim(s,o,'PRD-107',{kind:'missing',qty:1,refundTo:'wallet'}),'');c=s.claims[0];assert.equal(c.status,'refunded');assert.equal(o.sellerDue,freshDue);
+assert.match(Claims.screen(s,'plusClaims','admin'),/Record funding decision/);assert.equal(Claims.assignClaimLiability(s,c,'platform','MoveAI goodwill for this missing item'),'');assert.equal(o.sellerDue,freshDue);
+
+// Contextual help is available before delivery, while item claims only open after receipt.
+s=seed();o=Orders.placeOrder(s,{productId:'PRD-103',qty:1,address:'Flat 4',method:'upi',vpa:'test@upi',billing:{name:'Shubham'}}).order;
+assert.match(Claims.orderHelp(s,o),/Get help with this order/);assert.doesNotMatch(Claims.orderHelp(s,o),/data-plus-form="claim"/);
+assert.doesNotMatch(Help.orderHelpChoices(o).join(','),/damaged_item/);
+assert.match(Claims.raiseClaim(s,o,'PRD-103',{kind:'damaged',photo:photo.name}),/not delivered/);
+o.status='delivered';o.deliveredAt=Date.now();assert.match(Claims.orderHelp(s,o),/data-plus-form="claim"/);assert.ok(Help.orderHelpChoices(o).includes('damaged_item'));
+Claims.raiseClaim(s,o,'PRD-103',{kind:'damaged',photo:photo.name,refundTo:'wallet'});assert.equal(Claims.refundClaim(s,s.claims[0],o,'Approved'), '');assert.match(Claims.refundClaim(s,s.claims[0],o,'Duplicate'),/already has a refund/);
 
 console.log('PASS damage claim: customer, seller, admin, partner, evidence, Help Desk, pickup exceptions, appeal, refund');

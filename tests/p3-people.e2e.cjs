@@ -71,7 +71,9 @@ const BASE=process.env.MOVEAI_BASE||'http://127.0.0.1:4177';
 
   // Active staff gets a role-specific workspace and cannot deep-link to owner pages.
   await page.locator('[data-action="open-staff-workspace"]').click();
-  assert.equal(await page.locator('#workspace-name').textContent(),'Pankaj Meena');
+  // Staff header now names the employer business; the person and role follow underneath (workspace switching update).
+  assert.equal(await page.locator('#workspace-name').textContent(),'Raj Logistics');
+  assert.match(await page.locator('#workspace-role').textContent(),/^Pankaj Meena · /);
   await page.goto(`${BASE}/business.html#/people`);
   assert.equal(await page.locator('.error-page h1').textContent(),'Access denied');
   await page.goto(`${BASE}/business.html#/business`);

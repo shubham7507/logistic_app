@@ -1,5 +1,26 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-01 — Workspace switching, round 2
+
+- Branch and real role on every switcher row; branch chips set and remember the branch; branch button shows names.
+- Staff header shows the employer business; one staff row per business for the same mobile.
+- Switch guard for live trips, moving jobs and personal-driver jobs (demo mode offers "Switch anyway").
+- Money confirmations naming payer, payee, reference and amount.
+- Branch-aware alerts for branch managers, dispatchers and accountants.
+- Payment method and receipt email per buying profile, remembered.
+- `?demo=off` hides remaining test-only controls.
+
+## 2026-11-01 — Workspace switching
+
+- Four apps for people (customer, Partner incl. delivery, Business incl. sellers and store staff, Admin); seller/picker/delivery pages kept as aliases.
+- Grouped workspace switcher with unread badges, search, invitations, last-used memory, colour per business, mobile header trigger.
+- Switch guard for active deliveries and pick tasks; COD cash reminder.
+- `?ws=` deep links, "In your other workspaces" notifications panel, per-workspace mute.
+- Business buying profile with GSTIN at checkout; money pages name the paying workspace.
+- Shared store device with staff PIN, owner PIN reset and 5-minute auto-lock.
+- `?demo=off` hides demo-only tools. New tests: `tests/workspace-hub.unit.mjs`, `tests/workspace-switch.e2e.cjs`.
+
+
 All changes are additive/corrective fixes to existing files, not a rewrite. Every item below was
 verified with real syntax checks (`node --check`) and executed behavioral tests (78 automated
 assertions total) before being included — see "How this was tested" at the bottom.

@@ -3,11 +3,19 @@
 // updates grouped per order ("3 earlier updates"). Works for customers, sellers, pickers, couriers and admin.
 import {esc, pill, inr} from './ops.js';
 import * as Geo from './geo.js';
+import {staffSeesOwnerAlert} from './workspace-hub.js';
 
 const FINAL = ['delivered', 'collected', 'cancelled', 'returned', 'refunded', 'closed', 'rated', 'completed_closed'];
 const head = (t, x, a = '') => `<div class="page-header"><div><h1>${esc(t)}</h1><p>${esc(x)}</p></div>${a}</div>`;
 const refOf = n => n.ref || (String(n.text).match(/^([A-Z]{2,4}-[A-Z0-9-]+):/) || [])[1] || 'general';
 export function mine(s, ws) {
+  const own = mineDirect(s, ws);
+  if (ws !== 'staff') return own;
+  const owner = s.staffSession?.ownerWorkspace, member = (s.peopleByWorkspace?.[owner] || []).find(x => x.id === s.selectedStaffId);
+  const branch = (s.notifications || []).filter(n => n.to === owner && !own.includes(n) && staffSeesOwnerAlert(member, n, typeOf(n.text)));
+  return [...own, ...branch];
+}
+function mineDirect(s, ws) {
   const key = ws === 'staff' ? `staff:${s.selectedStaffId}` : ws;
   const selected=s.activePicker?.[ws]||s.activeStoreManager?.[ws];
   return (s.notifications || []).filter(n => (n.to === ws || n.to === key || (n.parties || []).includes(ws)) && (!n.staffId || n.staffId === selected || ws === 'staff' && n.staffId === s.selectedStaffId) && (!n.pickerId || n.pickerId === s.activePicker?.[ws]) && (!n.managerId || n.managerId === s.activeStoreManager?.[ws]));
@@ -124,6 +132,7 @@ export function typeOf(text) { return /refund|paid|payment|payout|wallet|₹/i.t
 const ist = () => new Date().toLocaleTimeString('en-GB', {timeZone: 'Asia/Kolkata', hour12: false}).slice(0, 5);
 export function channelsFor(s, to, text) {
   const p = prefs(s, to), t = typeOf(text), c = p[t] || {}, urgent = /arriv|code|OTP|failed|declined/i.test(text);
+  if (p.muted && !urgent && t !== 'account') return [];
   const quiet = p.quietStart > p.quietEnd ? (ist() >= p.quietStart || ist() < p.quietEnd) : (ist() >= p.quietStart && ist() < p.quietEnd);
   const ch = ['push', 'sms', 'whatsapp'].filter(k => c[k]).map(k => ({push: 'Push', sms: 'SMS', whatsapp: 'WhatsApp'}[k]));
   return quiet && !urgent ? ch.filter(x => x === 'Push').map(() => 'Push (silent, quiet hours)') : ch;

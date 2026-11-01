@@ -1,11 +1,13 @@
 // MoveAI One — option C: four products on one login and one backend.
-// In the prototype each product is its own entry page (index.html, partner.html, business.html, admin.html)
+// People see four apps (see APPS in workspace-hub.js): customer, partner (incl. delivery), business (incl.
+// seller and store staff) and admin. seller.html, picker.html and delivery.html remain as aliases that open
+// the Business or Partner app on that role. In the prototype each app is its own entry page
 // sharing the same code and the same saved data. Each product shows only its own roles, menus and home.
 
 export const PRODUCTS = {
   customer: {name: 'MoveAI', tagline: 'Book moves, drivers and services', file: 'index.html', mark: 'M', roles: ['personal'], defaultWs: 'personal'},
-  partner: {name: 'MoveAI Partner', tagline: 'Driving and helper work', file: 'partner.html', mark: 'P', roles: ['personal', 'commercialDriver', 'personalDriver', 'helper'], defaultWs: 'personal'},
-  business: {name: 'MoveAI Business', tagline: 'Loads, fleet, moving and team', file: 'business.html', mark: 'B', roles: ['personal', 'goods', 'transporter', 'vehicle', 'movers', 'staff'], defaultWs: 'transporter'},
+  partner: {name: 'MoveAI Partner', tagline: 'Deliveries, driving and helper work', file: 'partner.html', mark: 'P', roles: ['personal', 'commercialDriver', 'personalDriver', 'helper'], defaultWs: 'personal'},
+  business: {name: 'MoveAI Business', tagline: 'Stores, loads, fleet and teams', file: 'business.html', mark: 'B', roles: ['personal', 'goods', 'transporter', 'vehicle', 'movers', 'staff'], defaultWs: 'transporter'},
   admin: {name: 'MoveAI Admin', tagline: 'Internal console', file: 'admin.html', mark: 'A', roles: ['admin'], defaultWs: 'admin'},
   seller: {name: 'MoveAI Seller', tagline: 'Products, orders, teams and payouts', file: 'seller.html', mark: 'S', roles: ['grocery','groceryFresh','electrical','fashion','groceryManager','groceryFreshManager','electricalManager','fashionManager'], defaultWs: 'grocery'},
   picker: {name: 'MoveAI Store Staff', tagline: 'Prepare orders for your store', file: 'picker.html', mark: 'P', roles: ['picker','pickerFresh','pickerElectrical','pickerFashion'], defaultWs: 'picker'},

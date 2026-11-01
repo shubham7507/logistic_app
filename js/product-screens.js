@@ -1,5 +1,6 @@
 // MoveAI One — screens that differ by product (option C).
 import {esc, pill, inr} from './ops.js';
+import {APPS, appOf} from './workspace-hub.js';
 import {PRODUCTS, productLink} from './products.js';
 
 const head = (title, text, action = '') => `<div class="page-header"><div><h1>${esc(title)}</h1><p>${esc(text)}</p></div>${action}</div>`;
@@ -43,5 +44,5 @@ export function accountScreen(state) {
 }
 
 export function otherAppsHtml(active) {
-  return `<div class="other-apps-list"><p class="muted">Other MoveAI apps (same login)</p>${Object.entries(PRODUCTS).filter(([k]) => k !== active).map(([k, p]) => `<a class="workspace-option" href="${productLink(k)}"><span class="workspace-icon">${p.mark}</span><span class="workspace-copy"><b>${esc(p.name)}</b><small>${esc(k === 'admin' ? 'Demo only — in production this is an internal console' : p.tagline)}</small></span><span>↗</span></a>`).join('')}</div>`;
+  return `<div class="other-apps-list"><p class="muted">Other MoveAI apps (same login — each opens on its own workspaces)</p>${Object.entries(PRODUCTS).filter(([k]) => APPS[k] && k !== APPS[appOf(active)].main).map(([k, p]) => `<a class="workspace-option" href="${productLink(k)}"><span class="workspace-icon">${p.mark}</span><span class="workspace-copy"><b>${esc(p.name)}</b><small>${esc(k === 'admin' ? 'Demo only — in production this is an internal console' : p.tagline)}</small></span><span>↗</span></a>`).join('')}</div>`;
 }
