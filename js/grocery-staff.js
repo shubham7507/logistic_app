@@ -6,6 +6,7 @@ import {esc} from './ops.js';
 import * as PC from './people-core.js';
 import {ROLES} from './store-hr.js';
 import {aadhaarEkyc, pennyDrop, faceMatch} from './verify-sim.js';
+import {issueInvite} from './picker-join.js';
 const storeRole=ws=>SELLER_WORKSPACES.includes(ws);
 const managerStore=ws=>STORE_BY_MANAGER[ws]||null;
 const canAssign=(s,ws)=>storeRole(ws)||!!managerStore(ws)&&(s.storeManagers||[]).some(m=>m.id===s.activeStoreManager?.[ws]&&m.store===managerStore(ws)&&m.status==='active');
@@ -27,7 +28,7 @@ export function invitePicker(s,ws,name,mobile){
  // could never add someone who already worked at their other store at all.)
  if((s.pickerStaff||[]).some(p=>p.store===ws&&p.mobile===mobile&&p.status!=='removed'))return 'This mobile already has an active or pending invitation at this store.';
  const p={id:`PICK-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,store:ws,name,mobile,role:['electrical','fashion'].includes(storeTemplate(ws))?'fulfilment':'picker',branchIds:[selectedBranch(s,ws)],status:'invited',invitedBy:s.shopPartners[ws].name,invitedAt:new Date().toISOString()};
- (s.pickerStaff||=[]).push(p);audit(s,s.shopPartners[ws].name,`Invited ${name} as store worker for ${s.shopPartners[ws].name}`);
+ (s.pickerStaff||=[]).push(p);issueInvite(s,p);audit(s,s.shopPartners[ws].name,`Invited ${name} as store worker for ${s.shopPartners[ws].name}`);
  alert(s,pickerWorkspace(ws),'pickProfile',`${name}: invitation to join ${s.shopPartners[ws].name}`,p.id,p.id);
  return '';
 }
@@ -123,7 +124,9 @@ export function releasePickTask(s,ws,orderId){
 export function availablePickers(s,store,now=new Date(),branchId=null){
  const day=now.toISOString().slice(0,10),time=now.toISOString().slice(11,16);
  return staffFor(s,store).filter(p=>p.status==='active'&&(!branchId||staffAt(s,p,branchId))&&(!p.offboarding?.effectiveDate||p.offboarding.effectiveDate>=day)&&!p.onBreak&&
-  (s.pickerShifts||[]).some(x=>x.store===store&&(!branchId||x.branchId===branchId||!x.branchId&&branchId===defaultBranch(s,store))&&x.pickerId===p.id&&x.status==='open'&&x.date===day)&&
+  ((s.pickerShifts||[]).some(x=>x.store===store&&(!branchId||x.branchId===branchId||!x.branchId&&branchId===defaultBranch(s,store))&&x.pickerId===p.id&&x.status==='open'&&x.date===day)||
+  // Checked in today from My work & pay (and not yet left) also counts as on shift.
+  (s.staffDays||[]).some(x=>x.store===store&&x.personId===p.id&&x.date===day&&['pending','approved'].includes(x.status)&&!x.leftAt&&(!branchId||!x.branchId||x.branchId===branchId)))&&
   !(s.pickerSchedules||[]).some(x=>x.store===store&&x.pickerId===p.id&&x.date===day&&['cover_requested','cancelled'].includes(x.status))&&
   (s.pickerSchedules||[]).filter(x=>x.store===store&&x.pickerId===p.id&&x.date===day&&x.status!=='cancelled').every(x=>x.start<=time&&time<x.end)&&
   (s.customerOrders||[]).filter(o=>o.pickerId===p.id&&['accepted','item_review'].includes(o.status)&&!o.pick?.completedAt).length<3);

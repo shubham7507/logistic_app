@@ -1,0 +1,38 @@
+[
+  {
+    "id": "seller-up",
+    "steps": 20,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "seller-bihar",
+    "steps": 18,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "picker",
+    "steps": 9,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "customer",
+    "steps": 6,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "logistics",
+    "steps": 8,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "admin",
+    "steps": 5,
+    "ok": true,
+    "error": ""
+  }
+]

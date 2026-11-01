@@ -11,7 +11,7 @@ const fresh = (person = {id: 'P-NEW', name: 'Ramesh Gupta'}) => ({...JSON.parse(
 const iso = d => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
 const DATES = {batch: 'B-2611', mfgDate: iso(-30), expiryDate: iso(300)};
 const GOOD = {pan: 'ABCDE1234F', gstin: '09ABCDE1234F1Z5', account: '123456789012', ifsc: 'SBIN0001234'};
-const STORE = {storeName: 'Gupta Mart', branchName: 'Sector 62', address: '12 Sector 62, Noida', city: 'Noida', pincode: '201301', stateCode: '09', open: '08:00', close: '21:00', radiusKm: 5};
+const STORE = {storeName: 'Gupta Mart', branchName: 'Sector 62', address: '12 Sector 62, Noida', city: 'Noida', pincode: '201301', stateCode: '09', open: '00:00', close: '23:59', radiusKm: 5};
 function filled(s, {type = 'shop', cats = ['food', 'electrical'], kyc = GOOD, fssai = true, brand = false, store = STORE, mode = 'moveai', products = [['Toor Dal', 'food'], ['LED Bulb 12W', 'electrical']], source = null} = {}) {
   const a = SO.startApplication(s, {sourceBusiness: source});
   assert.equal(SO.saveType(s, a, {sellerType: type, categories: cats, legalName: source ? a.legalName : 'Gupta Traders'}), '');

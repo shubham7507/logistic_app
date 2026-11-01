@@ -1,5 +1,27 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-02 — Product guide, guided tours, testing panel, CI
+- **`guide.html`:** a plain-language guide covering every role, how the rules work, features by role, test data, and 6 journey videos with step screenshots.
+- **"Show me" tours** (`js/tour.js`, `js/tour-journeys.js`): play a journey inside the real app with captions and highlights, or go step by step.
+- **▶ Tours & testing panel** (demo only):
+  - start fresh as a new user;
+  - open the admin console for testing;
+  - switch roles and see the test data.
+- **Videos and screenshots** are recorded from the same journeys (`npm run guide:record`); `npm run test:tours` checks every journey's outcome.
+- **GitHub Actions:** `.github/workflows/ci.yml` runs `tests/ci-list.txt` in Chromium on every push and pull request.
+- **Tests:** shop fixtures are open all day, so results don't depend on the time of day.
+- See `DEPLOY.md`.
+
+## 2026-11-01 — DigiLocker verification and picker joining
+- **DigiLocker consent flow:** "Verify with DigiLocker" → mobile + OTP → Allow/Deny → instant result with name, age and district matches; masked number only.
+- **Fallbacks:** Aadhaar QR or offline XML, or a check on the video call.
+- **Each identity and shop check has its own Verify button.**
+- **Store staff invites** send an SMS/WhatsApp join link (`#/pickJoin/<token>`); the worker confirms their mobile with an OTP and lands in the store's staff app. The owner can resend.
+- **Fixes:**
+  - The joining form rejected every selfie, so pickers couldn't finish joining.
+  - A check-in from My work & pay now counts as on shift for order offers.
+- See `DIGILOCKER-AND-PICKER-REPORT.md`.
+
 ## 2026-11-01 — Seller trust, Bihar checks, payment fix
 - **Payment fix:**
   - UPI pays the MoveAI merchant account (it used to pay the customer's own UPI ID).

@@ -1,5 +1,16 @@
 # MoveAI One vNext — Phases P5–P8 (complete application flow)
 
+![Journey tests](../../actions/workflows/ci.yml/badge.svg)
+
+## Start here: the product guide
+
+**Open [`guide.html`](guide.html)** on the live site for a plain-language guide to every role, with a video of each journey and buttons that play the same journey inside the real app.
+
+- **▶ Tours & testing** (bottom-left of every app in demo mode): play any journey ("Show me" or "Step by step"), start fresh as a new user, open the admin console for testing, switch roles, see all test values.
+- `?demo=off` hides every testing control for a clean demo (for example `index.html?demo=off`).
+- Journeys live in `js/tour-journeys.js`; the engine is `js/tour.js`. After changing a flow, run `npm run guide:record` (folder served on port 4177) to re-record the videos and screenshots in `docs/guide/`.
+- Every push runs the passing tests in a real browser (`.github/workflows/ci.yml`, list in `tests/ci-list.txt`).
+
 ## Onboarding and selling (November 2026)
 
 Anyone can now become a seller: after signing up, choose **Sell products** (or use "Sell on MoveAI" on the customer home, or "Add a business"). The 8-step seller application covers seller type and categories, PAN/GST/bank, FSSAI and brand papers, store and branch, delivery choice, agreement and first products. Admin reviews each section in **Admin → Business approvals → Seller onboarding review**; when the core sections are approved the new store appears in the Business app switcher. Approved businesses can add "Sell products" from Add service and reuse their KYC. See `ONBOARDING-REPORT.md`; run `npm run test:onboarding` with the folder served on port 4177.

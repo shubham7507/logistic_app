@@ -362,7 +362,7 @@ export function bindOrders(root, api) {
       api.toast('Opening your UPI app. The order is confirmed once your bank confirms the payment.');
       if(isMobile){location.href=r.upiLink;}
       else if(typeof QRCode!=='undefined'){
-        const overlay=document.createElement('div');overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+        const overlay=document.createElement('div');overlay.dataset.upiOverlay='1';overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999';
         const box=document.createElement('div');box.style.cssText='background:#fff;border-radius:16px;padding:24px;text-align:center;max-width:300px';
         box.innerHTML='<p style="margin:0 0 12px;font-weight:600">Scan with any UPI app</p><div id="order-upi-qr"></div><p style="margin:12px 0 0;font-size:12px;color:#666">Your order is confirmed automatically once the bank confirms.</p><button type="button" style="margin-top:12px" class="button secondary compact">Close</button>';
         overlay.appendChild(box);document.body.appendChild(overlay);

@@ -60,6 +60,8 @@ import * as Pay from './pay.js';
 import * as FR from './freight.js';
 import * as GP from './gst-portal.js';
 import * as PO from './product-orders.js';
+import * as PJ from './picker-join.js';
+import * as Tour from './tour.js';
 import * as Commerce from './commerce.js';
 import {ensureDeliveryPartners} from './delivery-onboarding.js';
 import * as CB from './customer-billing.js';
@@ -221,9 +223,17 @@ function joinSession(token){let x={};try{x=JSON.parse(sessionStorage.getItem('mo
 let joinSess=null;
 function renderJoin(token){document.body.classList.add('join-mode');closeOverlays();setProduct('business');if(!joinSess||joinSess.token!==token)joinSess=joinSession(token);const signedIn=state.auth?.status==='authenticated'?{name:state.person?.name,mobile:state.auth.mobile}:null;main.innerHTML=SJ.joinScreen(state,joinSess,token,signedIn);saveState(state);$('page-title').textContent='Join';
   SJ.bindJoin(main,{token,getState:()=>state,session:()=>joinSess,save:()=>saveState(state),saveSession:()=>sessionStorage.setItem('moveai-join',JSON.stringify(joinSess)),toast,rerender:()=>renderJoin(token),reload:()=>{state=loadState();renderJoin(token)},openStaff:(memberId,inv)=>{tabView={currentWorkspace:'staff',staffSession:{inviteId:inv.id,ownerWorkspace:inv.workspace,mobile:inv.mobile,verified:true,memberId,tabOnly:true},selectedStaffId:memberId};sessionStorage.setItem('moveai-tab-view',JSON.stringify(tabView));state.staffSession=tabView.staffSession;state.selectedStaffId=memberId;const m=SJ.memberFor(state,inv);state.workspaceOverrides={...(state.workspaceOverrides||{}),staff:{label:m?.name||inv.name,subtitle:`${ROLE_TEMPLATES[inv.role].label} · ${state.businessProfiles[inv.workspace]?.legalName||''}`}};if(!state.workspaces.includes('staff'))state.workspaces.push('staff');state.currentWorkspace='staff';saveState(state);document.body.classList.remove('join-mode');location.hash='#/home';renderAll()}})}
+// Store staff invite link (#/pickJoin/<token>): confirm the invited mobile with an OTP, then open that store's staff app.
+function renderPickJoin(token,error=''){closeOverlays();setProduct('business');$('page-title').textContent='Join store';
+  if(state.auth?.status!=='authenticated'){main.innerHTML=`<section class="panel form-panel narrow"><h1>Store staff invitation</h1><p>Sign up or sign in with the mobile number the invitation was sent to, then open the link again.</p><button class="button primary" data-pick-signup>Sign up with mobile</button></section>`;main.querySelector('[data-pick-signup]').onclick=()=>{sessionStorage.setItem('moveai-after-auth',location.hash);location.hash='#/signup'};return}
+  main.innerHTML=PJ.joinScreen(state,token,error);
+  main.querySelector('form[data-pick-join]')?.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget),r=PJ.confirmJoin(state,token,{mobile:fd.get('mobile'),otp:fd.get('otp'),consent:fd.has('consent')});if(r.error)return renderPickJoin(token,r.error);saveState(state);switchWorkspace(r.worker,'business');location.hash='#/pickProfile';toast(`Mobile confirmed. Accept the invitation from ${state.shopPartners?.[r.picker.store]?.name||'the store'}.`)});
+  main.querySelector('[data-pick-continue]')?.addEventListener('click',()=>{const j=PJ.joinState(state,token);if(!j.worker)return;if(!state.workspaces.includes(j.worker))state.workspaces.push(j.worker);(state.activePicker||={})[j.worker]=j.p.id;saveState(state);switchWorkspace(j.worker,'business');location.hash='#/pickProfile'});
+}
 function renderRoute(){
   globalThis.__moveaiClockOffset=state.simClockDays||0;ensureDeliveryPartners(state);Pay.ensurePay(state);GP.ensureGst(state);Geo.ensureGeo(state);Geo.reconcileCourierTracking(state);Geo.ensureJobGeo(state);Geo.alerts(state);Help.sweepOverdue(state);WH.tagNotificationBranches(state);HR.ensureBranchDocs(state);PC.ensureCore(state);PC.expireTemporary(state);Hub.ensureHub(state);if(state.lastDailyCheckDay!==new Date().toISOString().slice(0,10)){state.lastDailyCheckDay=new Date().toISOString().slice(0,10);HR.dailyChecks(state)}
   {const jm=location.hash.match(/^#\/join\/([\w-]+)/);if(jm){renderJoin(jm[1]);return}document.body.classList.remove('join-mode')}
+  {const pj=location.hash.match(/^#\/pickJoin\/([\w-]+)/);if(pj){renderPickJoin(pj[1]);return}}
   {const wq=WH.wsFromHash(location.hash);if(wq){const r=readRoute();if(state.auth?.status==='authenticated'&&wq!==state.currentWorkspace&&state.workspaces.includes(wq)&&ROLE_CONFIG[wq]){const g=WH.switchBlocker(state,state.currentWorkspace,wq);if(g.level==='block'){toast(g.reason);history.replaceState(null,'',`#/${r}`)}else{switchWorkspace(wq);history.replaceState(null,'',`#/${r}`);toast(`Switched to ${roleForWorkspace(wq).label} to open this`);renderRoute();return}}else history.replaceState(null,'',`#/${r}`)}}
   let route=readRoute();const authenticated=state.auth?.status==='authenticated';
   if(authenticated&&retailOwnerAndManagers().includes(state.currentWorkspace)&&['plusListings','shopPickerPay'].includes(route)){location.replace(location.href.split('#')[0]+`#/${route==='plusListings'?'shopCatalog':'staffPay'}`);return}
@@ -398,4 +408,6 @@ function renderAll(){renderWorkspace();renderDesktopNav();renderMobileNav();if(!
 renderAll();
 
 window.addEventListener('storage',e=>{if(!e.key||!e.key.startsWith('moveai')||e.key==='moveai-tab-view'||e.key.startsWith('moveai-workspace-'))return;state=loadState();const r=readRoute();if(document.body.classList.contains('join-mode')||['people','staffDetail','inviteSent','notifications','home','search','cart','orders','orderTracking','shopOrders','shopIssues','shopTeam','shopSchedule','shopOffboarding','managerTimecards','managerProfile','shopCatalog','shopCounter','shopCounterDelivery','shopSales','shopEarnings','pickTasks','pickSchedule','pickEarnings','pickProfile','deliveryJobs','deliveryCash','deliveryEarnings','commerceOps','commerceOrders','commercePartners','commercePayments','commerceIssues'].includes(r)){syncingFromStorage=true;try{renderWorkspace();renderDesktopNav();renderMobileNav();renderRoute()}finally{syncingFromStorage=false}}});
+window.MoveAIRoleLabel=k=>roleForWorkspace(k)?.label||k;window.MoveAIProductFor=k=>productForWorkspace(k);
+setTimeout(()=>Tour.init({demo:demoMode}),300);
 window.MoveAIVNextTest={state:()=>structuredClone(state),switchWorkspace,product:()=>activeProduct,canOpen,reset:()=>{state=resetState();renderAll()},startSignup:()=>{state=signupDemoState();saveState(state);navigate('welcome')},routes:()=>Object.keys(ROUTES)};

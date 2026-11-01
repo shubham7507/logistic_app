@@ -30,18 +30,36 @@ const iso = d => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10);
   // Store: the screenshot's mistake (wrong pincode for the state) is caught.
   await p.fill('input[name=storeName]', 'Patna Bazaar'); await p.fill('input[name=branchName]', 'Boring Road'); await p.fill('input[name=address]', '4 Boring Road, Patna'); await p.fill('input[name=city]', 'Patna');
   await p.fill('input[name=pincode]', '201301'); await p.selectOption('select[name=stateCode]', '10'); assert.match(await step(p), /Pincode 201301 is in Uttar Pradesh, but you chose Bihar/);
+  await p.fill('input[name=open]', '00:00'); await p.fill('input[name=close]', '23:59'); // open all day so the test passes at any hour
   await p.fill('input[name=pincode]', '800001'); assert.equal(await step(p), '');
   // Identity and shop checks (strict state) — its own step, right after the store.
   assert.match(await p.textContent('.page-header p'), /Identity and shop checks/);
   assert.match(await p.textContent('main'), /Extra checks for sellers in this state/);
   await shot(p, 'trust-step');
-  assert.match(await step(p), /OTP|Aadhaar|consent/i, 'nothing filled → refused');
-  await p.fill('input[name=aadhaar]', '234567890123'); await p.fill('input[name=otp]', '123456'); await p.check('input[name=consent]');
+  assert.match(await step(p), /Verify Aadhaar with DigiLocker first/, 'nothing verified → refused');
   const file = name => ({name, mimeType: 'image/jpeg', buffer: Buffer.from('x')});
-  await p.setInputFiles('input[name=selfie]', file('selfie.jpg'));
+  // Selfie before Aadhaar is refused (nothing to match against).
+  await p.setInputFiles('input[name=selfie]', file('selfie.jpg')); await p.click('[data-trust-verify="selfie"]'); await p.waitForTimeout(200);
+  assert.match(await sellErr(p), /Verify Aadhaar first/);
+  // DigiLocker: no account → fallback opens; then the real consent flow.
+  await p.click('[data-dl="start"]'); await p.waitForTimeout(250); assert.ok(await p.$('.dl-sheet'), 'DigiLocker window');
+  await p.fill('#dl-mobile', '9876540000'); await p.click('[data-dl="send"]'); await p.waitForTimeout(250);
+  assert.match(await sellErr(p), /No DigiLocker account/); assert.ok(await p.$('details.dl-fallback[open]'), 'fallbacks offered');
+  await p.click('[data-dl="start"]'); await p.waitForTimeout(250);
+  await p.fill('#dl-mobile', '9876543210'); await p.click('[data-dl="send"]'); await p.waitForTimeout(250);
+  assert.match(await p.textContent('.dl-sheet'), /OTP sent to ••••••3210/);
+  await p.fill('#dl-otp', '111111'); await p.click('[data-dl="verify"]'); await p.waitForTimeout(250); assert.match(await p.textContent('.dl-error'), /2 attempt/);
+  await p.fill('#dl-otp', '123456'); await p.click('[data-dl="verify"]'); await p.waitForTimeout(250);
+  assert.match(await p.textContent('.dl-sheet'), /requesting access/); await shot(p, 'dl-consent'); await p.click('[data-dl="allow"]'); await p.waitForTimeout(300);
+  assert.ok(!(await p.$('.dl-sheet')), 'window closed'); assert.match(await p.textContent('.dl-result'), /XXXX-XXXX-\d{4}[\s\S]*Name matches[\s\S]*Age 18 or over[\s\S]*district matches/);
+  await shot(p, 'dl-verified');
+  // Each item verified on its own.
+  await p.setInputFiles('input[name=selfie]', file('selfie.jpg')); await p.click('[data-trust-verify="selfie"]'); await p.waitForTimeout(250);
+  assert.match(await p.textContent('main'), /face match 96%/);
   await p.setInputFiles('input[name=photoSignboard]', file('sign.jpg')); await p.setInputFiles('input[name=photoInside]', file('inside.jpg'));
-  assert.match(await step(p), /all three shop photos/);
-  await p.setInputFiles('input[name=photoStock]', file('stock.jpg')); await p.setInputFiles('input[name=invoices]', {name: 'invoice.pdf', mimeType: 'application/pdf', buffer: Buffer.from('x')});
+  await p.click('[data-trust-verify="shopPhotos"]'); await p.waitForTimeout(200); assert.match(await sellErr(p), /all three shop photos/);
+  await p.setInputFiles('input[name=photoStock]', file('stock.jpg')); await p.click('[data-trust-verify="shopPhotos"]'); await p.waitForTimeout(250);
+  await p.setInputFiles('input[name=invoices]', {name: 'invoice.pdf', mimeType: 'application/pdf', buffer: Buffer.from('x')});
   assert.equal(await step(p), '');
   await p.check('input[name=own]'); assert.equal(await step(p), '');
   await p.check('input[name=accept]'); assert.equal(await step(p), '');

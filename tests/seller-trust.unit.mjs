@@ -12,8 +12,8 @@ import {SEED} from '../js/mock-data.js';
 const iso = d => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
 const DATES = {batch: 'B-1', mfgDate: iso(-30), expiryDate: iso(300)};
 const fresh = (id = 'P-NEW', name = 'Ramesh Gupta') => ({...JSON.parse(JSON.stringify(SEED)), person: {id, name}});
-const UP = {gstin: '09ABCDE1234F1Z5', pan: 'ABCDE1234F', store: {storeName: 'Gupta Mart', branchName: 'Sector 62', address: '12 Sector 62, Noida', city: 'Noida', pincode: '201301', stateCode: '09', open: '08:00', close: '21:00', radiusKm: 5}};
-const BR = {gstin: '10ABCDE1234F1Z5', pan: 'ABCDE1234F', store: {storeName: 'Patna Bazaar', branchName: 'Boring Road', address: '4 Boring Road, Patna', city: 'Patna', pincode: '800001', stateCode: '10', open: '08:00', close: '21:00', radiusKm: 5}};
+const UP = {gstin: '09ABCDE1234F1Z5', pan: 'ABCDE1234F', store: {storeName: 'Gupta Mart', branchName: 'Sector 62', address: '12 Sector 62, Noida', city: 'Noida', pincode: '201301', stateCode: '09', open: '00:00', close: '23:59', radiusKm: 5}};
+const BR = {gstin: '10ABCDE1234F1Z5', pan: 'ABCDE1234F', store: {storeName: 'Patna Bazaar', branchName: 'Boring Road', address: '4 Boring Road, Patna', city: 'Patna', pincode: '800001', stateCode: '10', open: '00:00', close: '23:59', radiusKm: 5}};
 function draft(s, {where = UP, cats = ['household'], account = '123456789012', products = [['Floor Cleaner', 'household']], pan} = {}) {
   const a = SO.startApplication(s, {});
   assert.equal(SO.saveType(s, a, {sellerType: 'shop', categories: cats, legalName: 'Gupta Traders'}), '');
@@ -65,7 +65,9 @@ const TRUST = {aadhaar: '234567890123', otp: '123456', consent: true, selfie: 's
   const s = fresh(), a = draft(s, {where: BR});
   assert.deepEqual(a.trustRequired, ['digilocker', 'selfie', 'shopPhotos', 'videoKyc']);
   assert.ok(SO.visibleSteps(a).some(x => x.key === 'trust')); assert.match(SO.submit(s, a), /Identity and shop checks/);
-  assert.match(SO.saveTrust(s, a, {...TRUST, otp: '000000'}), /OTP/);
+  assert.match(SO.saveTrust(s, a, TRUST), /Verify Aadhaar with DigiLocker first/);
+  const dl = (st, x, mobile = '9876543210') => { T.dlStart(st, x); assert.equal(T.dlSendOtp(st, x, mobile), ''); assert.equal(T.dlVerifyOtp(st, x, '123456'), ''); return T.dlConsent(st, x, true); };
+  assert.equal(dl(s, a), '');
   assert.match(SO.saveTrust(s, a, {...TRUST, photoStock: ''}), /all three shop photos/);
   assert.equal(SO.saveTrust(s, a, TRUST), ''); assert.equal(a.trust.items.digilocker.status, 'verified');
   assert.equal(SO.submit(s, a), ''); assert.ok(!a.autoApproved, 'strict states never auto-approve'); assert.equal(a.status, 'submitted');
@@ -81,6 +83,7 @@ const TRUST = {aadhaar: '234567890123', otp: '123456', consent: true, selfie: 's
   assert.deepEqual(a.trustRequired, ['digilocker', 'selfie', 'shopPhotos', 'videoKyc', 'supplierInvoices', 'fieldVisit']);
   const s2 = fresh(), b = draft(s2, {where: BR, cats: ['food'], account: '123456789000', products: [['Toor Dal', 'food']]});
   assert.ok(b.trustRequired.includes('policeCert'));
+  T.dlStart(s2, b); T.dlSendOtp(s2, b, '9876543210'); T.dlVerifyOtp(s2, b, '123456'); T.dlConsent(s2, b, true);
   assert.match(SO.saveTrust(s2, b, {...TRUST, policeCert: ''}), /police character certificate/);
 }
 // 7. Policy per state: strict needs a reason; switching Bihar to standard removes the extra step.

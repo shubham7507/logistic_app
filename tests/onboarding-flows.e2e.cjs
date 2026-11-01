@@ -62,6 +62,7 @@ async function step(p) { await p.click('form[data-sell-step] button[type=submit]
   await p.fill('input[name=fssai]', '12345678901234'); await p.fill('input[name=fssaiExpiry]', '2030-01-01'); assert.equal(await step(p), '', 'brand papers left out on purpose');
   await p.fill('input[name=storeName]', 'Gupta Mart'); await p.fill('input[name=branchName]', 'Sector 62'); await p.fill('input[name=address]', '12 Sector 62, Noida'); await p.fill('input[name=city]', 'Noida'); await p.fill('input[name=pincode]', '201301');
   await p.selectOption('select[name=stateCode]', '27'); assert.match(await step(p), /registered in Uttar Pradesh/, 'address must be in the GSTIN state');
+  await p.fill('input[name=open]', '00:00'); await p.fill('input[name=close]', '23:59'); // open all day so the test passes at any hour
   await p.selectOption('select[name=stateCode]', '09'); assert.equal(await step(p), '');
   // Step 5: delivery. Header and numbering are seller-specific; nothing is preselected; each card explains the mode.
   assert.match(await p.textContent('main h1 + p, .page-header p'), /Step 5 of 8 · How orders reach customers/);

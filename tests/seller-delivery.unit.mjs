@@ -67,7 +67,7 @@ assert.ok(SD.categoryAdvice(['fresh', 'electrical']).length === 2);
   assert.deepEqual(SO.visibleSteps(a).map(x => x.key), ['type', 'kyc', 'store', 'delivery', 'agreement', 'products', 'review']);
   assert.match(SO.startScreen(s), /<button type="button" data-sell-goto="4">3\. Store and first branch/);
   SO.saveKyc(s, a, {pan: 'ABCDE1234F', gstin: '09ABCDE1234F1Z5', account: '123456789012', ifsc: 'SBIN0001234'});
-  SO.saveStore(s, a, {storeName: 'Dev Stores', branchName: 'Main', address: '1 Market Road, Noida', city: 'Noida', pincode: '201301', stateCode: '09', open: '08:00', close: '21:00', radiusKm: 5});
+  SO.saveStore(s, a, {storeName: 'Dev Stores', branchName: 'Main', address: '1 Market Road, Noida', city: 'Noida', pincode: '201301', stateCode: '09', open: '00:00', close: '23:59', radiusKm: 5});
   assert.equal(SO.saveDelivery(s, a, {...courier, ...own}), '');
   SO.saveAgreement(s, a, {accept: true}); SO.addProduct(s, a, {name: 'Floor Cleaner', category: 'household', price: 99, mrp: 120, size: '1 l', stock: 5});
   SO.submit(s, a); for (const k of Object.keys(a.sections)) if (a.sections[k].status === 'pending') SO.decide(s, a.id, k, 'approved');

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How MoveAI works</title>
+<meta name="description" content="A plain-language guide to MoveAI: every role, every flow, with videos and a live demo you can try.">
+<style>
+:root{--brand:#086b59;--brand-2:#0b8f76;--brand-soft:#e6f3ef;--ink:#16211f;--muted:#5a6b67;--line:#dbe6e2;--bg:#f5f8f7;--card:#fff;--warn:#fff5df;--warn-ink:#7a5200;--shadow:0 6px 22px rgba(10,40,34,.08)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#e9f1ef;--muted:#a6b8b3;--line:#2a3a37;--bg:#0f1715;--card:#16211f;--brand-soft:#123a32;--warn:#3a2f12;--warn-ink:#ffd88a;--shadow:none}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
+a{color:var(--brand-2)}img,video{max-width:100%;display:block}
+.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
+header.hero{background:linear-gradient(135deg,#064f42,#0b8f76);color:#fff;padding:44px 0 36px}
+.hero h1{font-size:clamp(28px,5vw,44px);margin:0 0 8px;letter-spacing:-.02em}.hero p{max-width:720px;margin:0 0 18px;color:#d8efe8;font-size:17px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 16px;border-radius:10px;font-weight:700;text-decoration:none;border:1px solid transparent;cursor:pointer;font-size:15px}
+.btn.primary{background:#fff;color:#064f42}.btn.ghost{color:#fff;border-color:rgba(255,255,255,.5)}
+.btn.solid{background:var(--brand);color:#fff}.btn.line{border-color:var(--line);color:var(--ink);background:var(--card)}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+nav.toc{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line)}
+nav.toc .wrap{display:flex;gap:4px;overflow-x:auto;padding-top:8px;padding-bottom:8px}nav.toc a{white-space:nowrap;padding:6px 10px;border-radius:8px;text-decoration:none;color:var(--muted);font-weight:600;font-size:14px}nav.toc a:hover{background:var(--brand-soft);color:var(--ink)}
+section{padding:36px 0}section h2{font-size:clamp(22px,3.4vw,30px);margin:0 0 6px;letter-spacing:-.01em}.lead{color:var(--muted);margin:0 0 20px;max-width:760px}
+.note{background:var(--warn);color:var(--warn-ink);border-radius:12px;padding:12px 14px;margin:0 0 14px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:var(--shadow);min-width:0}
+.card h3{margin:0 0 4px;font-size:18px}.card .app{font-size:12px;font-weight:700;color:var(--brand-2);text-transform:uppercase;letter-spacing:.04em}
+.card ul{margin:8px 0 12px;padding-left:18px}.card li{margin:3px 0}
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}.flow span{background:var(--brand-soft);border-radius:999px;padding:4px 10px;font-size:13px;font-weight:600}.flow i{color:var(--muted);font-style:normal}
+.journey{display:grid;gap:16px;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);align-items:start;margin-bottom:28px}
+@media (max-width:860px){.journey{grid-template-columns:1fr}}
+.journey video{border-radius:12px;border:1px solid var(--line);background:#000;width:100%;aspect-ratio:16/10}
+.journey .meta{color:var(--muted);font-size:14px;margin:0 0 8px}
+.steps{list-style:none;padding:0;margin:0;display:grid;gap:8px;max-height:520px;overflow:auto}
+.steps li{display:grid;grid-template-columns:88px minmax(0,1fr);gap:10px;align-items:start;border:1px solid var(--line);border-radius:12px;padding:8px;background:var(--card)}
+.steps img{width:88px;height:55px;object-fit:cover;object-position:top;border-radius:6px;border:1px solid var(--line);cursor:zoom-in}
+.steps b{display:block;font-size:14px}.steps small{color:var(--muted);font-size:13px;display:block}.steps .who{font-size:11px;font-weight:700;color:var(--brand-2)}
+table{width:100%;border-collapse:collapse;background:var(--card);border-radius:12px;overflow:hidden}th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;font-size:14px;vertical-align:top}th{background:var(--brand-soft)}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+.yes{color:var(--brand-2);font-weight:700}.no{color:var(--muted)}
+details.card summary{cursor:pointer;font-weight:700}
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.8);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}.lightbox.open{display:flex}.lightbox img{max-height:90vh;border-radius:10px}
+footer{padding:28px 0 40px;color:var(--muted);font-size:14px;border-top:1px solid var(--line)}
+.badge{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--brand-soft);color:var(--ink)}
+</style>
+</head>
+<body>
+<header class="hero"><div class="wrap">
+  <span class="badge" style="background:rgba(255,255,255,.18);color:#fff">Product guide · prototype</span>
+  <h1>How MoveAI works</h1>
+  <p>One sign-up for everyone: customers shop from local stores, shops sell and deliver, workers find jobs, and logistics businesses run trucks and movers. This page explains every role in plain words, shows each flow as a short video, and lets you try the live demo.</p>
+  <div class="row"><a class="btn primary" href="#journeys">▶ Watch the journeys</a><a class="btn ghost" href="index.html">Open the live demo</a><a class="btn ghost" href="#roles">Who uses MoveAI</a></div>
+</div></header>
+<nav class="toc" aria-label="Sections"><div class="wrap"><a href="#start">Before you start</a><a href="#roles">Roles</a><a href="#journeys">Journeys</a><a href="#rules">How the rules work</a><a href="#features">Features by role</a><a href="#test">Try it yourself</a><a href="#faq">Questions</a></div></nav>
+
+<main>
+<section id="start"><div class="wrap">
+  <h2>Before you start</h2>
+  <p class="lead">This is a working prototype that runs entirely in your browser.</p>
+  <div class="grid">
+    <div class="card"><h3>Your own private demo</h3><p>Everything you do is saved only in this browser. Nobody else sees it, and another device or incognito window starts fresh.</p></div>
+    <div class="card"><h3>Checks are simulated</h3><p>GST, PAN, bank, DigiLocker, payments and SMS behave like the real services but nothing is sent anywhere. Test values are shown on each form and in <a href="#test">Try it yourself</a>.</p></div>
+    <div class="card"><h3>One person plays every role</h3><p>In real life the customer, shop owner, worker and MoveAI reviewer are different people on different phones. In the demo you switch between them from the workspace menu or the <b>▶ Tours &amp; testing</b> button.</p></div>
+  </div>
+</div></section>
+
+<section id="roles"><div class="wrap">
+  <h2>Who uses MoveAI</h2>
+  <p class="lead">Four apps share one account: <b>MoveAI</b> (customers), <b>MoveAI Partner</b> (drivers, helpers, delivery partners), <b>MoveAI Business</b> (shops, logistics businesses and their staff) and <b>MoveAI Admin</b> (MoveAI's own team). A person can hold several roles and switch between them.</p>
+  <div class="grid" id="role-cards"></div>
+</div></section>
+
+<section id="journeys" style="background:var(--card);border-top:1px solid var(--line);border-bottom:1px solid var(--line)"><div class="wrap">
+  <h2>Journeys, start to finish</h2>
+  <p class="lead">Each video was recorded automatically from the live demo. <b>Show me in the app</b> plays the same journey inside the real app with captions; <b>Step by step</b> lets you go at your own pace. Starting a journey resets the demo in your browser.</p>
+  <div id="journey-list"></div>
+</div></section>
+
+<section id="rules"><div class="wrap">
+  <h2>How the rules work</h2>
+  <p class="lead">The checks that protect customers and honest sellers, in plain words.</p>
+  <div class="grid">
+    <div class="card"><h3>Seller review by risk</h3><ul><li><b>Low risk</b> (household or fashion, every check passes): approved automatically and goes live on probation.</li><li><b>Food or electricals:</b> a MoveAI reviewer checks each section.</li><li><b>Anything flagged</b> (bank name mismatch, no GST, the same PAN used by someone else): reviewed, plus a video call.</li><li>The pincode must be in the same state as the GSTIN.</li></ul></div>
+    <div class="card"><h3>Strict states (Bihar now)</h3><ul><li>Aadhaar through DigiLocker (only a masked number is kept), a live selfie matched to it, and geo-tagged shop photos.</li><li>Food and electricals also need distributor invoices and a field visit; flagged sellers a police certificate.</li><li>MoveAI can switch any state to strict, with a written reason.</li></ul></div>
+    <div class="card"><h3>Probation for new shops</h3><ul><li>No cash on delivery, a cap on order value (₹3,000; ₹2,000 in Bihar) and a product limit (50; 30 in Bihar).</li><li>Payouts held 7 extra days (14 in Bihar).</li><li>Lifts after 30 delivered orders and 30 days with no strikes (50 orders in Bihar).</li></ul></div>
+    <div class="card"><h3>Payments</h3><ul><li>Customers pay MoveAI, never the shop directly; the money is held until delivery.</li><li>Only the bank can confirm a payment. Unpaid orders cancel after 15 minutes.</li><li>The shop sees "waiting for payment — don't pack yet" until then.</li></ul></div>
+    <div class="card"><h3>Expiry and strikes</h3><ul><li>Packaged food carries batch, manufacture and expiry dates.</li><li>Food must reach customers with at least 45 days or 30% of its shelf life left; older stock is hidden automatically.</li><li>A customer can report an expired item with a photo: instant refund, product paused, and a strike for the shop. Three strikes suspend the shop.</li></ul></div>
+    <div class="card"><h3>Delivery choices</h3><ul><li>MoveAI couriers, the shop's own staff, or customer pickup — and combinations (own staff nearby, couriers further away).</li><li>Coverage is checked by pincode; each option shows the cost and how COD works.</li><li>Changes after going live are reviewed by MoveAI.</li></ul></div>
+    <div class="card"><h3>Staff joining</h3><ul><li>The owner invites by mobile; the worker gets an SMS/WhatsApp link.</li><li>They confirm with an OTP, verify Aadhaar, take a selfie and add a bank account; the owner approves.</li><li>Workers check in each day and receive orders automatically.</li></ul></div>
+  </div>
+</div></section>
+
+<section id="features"><div class="wrap">
+  <h2>Features by role</h2>
+  <p class="lead">What each role can do.</p>
+  <div class="table-wrap"><table id="matrix"></table></div>
+</div></section>
+
+<section id="test"><div class="wrap">
+  <h2>Try it yourself</h2>
+  <p class="lead">Open the live demo and press <b>▶ Tours &amp; testing</b> (bottom-left) to start fresh as a new user, open the admin console for testing, switch roles, or play any journey. These test values work everywhere:</p>
+  <div class="table-wrap"><table id="testdata"></table></div>
+  <p class="row" style="margin-top:14px"><a class="btn solid" href="index.html">Open the live demo</a><a class="btn line" href="index.html?demo=off">Clean demo (no testing buttons)</a></p>
+</div></section>
+
+<section id="faq"><div class="wrap">
+  <h2>Questions</h2>
+  <div class="grid">
+    <details class="card"><summary>Is this the real app?</summary><p>It is a clickable prototype of the real flows. It has no server: real launches need the backend, real KYC and payment providers, and SMS/WhatsApp.</p></details>
+    <details class="card"><summary>Why did my data disappear?</summary><p>Starting a journey or "Restore full demo" resets the demo in your browser. Data is also separate per browser and device.</p></details>
+    <details class="card"><summary>How do I approve my own seller application?</summary><p>Press <b>▶ Tours &amp; testing → Open admin console (testing)</b>. In real life a MoveAI reviewer does this on their own login, and nobody can review their own application.</p></details>
+    <details class="card"><summary>Can I show it without the testing buttons?</summary><p>Yes: add <code>?demo=off</code> to the link (for example <code>index.html?demo=off</code>).</p></details>
+  </div>
+</div></section>
+</main>
+<footer><div class="wrap">MoveAI prototype · videos and screenshots are regenerated from the app with <code>npm run guide:record</code>. <span id="built"></span></div></footer>
+<div class="lightbox" id="lightbox" role="dialog" aria-label="Screenshot"><img alt=""></div>
+
+<script type="module">
+import {JOURNEYS, TEST_DATA} from './js/tour-journeys.js';
+const esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m]));
+const ROLES = [
+  {name: 'Customer', app: 'MoveAI', does: ['Shop from local stores in one cart; each store sends its own package', 'Pay by UPI or card (cash on delivery where allowed)', 'Track orders, cancel, return, report expired items', 'Book moves, drivers and helpers'], flow: ['Sign up', 'Shop', 'Pay', 'Track', 'Receive / report'], journey: 'customer', link: 'index.html#/search'},
+  {name: 'Shop owner (seller)', app: 'MoveAI Business', does: ['Apply to sell: type, PAN/GST/bank, licences, store, delivery, products', 'List products with MRP and expiry dates; import by CSV', 'Accept orders, assign staff, see payouts', 'Invite managers and staff, run payroll'], flow: ['Apply', 'Review', 'Live on probation', 'List', 'Accept orders'], journey: 'seller-up', link: 'business.html#/sellStart'},
+  {name: 'Store manager & staff (picker)', app: 'MoveAI Business', does: ['Join from an invite link with OTP; verify Aadhaar, selfie and bank', 'Check in each day; receive order tasks', 'Check items, pack, hand over to the rider', 'See shifts, leave and pay'], flow: ['Invite link', 'Join', 'Owner approves', 'Check in', 'Pick & pack'], journey: 'picker', link: 'business.html#/home'},
+  {name: 'Delivery partner', app: 'MoveAI Partner', does: ['Join with licence, vehicle papers and payout details', 'Accept delivery offers; collect sealed bags with the store code', 'Deliver with the customer\'s code; collect COD where allowed', 'See earnings and payouts'], flow: ['Join', 'MoveAI approves', 'Accept offer', 'Pick up', 'Deliver'], link: 'partner.html#/home'},
+  {name: 'Driver & helper', app: 'MoveAI Partner', does: ['Create a work profile (licence for drivers)', 'Find jobs from logistics businesses or be invited as staff', 'Run trips and moving jobs', 'Attendance, advances and pay'], flow: ['Profile', 'Verify', 'Find work', 'Trips', 'Get paid'], link: 'partner.html#/candidateProfile'},
+  {name: 'Logistics business', app: 'MoveAI Business', does: ['Register once with several services: transport, own fleet, packers & movers', 'Post loads, take trips, manage trucks and branches', 'Invite staff; attendance, payroll and khata', 'Invoices, e-way bills and payments'], flow: ['Register', 'KYC', 'Admin approves', 'Staff', 'Trips & money'], journey: 'logistics', link: 'business.html#/businessStart'},
+  {name: 'MoveAI admin', app: 'MoveAI Admin', does: ['Review sellers by risk with evidence; set strict states', 'Approve logistics businesses and delivery partners', 'Watch orders, payments, payouts and claims', 'Manage probation, strikes and suspensions'], flow: ['Queue', 'Evidence', 'Decide', 'Monitor'], journey: 'admin', link: 'admin.html#/home'},
+];
+document.getElementById('role-cards').innerHTML = ROLES.map(r => `<article class="card"><span class="app">${esc(r.app)}</span><h3>${esc(r.name)}</h3><div class="flow">${r.flow.map(s => `<span>${esc(s)}</span>`).join('<i>›</i>')}</div><ul>${r.does.map(d => `<li>${esc(d)}</li>`).join('')}</ul><div class="row">${r.journey ? `<a class="btn solid" href="#j-${r.journey}">▶ Watch</a>` : ''}<a class="btn line" href="${r.link}">Open in demo</a></div></article>`).join('');
+
+const results = await fetch('docs/guide/journeys.json').then(r => r.ok ? r.json() : []).catch(() => []);
+const recorded = id => results.find(x => x.id === id && x.ok);
+document.getElementById('journey-list').innerHTML = Object.entries(JOURNEYS).map(([id, j]) => `<article class="journey" id="j-${id}">
+  <div>${recorded(id) ? `<video controls preload="none" playsinline poster="docs/guide/shots/${id}-01.jpg" src="docs/guide/${id}.mp4"></video>` : `<div class="card note">Video not recorded yet — use “Show me in the app”.</div>`}</div>
+  <div><h3 style="margin:0 0 4px">${esc(j.title)}</h3><p class="meta">${esc(j.who)} · about ${j.minutes} min · ${j.steps.length} steps</p>
+    <div class="row" style="margin-bottom:10px"><a class="btn solid" href="index.html?tour=${id}#/home">▶ Show me in the app</a><a class="btn line" href="index.html?tour=${id}&mode=step#/home">Step by step</a></div>
+    <ol class="steps">${j.steps.map((s, i) => `<li>${recorded(id) ? `<img loading="lazy" src="docs/guide/shots/${id}-${String(i + 1).padStart(2, '0')}.jpg" alt="Screen for step ${i + 1}: ${esc(s.title)}">` : '<span></span>'}<span><span class="who">${esc(s.role || '')}</span><b>${i + 1}. ${esc(s.title)}</b><small>${esc(typeof s.say === 'function' ? '' : s.say || '')}</small></span></li>`).join('')}</ol>
+    <p class="meta" style="margin-top:8px">${esc(j.done || '')}</p></div></article>`).join('');
+
+const FEATURES = [
+  ['Sign up once, switch roles', 1, 1, 1, 1, 1, 1, 0], ['Shop from many stores, one payment', 1, 0, 0, 0, 0, 0, 0], ['Report expired item → instant refund', 1, 0, 0, 0, 0, 0, 1],
+  ['Apply to sell, licences, delivery choice', 0, 1, 0, 0, 0, 0, 1], ['Products with MRP and expiry dates', 0, 1, 1, 0, 0, 0, 1], ['Accept orders, assign staff', 0, 1, 1, 0, 0, 0, 0],
+  ['Invite staff by link, approve joining', 0, 1, 0, 0, 0, 1, 0], ['Check in, tasks, shifts, pay', 0, 0, 1, 0, 1, 0, 0], ['Delivery offers, codes, COD', 0, 0, 0, 1, 0, 0, 0],
+  ['Loads, trips, fleet, branches', 0, 0, 0, 0, 1, 1, 0], ['Payroll, advances, khata', 0, 1, 0, 0, 0, 1, 0], ['Risk review, strict states, probation', 0, 0, 0, 0, 0, 0, 1], ['Payments, payouts, claims oversight', 0, 0, 0, 0, 0, 0, 1],
+];
+const HEAD = ['Customer', 'Shop owner', 'Store staff', 'Delivery', 'Driver/helper', 'Logistics', 'Admin'];
+document.getElementById('matrix').innerHTML = `<thead><tr><th>Feature</th>${HEAD.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${FEATURES.map(([f, ...c]) => `<tr><td>${esc(f)}</td>${c.map(x => `<td class="${x ? 'yes' : 'no'}">${x ? '✓' : '—'}</td>`).join('')}</tr>`).join('')}</tbody>`;
+document.getElementById('testdata').innerHTML = `<tbody>${TEST_DATA.map(([k, v]) => `<tr><th scope="row">${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody>`;
+if (results.length) document.getElementById('built').textContent = `· ${results.filter(r => r.ok).length} of ${results.length} journeys recorded and passing.`;
+const lb = document.getElementById('lightbox');
+document.addEventListener('click', e => { if (e.target.matches('.steps img')) { lb.querySelector('img').src = e.target.src; lb.querySelector('img').alt = e.target.alt; lb.classList.add('open'); } else if (e.target.closest('#lightbox')) lb.classList.remove('open'); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('open'); });
+</script>
+</body>
+</html>

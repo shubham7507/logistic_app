@@ -356,7 +356,7 @@ export function startScreen(state, error = '') {
   const a = current(state) || startApplication(state, {sourceBusiness: state.sellSource || null});
   refreshTrust(state, a);
   const step = a.step, body = {
-    9: () => `<form class="panel form-panel" data-sell-step="9" novalidate>${lockNote(a, 'trust')}${T.trustFormHtml(state, a)}${err(error)}${actions(a)}</form>`,
+    9: () => `<form class="panel form-panel" data-sell-step="9" novalidate>${lockNote(a, 'trust')}${T.trustFormHtml(state, a)}${err(error)}${actions(a)}</form>${T.dlSheetHtml(a, state.dlError || '')}`,
     1: () => `<form class="panel form-panel" data-sell-step="1">${lockNote(a, 'type')}<label class="field-label">Legal or business name</label><input class="text-field" name="legalName" value="${esc(a.legalName)}" placeholder="e.g. Gupta Kirana Store" ${a.sourceBusiness ? 'readonly' : ''}>
       <fieldset><legend>Seller type</legend><div class="service-grid">${Object.entries(SELLER_TYPES).map(([k, t]) => `<label class="service-choice ${a.sellerType === k ? 'selected' : ''}"><input type="radio" name="sellerType" value="${k}" ${a.sellerType === k ? 'checked' : ''}><span><b>${esc(t.label)}</b><small>${esc(t.note)}</small></span></label>`).join('')}</div></fieldset>
       <fieldset><legend>What will you sell?</legend><div class="service-grid">${Object.entries(CATEGORIES).map(([k, c]) => `<label class="service-choice ${a.categories.includes(k) ? 'selected' : ''}"><input type="checkbox" name="categories" value="${k}" ${a.categories.includes(k) ? 'checked' : ''}><span><b>${esc(c.label)}</b><small>${c.food ? 'Needs FSSAI licence' : k === 'electrical' ? 'Brand invoice or authorisation for branded items' : 'No extra licence'} · ${c.commission}% commission</small></span></label>`).join('')}</div></fieldset>${err(error)}${actions(a)}</form>`,
@@ -421,6 +421,23 @@ export function bind(root, api) {
     next(a);
   });
   SD.bindForm(root.querySelector('form[data-sell-step="5"]'));
+  // DigiLocker window and per-item Verify buttons (identity and shop checks step).
+  const val = sel => root.querySelector(sel)?.value || '', fileName = n => root.querySelector(`input[name="${n}"]`)?.files?.[0]?.name || '';
+  root.querySelectorAll('[data-dl]').forEach(b => b.onclick = () => {
+    const s = S(), a = A(), k = b.dataset.dl; let e = '';
+    if (k === 'start') e = T.dlStart(s, a); else if (k === 'cancel') e = T.dlCancel(s, a);
+    else if (k === 'send') { e = T.dlSendOtp(s, a, val('#dl-mobile') || a.trust?.dl?.mobile); if (a.trust?.dl?.noAccount) { a.trust.dlNoAccount = true; T.dlCancel(s, a); api.save(); api.render(); return show(e); } }
+    else if (k === 'verify') e = T.dlVerifyOtp(s, a, val('#dl-otp'));
+    else if (k === 'allow' || k === 'deny') { e = T.dlConsent(s, a, k === 'allow'); refreshTrust(s, a); s.dlError = ''; api.save(); api.render(); if (e) show(e); else api.toast('Aadhaar verified via DigiLocker'); return; }
+    else if (k === 'offline') { e = T.dlOffline(s, a, {file: fileName('offlineFile'), shareCode: val('input[name="shareCode"]')}); refreshTrust(s, a); api.save(); api.render(); if (e) show(e); else api.toast('Aadhaar verified from the offline file'); return; }
+    else if (k === 'assisted') { e = T.dlAssisted(s, a); api.save(); api.render(); api.toast('We will check your Aadhaar on the video call'); return; }
+    s.dlError = e; api.save(); api.render();
+  });
+  root.querySelectorAll('[data-trust-verify]').forEach(b => b.onclick = () => {
+    const s = S(), a = A(), k = b.dataset.trustVerify;
+    const e = T.trustItem(s, a, k, {selfie: fileName('selfie'), photoSignboard: fileName('photoSignboard'), photoInside: fileName('photoInside'), photoStock: fileName('photoStock'), invoices: fileName('invoices'), policeCert: fileName('policeCert')});
+    if (e) return show(e); refreshTrust(s, a); api.save(); api.render(); api.toast(`${T.TRUST_ITEMS[k].label}: done`);
+  });
   root.querySelector('form[data-sell-product]')?.addEventListener('submit', e => { e.preventDefault(); const fd = Object.fromEntries(new FormData(e.currentTarget)); const error = addProduct(S(), A(), fd); if (error) return show(error); api.save(); api.render(); api.toast('Product added'); });
   root.querySelectorAll('[data-sell-remove]').forEach(b => b.onclick = () => { const error = removeProduct(S(), A(), b.dataset.sellRemove); if (error) return show(error); api.save(); api.render(); });
   root.querySelectorAll('[data-sell-goto]').forEach(b => b.onclick = () => { const a = A(); a.step = Number(b.dataset.sellGoto); api.save(); api.render(); });
