@@ -1,6 +1,7 @@
 // Unified role taxonomy — one shared list for every business vertical, replacing the former split
 // between this object (logistics-only) and store-hr.js's separate ROLES object (retail-only).
 // Which subset is shown/offered is decided by rolesForWorkspace() below, not by having two lists.
+import {retailOwnerAndManagers} from './seller-roles.js';
 export const ROLE_TEMPLATES={
   manager:{label:'Business / Branch Manager',summary:'Runs assigned branches and staff',permissions:['work.manage','people.manage','messages.internal','reports.branch']},
   operations:{label:'Operations / Dispatcher',summary:'Handles loads, trips and moving jobs',permissions:['work.update','fleet.view','people.assign','messages.job']},
@@ -18,7 +19,7 @@ export const OWNER_ONLY=['business.ownership','bank.change','roles.owner','busin
 // posting an opening or picking a designation — showing the full logistics list (Driver, Operations,
 // Documents...) to a store owner was the exact confusion found in testing. Every other workspace gets
 // the logistics-oriented set, including 'manager' which is genuinely shared across every vertical.
-const RETAIL_WORKSPACES=['grocery','groceryFresh','electrical','fashion','groceryManager','groceryFreshManager','electricalManager','fashionManager'];
+const RETAIL_WORKSPACES={includes:ws=>retailOwnerAndManagers().includes(ws)};
 export function rolesForWorkspace(workspaceKey){
   return RETAIL_WORKSPACES.includes(workspaceKey) ? ['manager','picker','packer','cashier'] : ['manager','operations','accounts','driver','helper','documents','viewer'];
 }

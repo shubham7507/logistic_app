@@ -7,6 +7,7 @@
 // Ledgers: staff khata, payroll register, advances register, petty cash book per branch, branch staff cost.
 // Sellers: three onboarding levels (Draft → Verified to sell → Payout-ready), documents per business and per branch.
 import {esc, pill, inr} from './ops.js';
+import {WORKER_BY_STORE} from './seller-roles.js';
 import {gateway, record, clock} from './pay.js';
 import {STORE_BY_MANAGER, STORE_BY_WORKER, SELLER_WORKSPACES} from './seller-roles.js';
 import {gstLookup, pennyDrop, aadhaarEkyc, upiVerify} from './verify-sim.js';
@@ -141,7 +142,7 @@ export function reviewIdentity(s,ws,pid,decision,reason=''){
   if(decision==='approve')k.status='verified';
   Cred.log(s,pid,'id',k.reviewStatus,a.name,k.reviewReason);
   if(decision==='correction')k.status='pending';
-  (s.notifications||=[]).unshift({id:uid('NT'),to:({grocery:'picker',groceryFresh:'pickerFresh',electrical:'pickerElectrical',fashion:'pickerFashion'}[a.store]||'picker'),route:'myHR',text:`${a.name} ${decision==='approve'?'confirmed your mock ID review':`requested ID correction: ${k.reviewReason}`}`,ref:pid,staffId:pid,at:stamp(),read:false});return '';
+  (s.notifications||=[]).unshift({id:uid('NT'),to:(WORKER_BY_STORE[a.store]||'picker'),route:'myHR',text:`${a.name} ${decision==='approve'?'confirmed your mock ID review':`requested ID correction: ${k.reviewReason}`}`,ref:pid,staffId:pid,at:stamp(),read:false});return '';
 }
 export function escalateIdentity(s,ws,pid,reason){
   const a=actor(s,ws),p=people(s,a?.store).find(x=>x.id===pid),k=s.staffHR?.[pid]?.kyc;
@@ -180,7 +181,7 @@ export function reviewPayout(s,ws,pid,decision,reason=''){
   h.payout.reviewStatus=decision==='approve'?'approved':'correction_required';h.payout.verified=decision==='approve';
   h.payout.reviewedBy=a.name;h.payout.reviewReason=String(reason).trim();h.payout.reviewedAt=stamp();
   Cred.log(s,pid,'payout',h.payout.reviewStatus,a.name,reason);
-  (s.notifications||=[]).unshift({id:uid('NT'),to:({grocery:'picker',groceryFresh:'pickerFresh',electrical:'pickerElectrical',fashion:'pickerFashion'}[a.store]||'picker'),route:'myHR',staffId:pid,text:`${a.name} ${decision==='approve'?'approved your payout details':`requested a payout correction: ${reason}`}`,at:stamp(),read:false});
+  (s.notifications||=[]).unshift({id:uid('NT'),to:(WORKER_BY_STORE[a.store]||'picker'),route:'myHR',staffId:pid,text:`${a.name} ${decision==='approve'?'approved your payout details':`requested a payout correction: ${reason}`}`,at:stamp(),read:false});
   return '';
 }
 

@@ -6,6 +6,7 @@
 // transfers, approver fallback to the owner, and trips / moving jobs assigned to a team.
 // Built on top of the existing records (peopleByWorkspace, pickerStaff, storeManagers) without changing them.
 import {esc, pill} from './ops.js';
+import {STORE_BY_MANAGER} from './seller-roles.js';
 import {clock} from './pay.js';
 import {ROLE_TEMPLATES} from './people-rules.js';
 
@@ -15,7 +16,7 @@ const uid = p => `${p}-${Date.now().toString().slice(-5)}${Math.random().toStrin
 const head = (t, x, a = '') => `<div class="page-header"><div><h1>${esc(t)}</h1><p>${esc(x)}</p></div>${a}</div>`;
 export const BUSINESS = ['transporter', 'goods', 'vehicle', 'movers'];
 export const STORES = ['grocery', 'groceryFresh', 'electrical', 'fashion'];
-const MANAGER_STORE = {groceryManager: 'grocery', groceryFreshManager: 'groceryFresh', electricalManager: 'electrical', fashionManager: 'fashion'};
+const MANAGER_STORE = STORE_BY_MANAGER;
 export const TEAM_KINDS = {shift: 'Shift team', function: 'Department / desk', crew: 'Crew', temporary: 'Temporary (one job or day)'};
 export const EMP_TYPES = {permanent: 'Permanent', temporary: 'Temporary', one_job: 'One trip / job only', contractor: 'Through a contractor'};
 export const bizName = (s, b) => s.shopPartners?.[b]?.name || s.businessProfiles?.[b]?.legalName || ({transporter: 'Raj Logistics', goods: 'Sharma Foods', vehicle: 'Raj Transport', movers: 'SafeMove Packers'}[b]) || b;

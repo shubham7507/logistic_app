@@ -1,5 +1,15 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-01 — Onboarding: anyone can become a seller
+
+- "Sell products" option on the purpose screen, customer home, Account and Add your business.
+- 8-step seller application with live (simulated) GST/PAN/bank checks, FSSAI and brand papers, store and branch, delivery choice, agreement and first products.
+- Per-section admin review with corrections and rejections; store created when core sections are approved; locked categories unlock later.
+- Approved businesses add "Sell products" reusing their KYC.
+- Runtime store registry replaces hard-coded store lists; reload keeps new stores.
+- Pickup-only stores enforced at checkout.
+- Tests: `tests/seller-onboarding.unit.mjs`, `tests/onboarding-flows.e2e.cjs`, `npm run test:onboarding`.
+
 ## 2026-11-01 — Workspace switching, round 2
 
 - Branch and real role on every switcher row; branch chips set and remember the branch; branch button shows names.

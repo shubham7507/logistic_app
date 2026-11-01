@@ -23,7 +23,8 @@ export function switcherHtml(state, ctx) {
   const shared = staff.length && !/^picker/.test(state.currentWorkspace)
     ? `<section class="ws-section"><p class="ws-section-title">Shared store device</p><button type="button" class="workspace-option" data-ws-pin-open><span class="workspace-icon">#</span><span class="workspace-copy"><b>Switch to store staff with PIN</b><small>${staff.length} active staff · the store stays signed in</small></span><span aria-hidden="true">›</span></button></section>` : '';
   const add = app === 'business' ? `<button type="button" class="workspace-option add-business-entry" data-workspace-action="add-business"><span class="workspace-icon">+</span><span class="workspace-copy"><b>Add a business</b><small>One business can enable several services</small></span><span aria-hidden="true">›</span></button>` : '';
-  return search + invites + `<div id="ws-groups">${groups}</div>` + shared + add;
+  const apps = app === 'business' && (ctx.applications || []).length ? `<section class="ws-section"><p class="ws-section-title">Applications in progress</p>${ctx.applications.map(a => `<button type="button" class="workspace-option" data-route="sellStatus"><span class="workspace-icon">🛒</span><span class="workspace-copy"><b>${esc(a.store?.name || a.legalName || 'New store')}</b><small>Seller application · ${esc({draft: 'Draft', submitted: 'Under review', correction_required: 'Needs correction'}[a.status] || a.status)}</small></span><span aria-hidden="true">›</span></button>`).join('')}</section>` : '';
+  return search + invites + apps + `<div id="ws-groups">${groups}</div>` + shared + add;
 }
 
 export function pinSheetHtml(state, error = '') {

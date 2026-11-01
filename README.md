@@ -1,5 +1,9 @@
 # MoveAI One vNext — Phases P5–P8 (complete application flow)
 
+## Onboarding and selling (November 2026)
+
+Anyone can now become a seller: after signing up, choose **Sell products** (or use "Sell on MoveAI" on the customer home, or "Add a business"). The 8-step seller application covers seller type and categories, PAN/GST/bank, FSSAI and brand papers, store and branch, delivery choice, agreement and first products. Admin reviews each section in **Admin → Business approvals → Seller onboarding review**; when the core sections are approved the new store appears in the Business app switcher. Approved businesses can add "Sell products" from Add service and reuse their KYC. See `ONBOARDING-REPORT.md`; run `npm run test:onboarding` with the folder served on port 4177.
+
 ## Workspace switching (November 2026)
 
 People now see four apps: customer (`index.html`), Partner (`partner.html`, incl. store delivery partners), Business (`business.html`, incl. store owners, managers and pickers) and Admin. The switcher groups workspaces by business with unread badges, search, invitations and a colour per business; tap the page title on mobile to open it. Delivery partners and pickers cannot switch away mid-job. Links like `business.html#/shopOrders?ws=groceryManager` open the right workspace. Checkout offers **Buying for: Personal / your business** with GSTIN. Store owners can hand a shared device to staff with a PIN (demo `1234`). Round 2 adds branches and real roles on every row, one staff row per employer, a block during live trips and moves, money confirmations naming payer and payee, branch-aware alerts and per-profile payment defaults. Add `?demo=off` to hide demo-only tools. See `WORKSPACE-SWITCHING-REPORT.md`; run `npm run test:workspace` with the folder served on port 4177.

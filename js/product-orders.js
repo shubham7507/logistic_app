@@ -71,6 +71,8 @@ export function placeOrder(state, v) {
   if (v.method === 'cod' && q.total > PRODUCT_POLICY.codLimit) return {error: `Cash on delivery is available up to ${inr(PRODUCT_POLICY.codLimit)}. Pay online for this order.`};
   const stores = [...new Set(lines.map(i => i.product.fulfilmentPartner))];
   if(v.fulfilment==='pickup'&&stores.length>1)return {error:'Store pickup requires one seller per checkout. Remove other sellers or choose home delivery.'};
+  const pickupOnly=stores.find(n=>Object.values(state.shopPartners||{}).find(p=>p.name===n)?.deliveryMode==='pickup');
+  if(pickupOnly&&v.fulfilment!=='pickup')return {error:`${pickupOnly} offers store pickup only. Choose “Store pickup” or remove its items.`};
   const payAtStore=v.fulfilment==='pickup'&&String(v.method).startsWith('store_');
   if(payAtStore&&!['store_cash','store_upi','store_card'].includes(v.method))return {error:'Choose a valid store payment method.'};
   const branchByStore={};for(const name of stores){const store=Object.keys(state.shopPartners||{}).find(k=>state.shopPartners[k].name===name),own=lines.filter(i=>i.product.fulfilmentPartner===name);own.forEach(i=>Inventory.ensureProductBranches(state,i.product));const chosen=routeBranch(state,store,own,v.fulfilment==='pickup'?'':v.address,Inventory.available);if(!chosen)return {error:`${name} has no active branch with all items in stock. Review your cart.`};branchByStore[store]=chosen.id;}

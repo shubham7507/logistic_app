@@ -1,5 +1,6 @@
 // Seller staff and assignment rules for the single-browser demo.
 import {SELLER_WORKSPACES,MANAGER_BY_STORE,WORKER_BY_STORE,STORE_BY_MANAGER,STORE_BY_WORKER} from './seller-roles.js';
+import {storeTemplate} from './seller-roles.js';
 import {defaultBranch,selectedBranch,staffAt,staffBranches} from './seller-branches.js';
 import {esc} from './ops.js';
 import * as PC from './people-core.js';
@@ -25,7 +26,7 @@ export function invitePicker(s,ws,name,mobile){
  // not hard-blocked. (Previously this checked across every store regardless of which one, so an owner
  // could never add someone who already worked at their other store at all.)
  if((s.pickerStaff||[]).some(p=>p.store===ws&&p.mobile===mobile&&p.status!=='removed'))return 'This mobile already has an active or pending invitation at this store.';
- const p={id:`PICK-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,store:ws,name,mobile,role:ws==='electrical'||ws==='fashion'?'fulfilment':'picker',branchIds:[selectedBranch(s,ws)],status:'invited',invitedBy:s.shopPartners[ws].name,invitedAt:new Date().toISOString()};
+ const p={id:`PICK-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,store:ws,name,mobile,role:['electrical','fashion'].includes(storeTemplate(ws))?'fulfilment':'picker',branchIds:[selectedBranch(s,ws)],status:'invited',invitedBy:s.shopPartners[ws].name,invitedAt:new Date().toISOString()};
  (s.pickerStaff||=[]).push(p);audit(s,s.shopPartners[ws].name,`Invited ${name} as store worker for ${s.shopPartners[ws].name}`);
  alert(s,pickerWorkspace(ws),'pickProfile',`${name}: invitation to join ${s.shopPartners[ws].name}`,p.id,p.id);
  return '';
