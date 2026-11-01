@@ -34,11 +34,16 @@ export const STATES = {'07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh', 
 export const COURIER_CITIES = ['Delhi', 'Noida', 'Gurugram', 'Ghaziabad', 'Jaipur', 'Patna'];
 export const DELIVERY = {moveai: 'MoveAI couriers deliver', own: 'Our own delivery staff', pickup: 'Customers pick up at the store'};
 // Shown steps only: step 3 (licences) is skipped when no chosen category needs one.
-export const visibleSteps = a => STEPS.filter(s => s.key !== 'licences' || a.categories.some(c => CATEGORIES[c].food || c === 'electrical'));
+export const visibleSteps = a => STEPS.filter(s => (s.key !== 'licences' || a.categories.some(c => CATEGORIES[c].food || c === 'electrical')) && (s.key !== 'trust' || (a.trustSellerItems || []).length));
+// Cache what the trust rules need (policy depends on the store's state, risk on categories and checks).
+export function refreshTrust(state, a) { a.trustRequired = T.requirements(state, a); a.trustSellerItems = T.sellerItems(state, a); return a; }
 import {RESTRICTED} from './grocery-categories.js';
 import * as SD from './seller-delivery.js';
+import * as T from './seller-trust.js';
+import * as SL from './shelf-life.js';
 const PAN_RE = /^[A-Z]{5}\d{4}[A-Z]$/;
 const CORE = ['type', 'kyc', 'store', 'delivery', 'agreement', 'products'];
+const coreOf = a => (a.trustRequired || []).length ? [...CORE, 'trust'] : CORE;
 
 // ---------- application lifecycle ----------
 const uid = p => `${p}-${Date.now().toString(36).slice(-4).toUpperCase()}${Math.random().toString(36).slice(2, 4).toUpperCase()}`;
@@ -69,13 +74,14 @@ export function requiredSections(a) {
   const s = ['type', 'kyc'];
   if (a.categories.some(c => CATEGORIES[c]?.food)) s.push('food');
   if (a.categories.includes('electrical')) s.push('brand');
-  return [...s, 'store', 'delivery', 'agreement', 'products'];
+  return [...s, 'store', ...((a.trustRequired || []).length ? ['trust'] : []), 'delivery', 'agreement', 'products'];
 }
 export const STEPS = [
   {n: 1, key: 'type', title: 'Seller type and categories'},
   {n: 2, key: 'kyc', title: 'PAN, GST and bank'},
   {n: 3, key: 'licences', title: 'Licences for your categories'},
   {n: 4, key: 'store', title: 'Store and first branch'},
+  {n: 9, key: 'trust', title: 'Identity and shop checks'},
   {n: 5, key: 'delivery', title: 'How orders reach customers'},
   {n: 6, key: 'agreement', title: 'Fees and seller agreement'},
   {n: 7, key: 'products', title: 'First products'},
@@ -92,7 +98,7 @@ export function saveType(state, a, {sellerType, categories = [], legalName}) {
   if (String(legalName || '').trim().length < 3) return 'Enter the legal or business name (at least 3 characters).';
   Object.assign(a, {sellerType, categories: cats, legalName: String(legalName).trim()});
   if (a.kyc.nonGst && cats.some(c => !CATEGORIES[c].gstExempt)) a.kyc.needsGst = true;
-  touch(a, 'type'); return '';
+  refreshTrust(state, a); touch(a, 'type'); return '';
 }
 export function duplicateGstin(state, gstin, appId) {
   if (!gstin) return '';
@@ -152,12 +158,14 @@ export function saveStore(state, a, {storeName, branchName, address, city, pinco
   if (!/^[1-9]\d{5}$/.test(String(pincode || '').trim())) return 'Enter the 6-digit pincode of the store.';
   if (!STATES[stateCode]) return 'Choose the state.';
   if (a.kyc.gstState && a.kyc.gstState !== stateCode) return `The store is in ${STATES[stateCode]}, but the GSTIN is registered in ${STATES[a.kyc.gstState] || 'another state'}. Add a GSTIN for ${STATES[stateCode]} or use an address in ${STATES[a.kyc.gstState]}.`;
+  const pinState = T.pincodeState(pincode);
+  if (pinState && STATES[stateCode] && pinState !== stateCode) return `Pincode ${String(pincode).trim()} is in ${STATES[pinState] || T.PIN_STATE_NAMES[pinState] || 'another state'}, but you chose ${STATES[stateCode]}. Check the pincode, city and state.`;
   if (!open || !close || open >= close) return 'Opening time must be before closing time.';
   const r = Number(radiusKm); if (!Number.isFinite(r) || r < 1 || r > 20) return 'Delivery area must be 1 to 20 km.';
   const nameTaken = Object.values(state.shopPartners || {}).some(p => p.name.toLowerCase() === String(storeName).trim().toLowerCase()) || apps(state).some(x => x.id !== a.id && x.status !== 'rejected' && x.store?.name?.toLowerCase() === String(storeName).trim().toLowerCase());
   if (nameTaken) return 'A store with this name already exists. Choose a different store name.';
   a.store = {name: String(storeName).trim(), branchName: String(branchName).trim(), address: String(address).trim(), city: String(city).trim(), pincode: String(pincode).trim(), stateCode, open, close, radiusKm: r};
-  touch(a, 'store'); return '';
+  refreshTrust(state, a); touch(a, 'store'); return '';
 }
 // Quick setup used by the API and tests: one mode with sensible defaults (the form sends full details).
 export function quickDelivery(mode, store = {}) {
@@ -174,6 +182,7 @@ export function saveDelivery(state, a, v = {}) {
   if (r.error) return r.error;
   a.delivery = r.plan; touch(a, 'delivery'); return '';
 }
+export function saveTrust(state, a, v) { const e = T.saveTrust(state, a, v, canEdit); if (e) return e; reopen(a, 'trust'); return ''; }
 export function saveAgreement(state, a, {accept}) {
   if (!canEdit(a, 'agreement')) return 'This section is locked while it is reviewed.';
   if (!(accept === true || accept === 'on' || accept === 'true')) return 'Accept the seller agreement to continue.';
@@ -189,13 +198,15 @@ export function checkProduct(a, p) {
   if (price > mrp) return 'Selling price cannot be above the MRP printed on the pack.';
   if (!Number.isInteger(stock) || stock < 0 || stock > 10000) return 'Stock must be a whole number from 0 to 10,000.';
   if (!String(p.size || '').trim()) return 'Enter the pack size, e.g. 1 kg or 9 W.';
+  const dates = SL.checkDates({category: CATEGORIES[p.category].productCategory, batch: p.batch, mfgDate: p.mfgDate, expiryDate: p.expiryDate});
+  if (dates) return dates;
   return '';
 }
 export function addProduct(state, a, p) {
   if (!canEdit(a, 'products')) return 'This section is locked while it is reviewed.';
   const e = checkProduct(a, p); if (e) return e;
   if (a.products.length >= 20) return 'Add up to 20 products here; upload more after approval.';
-  a.products.push({id: uid('NP'), name: String(p.name).trim(), category: p.category, price: Number(p.price), mrp: Number(p.mrp), size: String(p.size).trim(), stock: Number(p.stock), brand: String(p.brand || '').trim()});
+  a.products.push({id: uid('NP'), name: String(p.name).trim(), category: p.category, price: Number(p.price), mrp: Number(p.mrp), size: String(p.size).trim(), stock: Number(p.stock), brand: String(p.brand || '').trim(), ...(SL.needsDates(CATEGORIES[p.category].productCategory) ? {batch: String(p.batch).trim(), mfgDate: p.mfgDate, expiryDate: p.expiryDate} : {})});
   touch(a, 'products'); return '';
 }
 export function removeProduct(state, a, id) {
@@ -216,10 +227,12 @@ export function missingSteps(a) {
   if (!a.delivery) m.push(5);
   if (!a.agreement.accepted) m.push(6);
   if (!a.products.length) m.push(7);
+  if ((a.trustSellerItems || []).some(k => !T.trustDone(a, k))) m.push(9);
   return m;
 }
 export function submit(state, a) {
   if (!['draft', 'correction_required'].includes(a.status)) return 'Already submitted.';
+  refreshTrust(state, a);
   const m = missingSteps(a);
   if (m.length) return `Finish these steps first: ${m.map(n => STEPS.find(s => s.n === n).title).join(', ')}. At least one product is needed before review.`;
   if (a.status === 'draft') {
@@ -229,19 +242,31 @@ export function submit(state, a) {
     }
   }
   if (Object.values(a.sections).some(x => x.status === 'correction')) return 'Fix the sections marked “Needs correction” first.';
-  a.status = 'submitted'; a.submittedAt = now(); a.history.unshift({at: now(), text: 'Submitted for review (target 3–5 working days)'});
+  a.status = 'submitted'; a.submittedAt = now(); a.submittedIso = new Date().toISOString(); a.history.unshift({at: now(), text: 'Submitted for review (target 3–5 working days)'});
+  a.risk = T.risk(state, a);
+  // Low risk in a standard state, every automatic check passed: approve now and go live on probation.
+  const strict = T.policyFor(state, a.store.stateCode) === 'strict';
+  if (!strict && a.risk.level === 'low' && !(a.trustRequired || []).length && Object.values(a.sections).every(x => ['pending', 'approved'].includes(x.status))) {
+    for (const [k, x] of Object.entries(a.sections)) if (x.status === 'pending') a.sections[k] = {status: 'approved', note: 'Auto-approved: all automatic checks passed (low risk)', at: now(), by: 'system'};
+    a.autoApproved = true; a.history.unshift({at: now(), text: 'Auto-approved: low risk, all automatic checks passed. Store goes live on probation.'});
+    evaluate(state, a); return '';
+  }
   (state.notifications ||= []).unshift({id: uid('NT'), to: 'admin', ref: a.id, text: `${a.id}: new seller application · ${a.store.name}`, read: false});
   return '';
 }
 
 // ---------- admin review, one section at a time ----------
-export function decide(state, appId, section, decision, note = '') {
+export function decide(state, appId, section, decision, note = '', reviewer = state.adminReviewer || {id: 'ADM-NEHA', name: 'Admin Neha'}) {
   const a = apps(state).find(x => x.id === appId);
   if (!a || !a.sections[section]) return 'Section not found.';
+  if (reviewer?.id && reviewer.id === a.ownerId) return 'You cannot review your own application. Another reviewer must decide.';
+  if (decision === 'approved' && section === 'trust') { const b = T.trustBlockers(state, a); if (b.length) return `Not every check has passed yet: ${b.join(', ')}.`; }
+  const failing = T.checks(state, a).filter(c => c.section === section && !c.ok);
+  if (decision === 'approved' && failing.length && String(note).trim().length < 5) return `Automatic checks failed (${failing.map(c => c.label).join(', ')}). Write why you are approving anyway.`;
   if (!['approved', 'correction', 'rejected'].includes(decision)) return 'Choose approve, correction or reject.';
   if (decision !== 'approved' && String(note).trim().length < 5) return 'Write a reason the seller can act on.';
   if (a.sections[section].status === 'not_provided' && decision === 'approved') return 'Nothing was provided for this section yet.';
-  a.sections[section] = {status: decision, note: String(note).trim(), at: now()};
+  a.sections[section] = {status: decision, note: String(note).trim(), at: now(), by: reviewer?.name || 'reviewer'};
   a.history.unshift({at: now(), text: `${section}: ${decision}${note ? ` — ${note}` : ''}`});
   evaluate(state, a);
   const to = a.sourceBusiness || 'personal';
@@ -257,6 +282,7 @@ export function liveCategories(a) {
   });
 }
 export function evaluate(state, a) {
+  const CORE = coreOf(a);
   if (CORE.some(s => a.sections[s]?.status === 'rejected')) { a.status = 'rejected'; return; }
   if (Object.values(a.sections).some(x => x.status === 'correction')) { a.status = a.storeKey ? 'live' : 'correction_required'; return; }
   const coreOk = CORE.every(s => a.sections[s]?.status === 'approved');
@@ -292,7 +318,8 @@ export function goLive(state, a, live) {
     state.shopPartners[key] = {name: a.store.name, party: `store:${slug(a.store.name)}`, pickupAddress: a.store.address, status: 'approved', bank: a.kyc.bank?.masked || 'Not verified',
       payoutAccount: {accountNumber: acct ? `00000000${acct}` : ''}, payoutsEnabled: !!a.kyc.bank?.verified, deliveryMode: SD.delivers(a.delivery) ? SD.primaryMode(a.delivery) : 'pickup', deliveryPlan: SD.plan(a.delivery), deliveryArea: {pincode: a.store.pincode || '', radiusKm: a.store.radiusKm || 5}, createdFrom: a.id,
       onboarding: {gstin: a.kyc.gstin || '', pan: a.kyc.pan || '', fssai: a.licences.fssai?.number || '', fssaiExpiry: a.licences.fssai?.expiry || '', bankVerified: !!a.kyc.bank?.verified, status: 'approved'},
-      approvedGroups: [], categoryRequests: [], hours: {open: a.store.open, close: a.store.close}, paused: false, busy: false};
+      approvedGroups: [], categoryRequests: [], hours: {open: a.store.open, close: a.store.close}, paused: false, busy: false,
+      probation: T.probationFor(state, a), verification: {policy: T.policyFor(state, a.store.stateCode), risk: a.risk?.level || T.risk(state, a).level, autoApproved: !!a.autoApproved}, strikes: 0};
     state.sellerBranches ||= {};
     state.sellerBranches[key] = [{id: `${key}-B1`, store: key, name: `${a.store.name} · ${a.store.branchName}`, address: a.store.address, serviceArea: a.store.city, status: 'active', open: true, priority: 1}];
     (state.activeSellerBranch ||= {})[key] = `${key}-B1`;
@@ -301,7 +328,7 @@ export function goLive(state, a, live) {
     a.storeKey = key;
     a.products.forEach((p, i) => (state.products ||= []).push({id: `PRD-${key}-${i + 1}`, name: p.name, size: p.size, price: p.price, mrp: p.mrp, brand: p.brand || p.name.split(' ')[0],
       category: CATEGORIES[p.category].productCategory, subcategory: CATEGORIES[p.category].subcategory, vegStatus: CATEGORIES[p.category].veg,
-      fulfilmentPartner: a.store.name, stock: p.stock > 0 ? 'In stock' : 'Out of stock', quantity: p.stock, reserved: 0, lowStockAt: 5, status: 'paused', approval: 'pending', onboardingCategory: p.category}));
+      fulfilmentPartner: a.store.name, stock: p.stock > 0 ? 'In stock' : 'Out of stock', quantity: p.stock, reserved: 0, lowStockAt: 5, status: 'paused', approval: 'pending', onboardingCategory: p.category, ...(p.expiryDate ? {batch: p.batch, mfgDate: p.mfgDate, expiryDate: p.expiryDate} : {})}));
     a.history.unshift({at: now(), text: `Store created: ${a.store.name} (${key})`});
     (state.notifications ||= []).unshift({id: uid('NT'), to: key, ref: a.id, text: `${a.id}: your store ${a.store.name} is approved. Invite a manager and staff from Team.`, read: false});
   }
@@ -327,7 +354,9 @@ const lockNote = (a, sec) => a.status !== 'draft' && !canEdit(a, sec) ? `<div cl
 
 export function startScreen(state, error = '') {
   const a = current(state) || startApplication(state, {sourceBusiness: state.sellSource || null});
+  refreshTrust(state, a);
   const step = a.step, body = {
+    9: () => `<form class="panel form-panel" data-sell-step="9" novalidate>${lockNote(a, 'trust')}${T.trustFormHtml(state, a)}${err(error)}${actions(a)}</form>`,
     1: () => `<form class="panel form-panel" data-sell-step="1">${lockNote(a, 'type')}<label class="field-label">Legal or business name</label><input class="text-field" name="legalName" value="${esc(a.legalName)}" placeholder="e.g. Gupta Kirana Store" ${a.sourceBusiness ? 'readonly' : ''}>
       <fieldset><legend>Seller type</legend><div class="service-grid">${Object.entries(SELLER_TYPES).map(([k, t]) => `<label class="service-choice ${a.sellerType === k ? 'selected' : ''}"><input type="radio" name="sellerType" value="${k}" ${a.sellerType === k ? 'checked' : ''}><span><b>${esc(t.label)}</b><small>${esc(t.note)}</small></span></label>`).join('')}</div></fieldset>
       <fieldset><legend>What will you sell?</legend><div class="service-grid">${Object.entries(CATEGORIES).map(([k, c]) => `<label class="service-choice ${a.categories.includes(k) ? 'selected' : ''}"><input type="checkbox" name="categories" value="${k}" ${a.categories.includes(k) ? 'checked' : ''}><span><b>${esc(c.label)}</b><small>${c.food ? 'Needs FSSAI licence' : k === 'electrical' ? 'Brand invoice or authorisation for branded items' : 'No extra licence'} · ${c.commission}% commission</small></span></label>`).join('')}</div></fieldset>${err(error)}${actions(a)}</form>`,
@@ -341,8 +370,8 @@ export function startScreen(state, error = '') {
     4: () => `<form class="panel form-panel" data-sell-step="4">${lockNote(a, 'store')}<div class="form-grid two"><label><span>Store name customers see</span><input name="storeName" value="${esc(a.store.name || '')}" placeholder="e.g. Gupta Kirana"></label><label><span>First branch</span><input name="branchName" value="${esc(a.store.branchName || '')}" placeholder="e.g. Sector 62"></label><label class="wide"><span>Pickup address</span><input name="address" value="${esc(a.store.address || '')}"></label><label><span>City</span><input name="city" value="${esc(a.store.city || '')}"></label><label><span>Pincode</span><input name="pincode" inputmode="numeric" maxlength="6" value="${esc(a.store.pincode || '')}" placeholder="201301"></label><label><span>State</span><select name="stateCode"><option value="">Choose</option>${Object.entries(STATES).map(([k, v]) => opt(k, a.store.stateCode || a.kyc.gstState, v)).join('')}</select></label><label><span>Opens</span><input type="time" name="open" value="${esc(a.store.open || '08:00')}"></label><label><span>Closes</span><input type="time" name="close" value="${esc(a.store.close || '21:00')}"></label><label><span>Delivery area (km)</span><input type="number" name="radiusKm" min="1" max="20" value="${esc(a.store.radiusKm || 5)}"></label></div>${a.kyc.gstState ? `<p class="muted">The address must be in ${esc(STATES[a.kyc.gstState] || 'the GSTIN state')}, the state of your GSTIN.</p>` : ''}${err(error)}${actions(a)}</form>`,
     5: () => `<form class="panel form-panel" data-sell-step="5" novalidate>${lockNote(a, 'delivery')}${SD.formHtml(a.delivery, {store: a.store, categories: a.categories})}${err(error)}${actions(a)}</form>`,
     6: () => `<form class="panel form-panel" data-sell-step="6">${lockNote(a, 'agreement')}<table class="price-table"><tbody>${a.categories.map(c => `<tr><td>${esc(CATEGORIES[c].label)}</td><td>${CATEGORIES[c].commission}% commission · payout ${CATEGORIES[c].holdDays} days after delivery</td></tr>`).join('')}</tbody></table><p class="muted">Returns and claims follow MoveAI's category rules. Tax collected at source (TCS) and TDS are deducted as required by law. Confirm the final terms with your CA.</p><label class="consent-row"><input type="checkbox" name="accept" ${a.agreement.accepted ? 'checked' : ''}><span>I accept the MoveAI seller agreement for ${esc(a.legalName || 'this business')}.</span></label>${err(error)}${actions(a)}</form>`,
-    7: () => `<section class="panel form-panel">${lockNote(a, 'products')}<h3>Your products (${a.products.length})</h3>${a.products.map(p => `<div class="ledger-row static"><span><b>${esc(p.name)} · ${esc(p.size)}</b><small>${esc(CATEGORIES[p.category].label)} · ₹${p.price} (MRP ₹${p.mrp}) · stock ${p.stock}</small></span><button type="button" class="button secondary compact" data-sell-remove="${esc(p.id)}">Remove</button></div>`).join('') || '<p class="muted">Add at least one product. You can upload more after approval.</p>'}
-      <form data-sell-product class="form-grid two"><label><span>Product name</span><input name="name" placeholder="e.g. Toor Dal"></label><label><span>Category</span><select name="category">${a.categories.map(c => opt(c, '', CATEGORIES[c].label)).join('')}</select></label><label><span>Pack size</span><input name="size" placeholder="1 kg"></label><label><span>Brand</span><input name="brand"></label><label><span>Price (₹)</span><input name="price" type="number" min="1"></label><label><span>MRP (₹)</span><input name="mrp" type="number" min="1"></label><label><span>Stock</span><input name="stock" type="number" min="0" value="10"></label><button class="button secondary">Add product</button></form>${err(error)}
+    7: () => `<section class="panel form-panel">${lockNote(a, 'products')}<h3>Your products (${a.products.length})</h3>${a.products.map(p => `<div class="ledger-row static"><span><b>${esc(p.name)} · ${esc(p.size)}</b><small>${esc(CATEGORIES[p.category].label)} · ₹${p.price} (MRP ₹${p.mrp}) · stock ${p.stock}${p.expiryDate ? ` · batch ${esc(p.batch)} · expires ${esc(p.expiryDate)}` : ''}</small></span><button type="button" class="button secondary compact" data-sell-remove="${esc(p.id)}">Remove</button></div>`).join('') || '<p class="muted">Add at least one product. You can upload more after approval.</p>'}
+      <form data-sell-product class="form-grid two"><label><span>Product name</span><input name="name" placeholder="e.g. Toor Dal"></label><label><span>Category</span><select name="category">${a.categories.map(c => opt(c, '', CATEGORIES[c].label)).join('')}</select></label><label><span>Pack size</span><input name="size" placeholder="1 kg"></label><label><span>Brand</span><input name="brand"></label><label><span>Price (₹)</span><input name="price" type="number" min="1"></label><label><span>MRP (₹)</span><input name="mrp" type="number" min="1"></label><label><span>Stock</span><input name="stock" type="number" min="0" value="10"></label><fieldset class="wide sell-dates"><legend>Packaged food only: from the pack</legend><div class="form-grid three"><label><span>Batch / lot no.</span><input name="batch"></label><label><span>Manufactured on</span><input name="mfgDate" type="date"></label><label><span>Expiry / best before</span><input name="expiryDate" type="date"></label></div><p class="muted">Food must reach customers with at least 45 days or 30% of its shelf life left. Items closer to expiry are hidden automatically.</p></fieldset><button class="button secondary">Add product</button></form>${err(error)}
       <div class="form-actions"><button type="button" class="button secondary" data-sell-back>Back</button><button type="button" class="button primary" data-sell-goto="8">Continue to review</button></div></section>`,
     8: () => { const m = missingSteps(a); return `<section class="panel form-panel"><dl class="sell-summary"><div><dt>Business</dt><dd>${esc(a.legalName)} · ${esc(SELLER_TYPES[a.sellerType]?.label || '')}</dd></div><div><dt>Categories</dt><dd>${esc(a.categories.map(c => CATEGORIES[c].label).join(', '))}</dd></div><div><dt>Tax and bank</dt><dd>${a.kyc.nonGst ? 'No GST (exempt items only)' : `GSTIN ${esc(a.kyc.gstin || '—')}`} · bank ${esc(a.kyc.bank?.masked || '—')}${a.kyc.bank && !a.kyc.bank.verified ? ' (manual check, payouts off until verified)' : ''}</dd></div><div><dt>Licences</dt><dd>${a.categories.some(c => CATEGORIES[c].food) ? `FSSAI ${a.licences.fssai ? esc(a.licences.fssai.number) : 'not added (food locked)'}` : ''}${a.categories.includes('electrical') ? ` · brand papers ${a.licences.brandProof ? 'added' : 'not added (electricals locked)'}` : ''}</dd></div><div><dt>Store</dt><dd>${esc(a.store.name || '—')} · ${esc(a.store.branchName || '')}, ${esc(a.store.city || '')}</dd></div><div><dt>Delivery</dt><dd>${esc(SD.summary(a.delivery))}</dd></div><div><dt>Products</dt><dd>${a.products.length}</dd></div></dl>${m.length ? `<div class="info-banner warning"><b>Still to do</b><span>${m.map(n => esc(STEPS.find(s => s.n === n).title)).join(' · ')}</span></div>` : ''}${err(error)}<div class="form-actions"><button type="button" class="button secondary" data-sell-back>Back</button><button type="button" class="button primary" data-sell-submit ${m.length ? 'disabled' : ''}>${a.status === 'correction_required' ? 'Resubmit corrections' : 'Submit for review'}</button></div><p class="muted">Review target: 3–5 working days. You will be notified at every decision.</p></section>`; },
   }[step] || (() => '');
@@ -355,18 +384,23 @@ export function statusScreen(state) {
   if (!list.length) return `${head('Seller applications', 'You have not applied to sell yet.')}<section class="panel"><button class="button primary" data-sell-new>Start selling</button></section>`;
   return `${head('Seller applications', 'Each section is reviewed on its own. Fix only what is marked.', '<button class="button secondary" data-sell-new>New application</button>')}${list.map(a => `<section class="panel sell-app"><div class="panel-header"><div><h2>${esc(a.store.name || a.legalName || a.id)}</h2><p>${esc(a.id)} · ${esc(a.legalName)}${a.submittedAt ? ` · submitted ${esc(a.submittedAt)}` : ''}</p></div>${pill(a.status)}</div>
     ${a.blocker ? `<div class="info-banner warning"><b>Not live yet</b><span>${esc(a.blocker)}</span></div>` : ''}
-    <div class="sell-sections">${requiredSections(a).map(s => { const x = a.sections[s] || {status: a.status === 'draft' ? 'draft' : 'pending'}; const step = {type: 1, kyc: 2, food: 3, brand: 3, store: 4, delivery: 5, agreement: 6, products: 7}[s]; return `<div class="ledger-row static"><span><b>${esc(SECTION_LABEL[s])}</b>${x.note ? `<small>${esc(x.note)}</small>` : ''}</span>${pill(x.status)}${['correction', 'not_provided'].includes(x.status) || a.status === 'draft' ? `<button class="button secondary compact" data-sell-fix="${esc(a.id)}" data-step="${step}">${x.status === 'not_provided' ? 'Add' : a.status === 'draft' ? 'Edit' : 'Fix'}</button>` : ''}</div>`; }).join('')}</div>
-    ${a.storeKey ? `<p>Live categories: <b>${esc(liveCategories(a).map(c => CATEGORIES[c].label).join(', ') || 'none')}</b>${a.categories.length > liveCategories(a).length ? ` · locked: ${esc(a.categories.filter(c => !liveCategories(a).includes(c)).map(c => CATEGORIES[c].label).join(', '))}` : ''}</p><button class="button primary" data-sell-open="${esc(a.storeKey)}">Open ${esc(a.store.name)}</button>` : a.status === 'draft' || a.status === 'correction_required' ? `<button class="button primary" data-sell-fix="${esc(a.id)}" data-step="8">${a.status === 'draft' ? 'Continue application' : 'Review and resubmit'}</button>` : ''}
+    <div class="sell-sections">${requiredSections(a).map(s => { const x = a.sections[s] || {status: a.status === 'draft' ? 'draft' : 'pending'}; const step = {type: 1, kyc: 2, food: 3, brand: 3, store: 4, trust: 9, delivery: 5, agreement: 6, products: 7}[s]; return `<div class="ledger-row static"><span><b>${esc(SECTION_LABEL[s])}</b>${x.note ? `<small>${esc(x.note)}</small>` : ''}</span>${pill(x.status)}${['correction', 'not_provided'].includes(x.status) || a.status === 'draft' ? `<button class="button secondary compact" data-sell-fix="${esc(a.id)}" data-step="${step}">${x.status === 'not_provided' ? 'Add' : a.status === 'draft' ? 'Edit' : 'Fix'}</button>` : ''}</div>`; }).join('')}</div>
+    ${a.storeKey ? `<p>Live categories: <b>${esc(liveCategories(a).map(c => CATEGORIES[c].label).join(', ') || 'none')}</b>${a.categories.length > liveCategories(a).length ? ` · locked: ${esc(a.categories.filter(c => !liveCategories(a).includes(c)).map(c => CATEGORIES[c].label).join(', '))}` : ''}</p>${(() => { const p = state.shopPartners?.[a.storeKey], g = T.probationProgress(state, p); return p?.probation?.active ? `<div class="info-banner"><b>${a.autoApproved ? 'Approved automatically · ' : ''}On probation</b><span>Up to ${p.probation.limits.maxProducts} products and ₹${p.probation.limits.maxOrderValue} per order, no cash on delivery, payouts held ${p.probation.limits.extraHoldDays} extra days. ${g.orders}/${p.probation.liftAfter.orders} delivered orders · day ${g.days} of ${p.probation.liftAfter.days}.</span></div>` : p?.suspended ? '<div class="info-banner warning"><b>Store suspended</b><span>3 strikes. MoveAI is reviewing your store.</span></div>' : ''; })()}<button class="button primary" data-sell-open="${esc(a.storeKey)}">Open ${esc(a.store.name)}</button>` : a.status === 'draft' || a.status === 'correction_required' ? `<button class="button primary" data-sell-fix="${esc(a.id)}" data-step="8">${a.status === 'draft' ? 'Continue application' : 'Review and resubmit'}</button>` : ''}
     <details><summary>History</summary>${a.history.slice(0, 12).map(h => `<small class="block muted">${esc(h.at)} · ${esc(h.text)}</small>`).join('')}</details></section>`).join('')}`;
 }
-export const SECTION_LABEL = {type: 'Seller type and categories', kyc: 'PAN, GST and bank', food: 'FSSAI food licence', brand: 'Brand papers (electricals)', store: 'Store and first branch', delivery: 'Delivery choice', agreement: 'Seller agreement', products: 'First products'};
+export const SECTION_LABEL = {trust: 'Identity and shop checks', type: 'Seller type and categories', kyc: 'PAN, GST and bank', food: 'FSSAI food licence', brand: 'Brand papers (electricals)', store: 'Store and first branch', delivery: 'Delivery choice', agreement: 'Seller agreement', products: 'First products'};
 
 export function reviewScreen(state) {
   const queue = apps(state).filter(a => ['submitted', 'correction_required', 'live_partial'].includes(a.status) || Object.values(a.sections).some(x => x.status === 'pending'));
   const detail = a => ({type: `${SELLER_TYPES[a.sellerType]?.label} · ${a.categories.map(c => CATEGORIES[c].label).join(', ')}`, kyc: a.kyc.reused ? 'Reused from approved business' : `${a.kyc.nonGst ? `No GST · Aadhaar ••••${a.kyc.aadhaarLast4}` : `GSTIN ${a.kyc.gstin}`} · PAN ${a.kyc.pan} · bank ${a.kyc.bank?.masked}${a.kyc.bank?.verified ? ' (₹1 check passed)' : ` (name mismatch — cheque ${a.kyc.bank?.chequeFile || 'missing'})`}`,
     food: a.licences.fssai ? `FSSAI ${a.licences.fssai.number} · valid until ${a.licences.fssai.expiry}` : 'Not provided', brand: a.licences.brandProof || 'Not provided', store: `${a.store.name} · ${a.store.branchName}, ${a.store.address}, ${a.store.city} ${a.store.pincode || ''} (${STATES[a.store.stateCode]}) · ${a.store.open}–${a.store.close} · ${a.store.radiusKm} km`,
-    delivery: SD.summary(a.delivery), agreement: a.agreement.accepted ? `Accepted ${a.agreement.at}` : '—', products: a.products.map(p => `${p.name} ${p.size} ₹${p.price}/MRP ₹${p.mrp}`).join('; ')});
-  return `${head('Seller onboarding review', 'Approve, request a correction or reject each section. A store goes live when the core sections are approved; licence sections unlock their categories.')}${SD.reviewHtml(state)}${queue.map(a => { const d = detail(a); return `<section class="panel"><div class="panel-header"><div><h2>${esc(a.store.name || a.legalName)}</h2><p>${esc(a.id)} · ${esc(a.ownerName)}${a.sourceBusiness ? ` · adding to ${esc(ROLE_CONFIG[a.sourceBusiness]?.label || a.sourceBusiness)}` : ''}</p></div>${pill(a.status)}</div>${requiredSections(a).map(s => `<div class="claim-row"><b>${esc(SECTION_LABEL[s])}</b> ${pill(a.sections[s]?.status || 'pending')}<small class="block muted">${esc(d[s] || '')}</small>${a.sections[s]?.note ? `<small class="block">${esc(a.sections[s].note)}</small>` : ''}${['pending'].includes(a.sections[s]?.status) ? `<form class="inline-form" data-sell-decide="${esc(a.id)}" data-section="${s}"><input name="note" placeholder="Reason (needed for correction or reject)"><button class="button primary compact" name="decision" value="approved">Approve</button><button class="button secondary compact" name="decision" value="correction">Request correction</button><button class="button secondary compact" name="decision" value="rejected">Reject</button></form>` : ''}</div>`).join('')}</section>`; }).join('') || '<section class="panel"><p class="muted">No seller applications waiting.</p></section>'}`;
+    trust: (a.trustRequired || []).map(k => `${T.TRUST_ITEMS[k].label}: ${a.trust?.items?.[k]?.status || 'missing'}`).join(' · '), delivery: SD.summary(a.delivery), agreement: a.agreement.accepted ? `Accepted ${a.agreement.at}` : '—', products: a.products.map(p => `${p.name} ${p.size} ₹${p.price}/MRP ₹${p.mrp}`).join('; ')});
+  queue.forEach(a => refreshTrust(state, a));
+  const order = {high: 0, medium: 1, low: 2}, sorted = [...queue].sort((x, y) => order[T.risk(state, x).level] - order[T.risk(state, y).level] || T.ageHours(y) - T.ageHours(x));
+  const qTable = sorted.length ? `<section class="panel review-queue"><h2>Queue (${sorted.length})</h2><div class="table-wrap"><table class="price-table"><thead><tr><th>Store</th><th>State</th><th>Risk</th><th>Waiting</th><th>Reviewer</th></tr></thead><tbody>${sorted.map(a => { const r = T.risk(state, a); return `<tr><td><a href="#review-${esc(a.id)}">${esc(a.store.name || a.legalName)}</a><small class="block muted">${esc(a.id)} · ${esc(a.ownerName)}</small></td><td>${esc(STATES[a.store.stateCode] || '—')}${T.policyFor(state, a.store.stateCode) === 'strict' ? ' <span class="status-pill warning">strict</span>' : ''}</td><td><span class="risk-pill risk-${r.level}">${T.RISK_LABEL[r.level]}</span>${r.flags.length ? `<small class="block">${r.flags.length} flag(s)</small>` : ''}</td><td>${T.ageHours(a)} h · ${esc(T.slaText(a))}</td><td>${a.assignee ? esc(a.assignee) : `<button class="button secondary compact" data-review-assign="${esc(a.id)}">Assign to me</button>`}</td></tr>`; }).join('')}</tbody></table></div></section>` : '';
+  const onProb = Object.entries(state.shopPartners || {}).filter(([, p]) => p.probation?.active || p.suspended);
+  const probTable = onProb.length ? `<section class="panel"><h2>New stores on probation</h2>${onProb.map(([k, p]) => { const g = T.probationProgress(state, p); return `<div class="claim-row"><b>${esc(p.name)}</b> ${p.suspended ? '<span class="status-pill danger">Suspended</span>' : ''}<small class="block muted">${g ? `${g.orders}/${p.probation.liftAfter.orders} delivered orders · day ${g.days}/${p.probation.liftAfter.days} · ` : ''}limits: ${p.probation?.limits?.maxProducts} products, orders up to ₹${p.probation?.limits?.maxOrderValue}, no COD, payouts held +${p.probation?.limits?.extraHoldDays} days · strikes ${p.strikes || 0}/3</small>${p.probation?.active ? `<form class="inline-form" data-probation-end="${esc(k)}"><input name="note" placeholder="${g?.ready ? 'Targets met' : 'Reason to end early'}"><button class="button secondary compact">End probation</button></form>` : ''}</div>`; }).join('')}</section>` : '';
+  return `${head('Seller onboarding review', 'Highest risk first. Check the evidence, then approve, request a correction or reject each section. Low-risk sellers in standard states are approved automatically and go live on probation.')}${T.policyHtml(state, STATES)}${qTable}${SD.reviewHtml(state)}${probTable}${sorted.map(a => { const d = detail(a); return `<section class="panel" id="review-${esc(a.id)}"><div class="panel-header"><div><h2>${esc(a.store.name || a.legalName)}</h2><p>${esc(a.id)} · ${esc(a.ownerName)}${a.sourceBusiness ? ` · adding to ${esc(ROLE_CONFIG[a.sourceBusiness]?.label || a.sourceBusiness)}` : ''}</p></div>${pill(a.status)}</div>${T.evidenceHtml(state, a)}<h3>Decisions by section</h3>${requiredSections(a).map(s => `<div class="claim-row"><b>${esc(SECTION_LABEL[s])}</b> ${pill(a.sections[s]?.status || 'pending')}<small class="block muted">${esc(d[s] || '')}</small>${a.sections[s]?.note ? `<small class="block">${esc(a.sections[s].note)}</small>` : ''}${['pending'].includes(a.sections[s]?.status) ? `<form class="inline-form" data-sell-decide="${esc(a.id)}" data-section="${s}"><input name="note" placeholder="Reason (needed for correction or reject)"><button class="button secondary compact" name="decision" value="approved">Approve</button><button class="button secondary compact" name="decision" value="correction">Request correction</button><button class="button secondary compact" name="decision" value="rejected">Reject</button></form>` : ''}</div>`).join('')}</section>`; }).join('') || '<section class="panel"><p class="muted">No seller applications waiting.</p></section>'}`;
 }
 
 // ---------- bindings ----------
@@ -374,13 +408,15 @@ export function reviewScreen(state) {
 export function bind(root, api) {
   const S = () => api.getState(), A = () => current(S());
   const show = e => { const el = root.querySelector('.sell-error'); if (el) { el.textContent = e; el.hidden = !e; } else if (e) api.toast(e); };
-  const next = a => { a.step = Math.min(8, a.step + 1); if (a.step === 3 && !a.categories.some(c => CATEGORIES[c].food || c === 'electrical')) a.step = 4; api.save(); api.render(); };
+  const move = (a, d) => { refreshTrust(S(), a); const vs = visibleSteps(a), i = vs.findIndex(x => x.n === a.step); a.step = (vs[Math.min(vs.length - 1, Math.max(0, (i < 0 ? 0 : i) + d))] || vs[0]).n; };
+  const next = a => { move(a, 1); api.save(); api.render(); };
   root.querySelectorAll('form[data-sell-step]').forEach(f => f.onsubmit = e => {
     e.preventDefault(); const s = S(), a = A(), fd = new FormData(f), n = Number(f.dataset.sellStep);
     const v = Object.fromEntries(fd); v.categories = fd.getAll('categories'); for (const k of ['chequeFile', 'brandProof']) { const file = fd.get(k); v[k] = file && file.name ? file.name : ''; }
     v.nonGst = fd.has('nonGst'); v.accept = fd.has('accept');
     if (n === 5) Object.assign(v, SD.readForm(fd));
-    const error = {1: saveType, 2: saveKyc, 3: saveLicences, 4: saveStore, 5: saveDelivery, 6: saveAgreement}[n](s, a, v);
+    if (n === 9) Object.assign(v, T.readTrustForm(fd));
+    const error = {1: saveType, 2: saveKyc, 3: saveLicences, 4: saveStore, 5: saveDelivery, 6: saveAgreement, 9: saveTrust}[n](s, a, v);
     if (error) return show(error);
     next(a);
   });
@@ -388,11 +424,15 @@ export function bind(root, api) {
   root.querySelector('form[data-sell-product]')?.addEventListener('submit', e => { e.preventDefault(); const fd = Object.fromEntries(new FormData(e.currentTarget)); const error = addProduct(S(), A(), fd); if (error) return show(error); api.save(); api.render(); api.toast('Product added'); });
   root.querySelectorAll('[data-sell-remove]').forEach(b => b.onclick = () => { const error = removeProduct(S(), A(), b.dataset.sellRemove); if (error) return show(error); api.save(); api.render(); });
   root.querySelectorAll('[data-sell-goto]').forEach(b => b.onclick = () => { const a = A(); a.step = Number(b.dataset.sellGoto); api.save(); api.render(); });
-  root.querySelectorAll('[data-sell-back]').forEach(b => b.onclick = () => { const a = A(); a.step = Math.max(1, a.step - 1); if (a.step === 3 && !a.categories.some(c => CATEGORIES[c].food || c === 'electrical')) a.step = 2; api.save(); api.render(); });
+  root.querySelectorAll('[data-sell-back]').forEach(b => b.onclick = () => { const a = A(); move(a, -1); api.save(); api.render(); });
   root.querySelector('[data-sell-submit]')?.addEventListener('click', () => { const error = submit(S(), A()); if (error) return show(error); api.save(); api.navigate('sellStatus'); api.toast('Submitted. Review target 3–5 working days.'); });
   root.querySelectorAll('[data-sell-new]').forEach(b => b.onclick = () => { const s = S(); s.currentSellerAppId = null; startApplication(s, {sourceBusiness: s.sellSource || null}); api.save(); api.navigate('sellStart'); });
   root.querySelectorAll('[data-sell-fix]').forEach(b => b.onclick = () => { const s = S(); s.currentSellerAppId = b.dataset.sellFix; const a = current(s); a.step = Number(b.dataset.step); api.save(); api.navigate('sellStart'); });
   root.querySelectorAll('[data-sell-open]').forEach(b => b.onclick = () => api.switchTo(b.dataset.sellOpen));
+  root.querySelectorAll('form[data-trust-record]').forEach(f => f.onsubmit = e => { e.preventDefault(); const s = S(), a = apps(s).find(x => x.id === f.dataset.trustRecord), error = T.recordTrust(s, a, f.dataset.key, e.submitter?.value, new FormData(f).get('note'), (s.adminReviewer || {name: 'Admin Neha'}).name); if (error) return api.toast(error); api.save(); api.render(); api.toast('Check recorded'); });
+  root.querySelector('form[data-seller-policy]')?.addEventListener('submit', e => { e.preventDefault(); const fd = new FormData(e.currentTarget), error = T.setPolicy(S(), fd.get('state'), fd.get('level'), fd.get('reason')); if (error) return api.toast(error); api.save(); api.render(); api.toast('Policy saved'); });
+  root.querySelectorAll('form[data-probation-end]').forEach(f => f.onsubmit = e => { e.preventDefault(); const error = T.endProbation(S(), f.dataset.probationEnd, (S().adminReviewer || {name: 'Admin Neha'}).name, new FormData(f).get('note')); if (error) return api.toast(error); api.save(); api.render(); api.toast('Probation ended'); });
+  root.querySelectorAll('[data-review-assign]').forEach(b => b.onclick = () => { const a = apps(S()).find(x => x.id === b.dataset.reviewAssign); a.assignee = (S().adminReviewer || {name: 'Admin Neha'}).name; api.save(); api.render(); });
   root.querySelectorAll('form[data-sell-decide]').forEach(f => f.onsubmit = e => { e.preventDefault(); const d = e.submitter?.value || 'approved', error = decide(S(), f.dataset.sellDecide, f.dataset.section, d, new FormData(f).get('note')); if (error) return api.toast(error); api.save(); api.render(); api.toast(`${SECTION_LABEL[f.dataset.section]}: ${LABEL[d] || d}`); });
 }
 

@@ -17,6 +17,9 @@ import {categoryFor,categoryOptions} from './grocery-categories.js';
 import {ROLE_CONFIG} from './config.js';
 import {buyingProfiles, buyingDefaults, rememberBuying} from './workspace-hub.js';
 import * as SD from './seller-delivery.js';
+import * as T from './seller-trust.js';
+// Merchant UPI account and payment window. Placeholder: set the real merchant VPA from your payment gateway.
+export const PAYMENT = {merchantVpa: 'moveai.orders@example', merchantName: 'MoveAI Commerce', expiryMinutes: 15};
 
 export const PRODUCT_POLICY = {commission: 0.08, freeDeliveryAbove: 499, deliveryFee: 40, codLimit: 5000, returnDays: 7};
 const DAY = 86400000;
@@ -78,6 +81,12 @@ export function placeOrder(state, v) {
   const planOf=n=>Object.values(state.shopPartners||{}).find(p=>p.name===n)?.deliveryPlan;
   const noPickup=v.fulfilment==='pickup'&&stores.find(n=>!SD.allowsPickup(planOf(n)));
   if(noPickup)return {error:`${noPickup} does not offer store pickup. Choose home delivery.`};
+  const partnerOf=n=>Object.values(state.shopPartners||{}).find(p=>p.name===n);
+  const suspended=stores.find(n=>partnerOf(n)?.suspended);if(suspended)return {error:`${suspended} is not taking orders right now. Remove its items.`};
+  // New stores on probation: no cash on delivery and a cap on order value.
+  const probCod=v.method==='cod'&&stores.find(n=>partnerOf(n)?.probation?.active);if(probCod)return {error:`${probCod} is a new store: pay by UPI or card for now (cash on delivery opens after its first orders).`};
+  const overCap=stores.find(n=>{const pr=partnerOf(n)?.probation;return pr?.active&&lines.filter(i=>i.product.fulfilmentPartner===n).reduce((t,i)=>t+i.product.price*i.quantity,0)>pr.limits.maxOrderValue;});
+  if(overCap)return {error:`${overCap} is a new store: orders up to ₹${partnerOf(overCap).probation.limits.maxOrderValue} for now. Reduce the quantity.`};
   const noCod=v.method==='cod'&&stores.find(n=>!SD.codAllowed(planOf(n)));
   if(noCod)return {error:`${noCod} does not accept cash on delivery. Pay by UPI or card.`};
   const payAtStore=v.fulfilment==='pickup'&&String(v.method).startsWith('store_');
@@ -95,7 +104,9 @@ export function placeOrder(state, v) {
   } else if (v.method === 'upi' && !upiTestVpa) {
     if (!/^[\w.-]+@[a-z]{2,}$/i.test(String(v.vpa || ''))) return {error: 'Enter a valid UPI ID, e.g. name@okaxis.'};
     gatewayResult = {ok: true, pending: true, ref: `pay_${Math.random().toString(36).slice(2, 12)}`};
-    upiLink = `upi://pay?pa=${encodeURIComponent(v.vpa)}&am=${q.total}&tn=${encodeURIComponent('MoveAI order payment')}&cu=INR`;
+    // Pay MoveAI's merchant account (never the customer's own UPI ID). The order becomes paid only when
+    // the bank/gateway confirms (server webhook in production; demo button here), never on the customer's word.
+    upiLink = `upi://pay?pa=${encodeURIComponent(PAYMENT.merchantVpa)}&pn=${encodeURIComponent(PAYMENT.merchantName)}&am=${q.total}&tn=${encodeURIComponent('MoveAI order payment')}&cu=INR`;
   } else {
     gatewayResult = gateway.collect({method: v.method, vpa: v.vpa, card: v.card, amount: q.total});
   }
@@ -107,7 +118,7 @@ export function placeOrder(state, v) {
     const itemTotal = own.reduce((n,i) => n+i.product.price*i.quantity,0), deliveryFee=v.fulfilment==='pickup'?0:deliveryFor(itemTotal);
     const id=`ORD-${Date.now().toString().slice(-5)}${Math.random().toString(36).slice(2,5).toUpperCase()}`,party=partyOf(name);
     const store=Object.keys(state.shopPartners||{}).find(k=>state.shopPartners[k].name===name),chosenBranch=state.sellerBranches[store].find(b=>b.id===branchByStore[store]);
-    const order={id,checkoutId,branchId:chosenBranch.id,branchName:chosenBranch.name,pickupAddress:chosenBranch.address,billing:v.billing,payAtStore,paymentMethod:payAtStore?v.method.slice(6):v.method,fulfilment:v.fulfilment==='pickup'?'pickup':'delivery',inventoryCommitted:own.map(i=>({productId:i.productId,quantity:i.quantity})),customer:state.person?.name,items:own.map(i=>({productId:i.productId,quantity:i.quantity,name:i.product.name,unitPrice:i.product.price})),itemTotal,deliveryFee,total:itemTotal+deliveryFee,fulfilmentPartner:name,party,address:v.fulfilment==='pickup'?'Store pickup':v.address.trim(),method:v.method,eta:null,substitution:v.substitution||'contact',history:[{at:stamp(),text:'Order placed · awaiting store acceptance'}],status:v.method==='cod'||payAtStore?'confirmed':gatewayResult.pending?'payment_pending':'paid',cod:v.method==='cod'};
+    const order={id,checkoutId,branchId:chosenBranch.id,branchName:chosenBranch.name,pickupAddress:chosenBranch.address,billing:v.billing,payAtStore,paymentMethod:payAtStore?v.method.slice(6):v.method,fulfilment:v.fulfilment==='pickup'?'pickup':'delivery',inventoryCommitted:own.map(i=>({productId:i.productId,quantity:i.quantity})),customer:state.person?.name,items:own.map(i=>({productId:i.productId,quantity:i.quantity,name:i.product.name,unitPrice:i.product.price})),itemTotal,deliveryFee,total:itemTotal+deliveryFee,fulfilmentPartner:name,party,address:v.fulfilment==='pickup'?'Store pickup':v.address.trim(),method:v.method,eta:null,substitution:v.substitution||'contact',history:[{at:stamp(),text:'Order placed · awaiting store acceptance'}],status:v.method==='cod'||payAtStore?'confirmed':gatewayResult.pending?'payment_pending':'paid',cod:v.method==='cod',...(gatewayResult?.pending?{paymentDueBy:new Date(clock()+PAYMENT.expiryMinutes*60000).toISOString(),payerVpa:v.vpa}:{})};
     Plus.applyToOrder(state,order,plusAdj,index,stores.length,built);built.push(order);
     if (gatewayResult) record(state,{owner:'personal',orderId:id,checkoutId,sourceType:'order',sourceId:id,type:'customer_payment',purpose:'order',payer:'personal',payee:party,responsible:'personal',amount:order.total,method:v.method,reference:gatewayResult.ref,status:gatewayResult.pending?'pending':'held',gatewayFinal:gatewayResult.final||null,note:`Checkout ${checkoutId} · order ${id}`},'Customer');
     Commerce.initializeOrder(state,order);return order;
@@ -122,23 +133,55 @@ const orderPayments = (state, o) => state.ledger.filter(x => x.orderId === o.id)
 // outcome baked in (gatewayFinal), from the pending@upi / pendingfail@upi test fixtures.
 export function checkPayment(state, o) {
   const x = orderPayments(state, o).find(e => e.status === 'pending'); if (!x) return 'Nothing pending.';
-  if (x.gatewayFinal == null) return 'ask'; // no predetermined outcome — this is a real redirect order; the UI must ask the customer directly and call confirmCustomerPayment with their answer, not guess.
+  if (x.gatewayFinal == null) return 'waiting'; // real redirect order: only the bank/gateway can confirm it (bankConfirmPayment). The customer's word is never enough.
   const group=state.customerOrders.filter(y=>y.checkoutId===o.checkoutId),success=x.gatewayFinal==='success';
   group.forEach(y=>{const p=orderPayments(state,y).find(e=>e.status==='pending');if(!p)return;p.status=success?'held':'failed';y.status=success?'paid':'cancelled';y.paymentStatus=success?'paid':'failed';if(!success){y.cancelReason='Payment failed — nothing was charged';Inventory.release(state,y)}y.history.push({at:stamp(),text:success?'Payment confirmed by the bank':y.cancelReason});});return '';
 }
-// New: for the real UPI-redirect flow, where there is no pre-baked outcome to check — the customer is
-// the only one who knows whether they actually completed the payment in their own UPI app, so this
-// resolves the pending order from their direct answer instead of guessing or assuming success.
-export function confirmCustomerPayment(state, o, succeeded) {
+// The bank/gateway's answer for a UPI-redirect payment. In production this runs only from the payment
+// gateway's server webhook; in the prototype it is the demo-only "Simulate bank" button and tests.
+// Customers cannot call it: marking your own order paid without paying was a theft hole.
+export function bankConfirmPayment(state, o, succeeded) {
   const x = orderPayments(state, o).find(e => e.status === 'pending'); if (!x) return 'Nothing pending to confirm.';
   const group=state.customerOrders.filter(y=>y.checkoutId===o.checkoutId);
-  group.forEach(y=>{const p=orderPayments(state,y).find(e=>e.status==='pending');if(!p)return;p.status=succeeded?'held':'failed';y.status=succeeded?'paid':'cancelled';y.paymentStatus=succeeded?'paid':'failed';if(!succeeded){y.cancelReason='Payment not completed — nothing was charged';Inventory.release(state,y)}y.history.push({at:stamp(),text:succeeded?'Payment confirmed by customer':y.cancelReason});});return '';
+  group.forEach(y=>{const p=orderPayments(state,y).find(e=>e.status==='pending');if(!p)return;p.status=succeeded?'held':'failed';y.status=succeeded?'paid':'cancelled';y.paymentStatus=succeeded?'paid':'failed';if(!succeeded){y.cancelReason='Payment not completed — nothing was charged';Inventory.release(state,y)}y.history.push({at:stamp(),text:succeeded?'Payment confirmed by the bank':y.cancelReason});});return '';
 }
+// Older name kept for existing tests and callers; it simulates the gateway confirmation, not the customer.
+export const confirmCustomerPayment = bankConfirmPayment;
+// Unpaid UPI orders expire (default 15 minutes): the order is cancelled, stock released, nothing charged.
+export function expireUnpaid(state, now = clock()) {
+  let n = 0;
+  for (const o of state.customerOrders || []) {
+    if (o.status !== 'payment_pending' || !o.paymentDueBy || Date.parse(o.paymentDueBy) > now) continue;
+    const p = orderPayments(state, o).find(e => e.status === 'pending'); if (p) p.status = 'failed';
+    o.status = 'cancelled'; o.paymentStatus = 'failed'; o.cancelReason = `Payment not received within ${PAYMENT.expiryMinutes} minutes — order cancelled, nothing charged`;
+    Inventory.release(state, o); o.history.push({at: stamp(), text: o.cancelReason}); n++;
+  }
+  return n;
+}
+export const minutesLeft = (o, now = clock()) => o.paymentDueBy ? Math.max(0, Math.ceil((Date.parse(o.paymentDueBy) - now) / 60000)) : null;
 function refund(state, o, amount, why) {
   const src = orderPayments(state, o).find(e => e.type === 'customer_payment' && e.status === 'held'); if (!src) return;
   src.status = 'refunded';
   const g = gateway.refund(src.reference, amount);
   record(state, {owner: 'personal', orderId: o.id, sourceType: 'order', sourceId: o.id, type: 'refund', payer: 'moveai', payee: 'personal', responsible: o.party, amount, method: src.method, reference: g.ref, status: 'refund_initiated', expectedBy: clock() + 5 * DAY, gatewayFinal: 'refunded', note: `${why} · ${o.id}`});
+}
+// Customer reports an expired or near-expiry item: refund that line now, pause the product until the
+// seller re-checks the batch, and give the seller a strike (3 strikes suspend the store for review).
+export function reportExpired(state, o, {productId, photo, note} = {}) {
+  if (!['delivered', 'collected'].includes(o.status)) return 'You can report this after the order is delivered.';
+  if (o.deliveredAt && clock() - o.deliveredAt > 7 * DAY) return 'Reports are accepted up to 7 days after delivery.';
+  const line = o.items.find(i => i.productId === productId); if (!line) return 'Choose the item that was expired.';
+  if ((o.expiredReports || []).some(r => r.productId === productId)) return 'You already reported this item.';
+  if (!String(photo || '').trim()) return 'Add a photo showing the expiry date on the pack.';
+  const amount = line.unitPrice * line.quantity, held = orderPayments(state, o).find(e => e.type === 'customer_payment' && e.status === 'held');
+  if (held) refund(state, o, amount, 'Expired item reported'); else record(state, {owner: 'personal', orderId: o.id, sourceType: 'order', sourceId: o.id, type: 'refund', payer: 'moveai', payee: 'personal', responsible: o.party, amount, method: 'upi', reference: `EXP-${o.id}`, status: 'refund_due', note: 'Expired item reported'}, 'Customer');
+  const p = state.products.find(x => x.id === productId); if (p) { p.status = 'paused'; p.expiryHold = {at: stamp(), order: o.id}; }
+  const key = Object.keys(state.shopPartners || {}).find(k => state.shopPartners[k].name === o.fulfilmentPartner);
+  const strikes = key ? T.addStrike(state, key, `Expired item reported: ${line.name} (order ${o.id})`) : 0;
+  (o.expiredReports ||= []).push({productId, photo: String(photo), note: String(note || '').trim(), at: stamp(), amount});
+  o.history.push({at: stamp(), text: `Customer reported expired item: ${line.name} · ${inr(amount)} refunded · product paused · seller strike ${strikes}/3`});
+  if (key) (state.notifications ||= []).unshift({id: `NT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, to: key, route: 'shopCatalog', text: `${line.name} paused: a customer reported it expired (order ${o.id}). Check the batch, remove expired stock and update the dates to sell again.`, read: false});
+  return '';
 }
 export function cancelOrder(state, o) {
   if (!['paid', 'confirmed', 'accepted', 'packed', 'payment_pending'].includes(o.status)) return 'The order has left the store. Refuse it at the door or return it after delivery.';
@@ -251,10 +294,11 @@ export function ordersScreen(state) {
   ${latest?`<section class="panel seller-order-group-header"><h2>Order placed · ${latest.length} seller package${latest.length===1?'':'s'}</h2><p>Checkout ${esc(state.latestCheckoutId)} · ${inr(latest.reduce((sum,o)=>sum+o.total,0))} total${latest[0]?.cod?' · Cash on delivery':' · One checkout payment'}</p><p>Each store prepares its own package. Follow each delivery below.</p></section>`:''}
   ${[...groups].filter(([,os])=>os.length>1).map(([id,os])=>`<section class="panel seller-order-group-header"><h2>Checkout ${esc(id)} · ${os.length} seller packages · ${inr(os.reduce((sum,o)=>sum+o.total,0))}</h2><p>${os.filter(o=>o.status==='delivered').length} delivered · ${os.filter(o=>o.status==='cancelled').length} cancelled · ${os.filter(o=>!['delivered','cancelled','returned'].includes(o.status)).length} in progress</p><p class="muted">Track, cancel or return each seller package below. A delayed package does not block the others.</p></section>`).join('')}
   ${state.customerOrders.filter(o=>o.channel!=='counter_delivery'||o.customerId&&o.customerId===state.person?.id).map(o => { const refunds = state.ledger.filter(x => x.orderId === o.id && x.type === 'refund'),group=groups.get(o.checkoutId),packageNumber=group?group.indexOf(o)+1:1; return `<section class="panel order-card"><div class="panel-header"><div><span class="seller-package-label">Package ${packageNumber} of ${group?.length||1} · ${esc(o.fulfilmentPartner||'Store partner')}</span><h2>${esc(o.id)} · ${inr(o.total)}</h2><p>${o.checkoutId?`Checkout ${esc(o.checkoutId)} · `:''}${o.items.map(i => `${i.quantity} × ${esc(name(i.productId))}`).join(', ')}${o.method ? ` · ${o.cod ? 'Cash on delivery' : o.payAtStore?`${esc(o.paymentMethod.toUpperCase())} at store`:esc(String(o.method).toUpperCase())}` : ''}</p></div>${pill(o.status)}</div>
-    ${o.status === 'payment_pending' ? `<div class="info-banner"><b>Payment processing</b><span>Do not pay again.</span><button class="button secondary compact" data-po="check" data-id="${o.id}">Check status</button></div>` : ''}
+    ${o.status === 'payment_pending' ? `<div class="info-banner"><b>Waiting for your bank to confirm ${inr(o.total)}</b><span>Pay ${esc(PAYMENT.merchantName)} (${esc(PAYMENT.merchantVpa)}) in your UPI app. Do not pay twice. If the bank doesn't confirm${minutesLeft(o) !== null ? ` within ${minutesLeft(o)} min` : ''}, the order is cancelled and any money taken is refunded.</span><span class="row-actions"><button class="button secondary compact" data-po="check" data-id="${o.id}">Check status</button><button class="button secondary compact demo-only" data-po="bank-ok" data-id="${o.id}">Demo: bank confirms payment</button><button class="button secondary compact demo-only" data-po="bank-fail" data-id="${o.id}">Demo: bank says failed</button></span></div>` : ''}
     ${o.fulfilment==='pickup'?`<p class="info-banner">Store pickup${o.payAtStore?` · Pay ${inr(o.total)} by ${esc(o.paymentMethod.toUpperCase())} at collection`:''} · ${o.status==='ready_for_pickup'?`Show this code at the counter: <b>${esc(o.pickupCode)}</b>`:o.status==='collected'?'Collected':'Waiting for store preparation'}</p>`:''}${o.address&&o.fulfilment!=='pickup' ? `<p class="muted">Deliver to: ${esc(o.address)} · ${o.eta?`Estimated arrival: ${esc(o.eta)} · `:o.etaMinutes?`Estimated: about ${o.etaMinutes} min from order · `:o.slot&&o.slot!=='express'?`Delivery slot: ${esc(o.slot)} · `:'No live ETA in this demo · '}${o.latestLocation?`Last update: ${esc(o.latestLocation.label)}`:'Awaiting courier checkpoint'}</p>` : ''}
     ${o.cancelReason ? `<p class="muted">${esc(o.cancelReason)}</p>` : ''}
     ${refunds.map(x => `<p class="muted">Refund ${inr(x.amount)} · ${x.status === 'refunded' ? 'reached your account' : x.status === 'refund_recorded' ? 'external refund recorded · verify with your bank' : x.status === 'refund_due' ? 'Refund due · admin will record the UPI transfer' : x.expectedBy ? `expected by ${new Date(x.expectedBy).toLocaleDateString('en-IN', {day: '2-digit', month: 'short'})}` : esc(x.status.replaceAll('_',' '))}</p>`).join('')}
+    ${['delivered','collected'].includes(o.status)?`<details class="expired-report"><summary>Report an expired or near-expiry item</summary><form class="form-grid two" data-po-form="expired" data-id="${esc(o.id)}"><label><span>Item</span><select name="productId">${o.items.filter(i=>!(o.expiredReports||[]).some(r=>r.productId===i.productId)).map(i=>`<option value="${esc(i.productId)}">${esc(i.name||i.productId)}</option>`).join('')}</select></label><label><span>Photo of the expiry date</span><input type="file" name="photo" accept="image/*" capture="environment"></label><label class="wide"><span>What was wrong (optional)</span><input name="note" placeholder="e.g. expired last week"></label><button class="button secondary compact">Report and get a refund</button></form>${(o.expiredReports||[]).map(r=>`<p class="muted">Reported ${esc(state.products.find(p=>p.id===r.productId)?.name||r.productId)} · ${inr(r.amount)} refund started</p>`).join('')}</details>`:''}
     ${o.status==='out_for_delivery'?`<p class="info-banner">Delivery code: <b>${esc(o.deliveryCode)}</b> · share it only when the package reaches you.</p>`:''}
     ${o.status==='item_review'?`<div class="info-banner"><b>Item unavailable: ${esc(o.items.find(i=>i.productId===o.pendingItemId)?.name||'Product')}</b><span>${o.suggestedProductId?`Store suggests ${esc(state.products.find(p=>p.id===o.suggestedProductId)?.name||'another item')} · ${inr(state.products.find(p=>p.id===o.suggestedProductId)?.price||0)} each. Total after approval: ${inr(o.total-(o.items.find(i=>i.productId===o.pendingItemId)?.unitPrice-(state.products.find(p=>p.id===o.suggestedProductId)?.price||0))*(o.items.find(i=>i.productId===o.pendingItemId)?.quantity||1))}.`:'Wait for a replacement suggestion, remove the item, or cancel this store order.'}</span>${o.suggestedProductId?`<button class="button primary compact" data-po="approve-replacement" data-id="${esc(o.id)}">Approve replacement</button>`:''}<button class="button secondary compact" data-po="remove-unavailable" data-id="${esc(o.id)}">Remove item and continue</button></div>`:''}
     <div class="row-actions"><button class="button primary compact" data-po-track="${esc(o.id)}">Track order</button>${['paid', 'confirmed', 'accepted', 'item_review', 'ready_for_pickup'].includes(o.status) ? `<button class="button secondary compact" data-po="cancel" data-id="${o.id}">Cancel order</button>` : ''}${Plus.cancelItemsHtml(state,o)}${Plus.orderHelp(state,o)}</div>
@@ -299,11 +343,13 @@ export function bindOrders(root, api) {
   root.querySelectorAll('input[name="method"]').forEach(r => r.onchange = () => root.querySelectorAll('.pay-field').forEach(f => { f.hidden = f.dataset.for !== r.value; }));
   root.querySelectorAll('input[name="buyingProfile"]').forEach(r => r.onchange = () => { const n = root.querySelector('#bill-name'), g = root.querySelector('#bill-gstin'); if (r.value === 'personal') { if (n) n.value = api.getState().person?.name || ''; if (g) g.value = ''; } else { if (n) n.value = r.dataset.bpName; if (g) g.value = r.dataset.bpGstin; } const em = root.querySelector('#bill-email'); if (em) em.value = r.dataset.bpEmail || ''; const m = r.dataset.bpMethod && root.querySelector(`input[name="method"][value="${r.dataset.bpMethod}"]`); if (m && !m.disabled) { m.checked = true; m.dispatchEvent(new Event('change', {bubbles: true})); } });
   root.querySelectorAll('[data-po]').forEach(b => b.onclick = () => { const s = S(), o = find(b.dataset.id), k = b.dataset.po;
-    if (k === 'check') {const error=checkPayment(s,o);o.paymentStatus=o.status==='paid'?'paid':'failed';return done(error,o.status==='paid'?'Payment confirmed':'Payment failed — order cancelled, nothing charged');}
+    if (k === 'check') {const error=checkPayment(s,o);if(error==='waiting')return api.toast('Still waiting for your bank. Nothing to do — this page updates when the bank confirms.');o.paymentStatus=o.status==='paid'?'paid':'failed';return done(error,o.status==='paid'?'Payment confirmed':'Payment failed — order cancelled, nothing charged');}
+    if (k === 'bank-ok' || k === 'bank-fail') return done(bankConfirmPayment(s, o, k === 'bank-ok'), k === 'bank-ok' ? 'Demo: bank confirmed — the store can accept now' : 'Demo: payment failed — order cancelled, nothing charged');
     if (k === 'remove-unavailable') return done(Commerce.removeUnavailable(s,o.id),'Unavailable item removed');
     if (k === 'approve-replacement') return done(Commerce.approveReplacement(s,o.id),'Replacement approved; store can resume picking');
     if (k === 'cancel') return done(Commerce.customerCancel(s, o.id), o.cod ? 'Order cancelled' : `Cancelled · ${inr(o.total)} refund started`); });
   root.querySelectorAll('form[data-po-form]').forEach(f => f.onsubmit = e => { e.preventDefault(); const s = S(), fd = Object.fromEntries(new FormData(f));
+    if (f.dataset.poForm === 'expired') { const file = f.querySelector('input[name=photo]')?.files?.[0]; return done(reportExpired(s, find(f.dataset.id), {productId: fd.productId, photo: file?.name || '', note: fd.note}), 'Reported. Refund started; the store must re-check that batch.'); }
     if (f.dataset.poForm === 'return') return done(Commerce.requestReturn(s, f.dataset.id, fd.reason, fd.destination), 'Return requested · under review');
     const b = readBilling(root); if (!b.error) { const bp = root.querySelector('input[name="buyingProfile"]:checked'); if (bp) { b.billing.profile = bp.value; s.lastBuyingProfile = bp.value; rememberBuying(s, bp.value, {method: fd.method, email: b.billing.email}); } } if (b.error) { const el = root.querySelector('#po-error'); el.textContent = b.error; el.hidden = false; return; }
     const r = placeOrder(s, {productId: s.checkoutProductId, fromCart: s.checkoutFromCart, ...fd, billing: b.billing}); if (r.error) { const el = root.querySelector('#po-error'); el.textContent = r.error; el.hidden = false; return; }
@@ -313,12 +359,12 @@ export function bindOrders(root, api) {
       // on a desktop browser can catch a upi:// link). The order stays "payment processing" until the
       // customer comes back and confirms via the Check status button — never marked paid on the spot.
       const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent||'');
-      api.toast('Opening your UPI app — come back here once it\'s done and confirm from "Check status".');
+      api.toast('Opening your UPI app. The order is confirmed once your bank confirms the payment.');
       if(isMobile){location.href=r.upiLink;}
       else if(typeof QRCode!=='undefined'){
         const overlay=document.createElement('div');overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999';
         const box=document.createElement('div');box.style.cssText='background:#fff;border-radius:16px;padding:24px;text-align:center;max-width:300px';
-        box.innerHTML='<p style="margin:0 0 12px;font-weight:600">Scan with any UPI app</p><div id="order-upi-qr"></div><p style="margin:12px 0 0;font-size:12px;color:#666">Then return here and confirm via "Check status" on your order.</p><button type="button" style="margin-top:12px" class="button secondary compact">Close</button>';
+        box.innerHTML='<p style="margin:0 0 12px;font-weight:600">Scan with any UPI app</p><div id="order-upi-qr"></div><p style="margin:12px 0 0;font-size:12px;color:#666">Your order is confirmed automatically once the bank confirms.</p><button type="button" style="margin-top:12px" class="button secondary compact">Close</button>';
         overlay.appendChild(box);document.body.appendChild(overlay);
         box.querySelector('button').onclick=()=>overlay.remove();overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
         QRCode.toCanvas(box.querySelector('#order-upi-qr'),r.upiLink,{width:220},e=>{if(e)box.querySelector('#order-upi-qr').textContent=r.upiLink;});
@@ -326,17 +372,5 @@ export function bindOrders(root, api) {
       return;
     }
     api.toast(r.order.status === 'payment_pending' ? 'Payment processing — we will confirm shortly' : r.order.cod ? `${r.orders.length} store order(s) placed · pay on delivery` : r.order.payAtStore?`${r.orders.length} pickup order(s) placed · pay at store` : `Paid ${inr(r.total)} · ${r.orders.length} store order(s) placed`); });
-  root.querySelectorAll('[data-po="check"]').forEach(b=>b.onclick=()=>{
-    const s = S(), o = (s.customerOrders||[]).find(x=>x.id===b.dataset.id); if(!o)return;
-    const result = checkPayment(s, o);
-    if(result === 'ask'){
-      const ok = confirm('Did the UPI payment actually go through on your phone?');
-      const err = confirmCustomerPayment(s, o, ok);
-      if(err)return api.toast(err);
-      api.save();api.render();api.toast(ok?'Payment confirmed — order placed':'Marked as not completed — nothing was charged');
-      return;
-    }
-    if(result)return api.toast(result);
-    api.save();api.render();api.toast('Status updated');
-  });
+
 }

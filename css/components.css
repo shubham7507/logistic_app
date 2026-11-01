@@ -64,7 +64,7 @@ body[data-ws-tone] #workspace-icon{background:var(--tone);color:#fff}
 .buying-option{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:10px}.buying-option small{display:block;color:var(--muted)}
 .buying-option:has(input:checked){border-color:var(--brand);background:var(--brand-soft)}
 /* demo-only tools are hidden with ?demo=off */
-body.demo-off .mock-hint,body.demo-off #reset-demo,body.demo-off [data-action="restore-seeded-demo"]{display:none!important}
+body.demo-off .mock-hint,body.demo-off #reset-demo,body.demo-off [data-action="restore-seeded-demo"],body.demo-off .demo-only{display:none!important}
 .ws-section,.ws-section>*,#ws-groups,.workspace-option .workspace-copy{min-width:0}
 .ws-search{display:block}.workspace-option .workspace-copy small{overflow-wrap:anywhere}
 .buying-option input{width:auto;min-width:0;flex:none;margin:3px 0 0;padding:0;height:auto}
@@ -102,3 +102,22 @@ body.demo-off .mock-hint,body.demo-off #reset-demo,body.demo-off [data-action="r
 .delivery-tip{margin:8px 0}
 .store-delivery details summary{cursor:pointer;font-weight:600;margin:6px 0}
 .catalog-listing-rules{display:grid;gap:4px}
+/* Seller trust: risk, evidence, identity and shop checks */
+.risk-pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;border:1px solid var(--line)}
+.risk-low{background:var(--brand-soft);color:var(--brand-strong)}
+.risk-medium{background:var(--warning-soft);color:var(--warning)}
+.risk-high{background:var(--danger-soft);color:var(--danger)}
+.evidence{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0 12px}
+.evidence h3{font-size:14px;margin:10px 0 6px}
+.evidence-list{list-style:none;padding:0;margin:0;display:grid;gap:6px}
+.evidence-list li{display:grid;grid-template-columns:20px minmax(0,1fr);gap:2px 8px;align-items:start}
+.evidence-list li>span{font-weight:700}
+.evidence-list li.ok>span{color:var(--brand)}.evidence-list li.bad>span{color:var(--danger)}.evidence-list li.wait>span{color:var(--muted)}
+.evidence-list small{grid-column:2;color:var(--muted);overflow-wrap:anywhere}
+.evidence-list form{grid-column:2;margin-top:4px}
+.trust-item{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:10px 0;display:grid;gap:8px;min-width:0}
+.trust-item legend{font-weight:700;padding:0 6px}
+.review-queue .table-wrap{overflow-x:auto}
+.sell-dates,.catalog-dates{border:1px dashed var(--line);border-radius:12px;padding:8px 12px;display:grid;gap:8px;min-width:0}
+.form-grid.three{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:8px}
+.expired-report summary{cursor:pointer;color:var(--muted);margin:6px 0}

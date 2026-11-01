@@ -8,6 +8,8 @@ import {SEED} from '../js/mock-data.js';
 import {selectedBranch} from '../js/seller-branches.js';
 
 const fresh = () => ({...JSON.parse(JSON.stringify(SEED)), person: {id: 'P-NEW', name: 'Ramesh Gupta'}});
+const iso = d => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+const DATES = {batch: 'B-2611', mfgDate: iso(-30), expiryDate: iso(300)};
 const GOOD = {pan: 'ABCDE1234F', gstin: '09ABCDE1234F1Z5', account: '123456789012', ifsc: 'SBIN0001234'};
 const STORE = {storeName: 'Gupta Mart', branchName: 'Sector 62', address: '12 Sector 62, Noida', city: 'Noida', pincode: '201301', stateCode: '09', open: '08:00', close: '21:00', radiusKm: 5};
 function liveStore(cats = ['food', 'electrical'], {brand = false, products = [['Toor Dal', 'food'], ['LED Bulb 12W', 'electrical']]} = {}) {
@@ -18,12 +20,12 @@ function liveStore(cats = ['food', 'electrical'], {brand = false, products = [['
   assert.equal(SO.saveStore(s, a, STORE), '');
   assert.equal(SO.saveDelivery(s, a, {mode: 'moveai'}), '');
   assert.equal(SO.saveAgreement(s, a, {accept: true}), '');
-  for (const [name, category] of products) assert.equal(SO.addProduct(s, a, {name, category, price: 100, mrp: 120, size: '1 kg', stock: 10}), '');
+  for (const [name, category] of products) assert.equal(SO.addProduct(s, a, {name, category, price: 100, mrp: 120, size: '1 kg', stock: 10, ...DATES}), '');
   assert.equal(SO.submit(s, a), '');
   for (const k of Object.keys(a.sections)) if (a.sections[k].status === 'pending') assert.equal(SO.decide(s, a.id, k, 'approved'), '');
   return {s, a, k: a.storeKey};
 }
-const item = (o = {}) => ({name: 'Basmati Rice', size: '5 kg', category: 'Rice, grains & cereals', vegStatus: 'vegetarian', price: 450, mrp: 520, quantity: 20, lowStockAt: 3, status: 'active', ...o});
+const item = (o = {}) => ({name: 'Basmati Rice', size: '5 kg', category: 'Rice, grains & cereals', vegStatus: 'vegetarian', price: 450, mrp: 520, quantity: 20, lowStockAt: 3, status: 'active', ...DATES, ...o});
 
 // 1. The bug: a new store owner could not add products at all (form hidden, save refused).
 {
@@ -79,7 +81,7 @@ const item = (o = {}) => ({name: 'Basmati Rice', size: '5 kg', category: 'Rice, 
 {
   const {s, k} = liveStore();
   const tpl = CSV.template(k, Inventory.approvedCategories(s, k)[0]);
-  assert.match(tpl.split('\r\n')[0], /,mrp$/);
+  assert.match(tpl.split('\r\n')[0], /,mrp,batch,mfg_date,expiry_date$/);
   const csv = tpl.replace('EXAMPLE-001', 'GM-001').replace('Example item', 'Sona Masoori').replace('Example,draft', 'Example,active');
   const pv = CSV.preview(s, k, csv, Inventory); assert.equal(pv.error, undefined, pv.error);
   assert.equal(CSV.commit(s, k, pv, Inventory), '');

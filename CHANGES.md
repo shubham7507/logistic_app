@@ -1,5 +1,18 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-01 — Seller trust, Bihar checks, payment fix
+- **Payment fix:**
+  - UPI pays the MoveAI merchant account (it used to pay the customer's own UPI ID).
+  - Only the bank marks an order paid (demo button in the prototype); customers can't confirm their own payment.
+  - Unpaid orders expire after 15 minutes.
+  - The seller sees "waiting for payment, don't pack yet".
+- **Risk tiers:** low risk auto-approved on probation; medium reviewed by people; high adds video KYC. Pincode must match the state.
+- **Strict policy per state (Bihar on):** DigiLocker, selfie, geo-tagged shop photos and video KYC; plus supplier invoices and a field visit for food and electricals; plus a police certificate for flagged sellers.
+- **Admin:** risk-sorted queue with deadlines, evidence panel, reasons required for overrides, no self-review, probation list.
+- **Probation limits:** products, order value, no COD, longer payout hold.
+- **Expiry:** batch and dates for packaged food; FSSAI 30%/45-day rule hides items; customer expired-item report → refund + strike; 3 strikes suspend.
+- See `SELLER-TRUST-AND-PAYMENT-REPORT.md`.
+
 ## 2026-11-01 — Seller listing fix and delivery settings
 - **Fix:** sellers who joined through "Sell products" can now add, edit and CSV-import products. The catalogue used a fixed list of the four demo stores.
 - **Listing checks:** approved categories only; MRP required for packaged goods; price ≤ MRP; restricted items blocked; locked categories labelled.

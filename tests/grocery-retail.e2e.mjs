@@ -26,7 +26,7 @@ s.productCart[0].priceAtAdd=70;
 const pickup=O.placeOrder(s,{fromCart:true,fulfilment:'pickup',method:'upi',vpa:'test@okaxis'}).order;
 assert.equal(pickup.deliveryFee,0);assert.equal(pickup.total,140);assert.equal(p.reserved,2);assert.equal(I.available(p),8);
 assert.equal(pickup.status,'payment_pending');
-assert.equal(O.checkPayment(s,pickup),'ask');
+assert.equal(O.checkPayment(s,pickup),'waiting');
 ok(O.confirmCustomerPayment(s,pickup,true));
 assert.match(O.ordersScreen(s),/Store pickup/);
 ok(C.sellerAction(s,'groceryManager',pickup.id,'accept'));

@@ -45,7 +45,7 @@ export const groupOf = productGroup;
 export const settings = s => (s.plusSettings ||= {commission: {}, holdDays: {}, tcsPct: 0, tdsPct: 0, claimAutoLimit: 200, claimMax30d: 3, codRefusalLimit: 2, newSellerExtraHoldDays: 0, capacityPerCourier: 2, peakStart: '18:00', peakEnd: '22:00', peakBonus: 10, dailyTarget: 10, dailyBonus: 100});
 export const RECOMMENDED = {commission: {fresh: 6, food: 7, household: 8, electrical: 8, fashion: 18}, holdDays: {fresh: 3, food: 9, household: 9, electrical: 12, fashion: 17}, tcsPct: 0.5, tdsPct: 0.1};
 export const commissionRate = (s, o) => { const g = orderGroup(s, o), st = settings(s); return st.commission[g] ?? GROUPS[g].commission; };
-export const holdDays = (s, o) => { const g = orderGroup(s, o), st = settings(s), base = st.holdDays[g] ?? GROUPS[g].holdDays, partner = Object.values(s.shopPartners || {}).find(p => p.party === o.party); return base + ((partner?.completedOrders || 0) < 5 ? st.newSellerExtraHoldDays : 0); };
+export const holdDays = (s, o) => { const g = orderGroup(s, o), st = settings(s), base = st.holdDays[g] ?? GROUPS[g].holdDays, partner = Object.values(s.shopPartners || {}).find(p => p.party === o.party); return base + ((partner?.completedOrders || 0) < 5 ? st.newSellerExtraHoldDays : 0) + (partner?.probation?.active ? Number(partner.probation.limits?.extraHoldDays || 0) : 0); };
 export function orderGroup(s, o) { const gs = (o?.items || []).map(i => groupOf(s.products.find(p => p.id === i.productId))); return ['fashion', 'electrical', 'household', 'food', 'fresh'].find(g => gs.includes(g)) || 'food'; }
 
 // ---------- seed / enrichment ----------

@@ -8,6 +8,8 @@ import {SELLER_WORKSPACES, STORE_BY_MANAGER, storeTemplate} from '../js/seller-r
 import * as WH from '../js/workspace-hub.js';
 
 const fresh = (person = {id: 'P-NEW', name: 'Ramesh Gupta'}) => ({...JSON.parse(JSON.stringify(SEED)), person});
+const iso = d => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+const DATES = {batch: 'B-2611', mfgDate: iso(-30), expiryDate: iso(300)};
 const GOOD = {pan: 'ABCDE1234F', gstin: '09ABCDE1234F1Z5', account: '123456789012', ifsc: 'SBIN0001234'};
 const STORE = {storeName: 'Gupta Mart', branchName: 'Sector 62', address: '12 Sector 62, Noida', city: 'Noida', pincode: '201301', stateCode: '09', open: '08:00', close: '21:00', radiusKm: 5};
 function filled(s, {type = 'shop', cats = ['food', 'electrical'], kyc = GOOD, fssai = true, brand = false, store = STORE, mode = 'moveai', products = [['Toor Dal', 'food'], ['LED Bulb 12W', 'electrical']], source = null} = {}) {
@@ -18,7 +20,7 @@ function filled(s, {type = 'shop', cats = ['food', 'electrical'], kyc = GOOD, fs
   assert.equal(SO.saveStore(s, a, store), '');
   assert.equal(SO.saveDelivery(s, a, {mode}), '');
   assert.equal(SO.saveAgreement(s, a, {accept: true}), '');
-  for (const [name, category] of products) assert.equal(SO.addProduct(s, a, {name, category, price: 100, mrp: 120, size: '1 kg', stock: 10}), '');
+  for (const [name, category] of products) assert.equal(SO.addProduct(s, a, {name, category, price: 100, mrp: 120, size: '1 kg', stock: 10, ...DATES}), '');
   return a;
 }
 const approveAll = (s, a) => { for (const k of Object.keys(a.sections)) if (a.sections[k].status === 'pending') assert.equal(SO.decide(s, a.id, k, 'approved'), ''); };
@@ -71,7 +73,7 @@ const approveAll = (s, a) => { for (const k of Object.keys(a.sections)) if (a.se
   assert.equal(SO.saveKyc(s, a, {}), '', 'nothing to re-enter');
   const store = {...STORE, storeName: 'Raj Home Needs', stateCode: a.kyc.gstState, city: 'Noida'};
   assert.equal(SO.saveStore(s, a, store), ''); SO.saveDelivery(s, a, {mode: 'own'}); SO.saveAgreement(s, a, {accept: true});
-  SO.addProduct(s, a, {name: 'Floor Cleaner', category: 'household', price: 99, mrp: 120, size: '1 l', stock: 5});
+  SO.addProduct(s, a, {name: 'Floor Cleaner', category: 'household', price: 99, mrp: 120, size: '1 l', stock: 5, ...DATES});
   assert.equal(SO.submit(s, a), ''); assert.equal(a.sections.kyc.status, 'approved');
   approveAll(s, a); assert.equal(a.status, 'live'); assert.equal(s.shopPartners[a.storeKey].deliveryMode, 'own');
 }
@@ -117,9 +119,9 @@ const approveAll = (s, a) => { for (const k of Object.keys(a.sections)) if (a.se
 // 14–15. Listing checks: price above MRP, restricted items, category not selected, stock.
 {
   const s = fresh(), a = SO.startApplication(s); SO.saveType(s, a, {sellerType: 'shop', categories: ['food'], legalName: 'Test Co'});
-  assert.match(SO.addProduct(s, a, {name: 'Toor Dal', category: 'food', price: 200, mrp: 150, size: '1 kg', stock: 1}), /above the MRP/);
-  for (const n of ['Paracetamol tablet', 'Kingfisher Beer', 'Gold Flake Cigarette', 'Diwali Crackers']) assert.match(SO.addProduct(s, a, {name: n, category: 'food', price: 10, mrp: 10, size: '1', stock: 1}), /restricted/, n);
-  assert.match(SO.addProduct(s, a, {name: 'LED Bulb', category: 'electrical', price: 10, mrp: 10, size: '9 W', stock: 1}), /selected categories/);
+  assert.match(SO.addProduct(s, a, {name: 'Toor Dal', category: 'food', price: 200, mrp: 150, size: '1 kg', stock: 1, ...DATES}), /above the MRP/);
+  for (const n of ['Paracetamol tablet', 'Kingfisher Beer', 'Gold Flake Cigarette', 'Diwali Crackers']) assert.match(SO.addProduct(s, a, {name: n, category: 'food', price: 10, mrp: 10, size: '1', stock: 1, ...DATES}), /restricted/, n);
+  assert.match(SO.addProduct(s, a, {name: 'LED Bulb', category: 'electrical', price: 10, mrp: 10, size: '9 W', stock: 1, ...DATES}), /selected categories/);
   assert.match(SO.addProduct(s, a, {name: 'Toor Dal', category: 'food', price: 10, mrp: 10, size: '1 kg', stock: -1}), /Stock/);
 }
 // Submit needs every step and at least one product.
