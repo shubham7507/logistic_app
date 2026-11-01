@@ -3,7 +3,7 @@
 // apps, highlights each control, fills it in and explains what is happening. The same tours are recorded
 // into the videos on guide.html (tests/tour-journeys.e2e.cjs), so the guide always matches the app.
 // Everything here is demo-only: hidden with ?demo=off and never part of a real user flow.
-import {JOURNEYS, TEST_DATA} from './tour-journeys.js';
+import {JOURNEYS, TEST_DATA, ROLES} from './tour-journeys.js';
 
 const KEY = 'moveai-tour', esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m]));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -87,7 +87,8 @@ async function control(k) {
 
 export function start(id, {auto = true, speed = 'normal'} = {}) {
   const j = JOURNEYS[id]; if (!j) return;
-  try { localStorage.setItem('moveai-demo-mode', 'on'); } catch {}
+  try { localStorage.setItem('moveai-demo-mode', 'on'); localStorage.setItem('moveai-welcome-seen', '1'); } catch {}
+  document.body.classList.remove('demo-off'); document.getElementById('tour-welcome')?.remove();
   write({id, i: 0, ran: false, auto, speed, vars: {}, startedAt: Date.now()});
   window.__tourDone = false; window.__tourError = '';
   play(true);
@@ -109,6 +110,7 @@ async function play(force = false) {
         return;
       }
       if (at && here().split('#')[1] !== at.route) { location.hash = at.full.split('#')[1]; await sleep(700); }
+      if (at) { await sleep(150); const m = document.querySelector('main')?.textContent || ''; if (/Access denied|Page not found/.test(m)) { window.__tourError = `${step.title}: this screen is not available for this role (${at.route}).`; panel(t, j, step, 'This screen could not be opened for this role. Press Next to skip it.'); return; } }
       panel(t, j, step);
       if (t.paused) return;
       if (!t.auto && !t.doNow && !t.ran) { if (step.focus) { try { highlight(await waitFor(val(step.focus), 3000)); } catch {} } return; }
@@ -127,15 +129,18 @@ async function play(force = false) {
 }
 
 // ---------- testing panel (demo only) ----------
+let DEMO = true;
+const roleList = () => `<ul class="tt-list">${ROLES.map(r => `<li><span><b>${esc(r.label)}</b><small>${esc(r.app)}${r.soon ? ' · ' + esc(r.soon) : ''}</small></span><span class="row-actions">${r.around ? `<button type="button" class="button primary compact" data-tt-play="${r.around}">▶ Show me around</button>` : ''}${(r.tasks || []).map(id => JOURNEYS[id] ? `<button type="button" class="button secondary compact" data-tt-play="${id}">${esc(JOURNEYS[id].title)}</button>` : '').join('')}</span></li>`).join('')}</ul>`;
 function testerHtml() {
   const s = ctx.state(), ws = s.workspaces || [];
   const label = k => window.MoveAIRoleLabel?.(k) || k;
-  return `<div class="tour-head"><b>Tours &amp; testing</b><button type="button" class="tour-x" data-tt="close" aria-label="Close">✕</button></div>
-   <p class="muted">Demo only. Everything runs in this browser; nothing is sent anywhere.</p>
-   <h4>Watch a journey</h4><ul class="tt-list">${Object.entries(JOURNEYS).map(([id, j]) => `<li><span><b>${esc(j.title)}</b><small>${esc(j.who)}</small></span><span class="row-actions"><button type="button" class="button primary compact" data-tt-play="${id}">▶ Show me</button><button type="button" class="button secondary compact" data-tt-step="${id}">Step by step</button></span></li>`).join('')}</ul>
-   <h4>Test it yourself</h4><div class="row-actions"><button type="button" class="button secondary compact" data-tt="fresh">Start fresh as a new user</button><button type="button" class="button secondary compact" data-tt="admin">Open admin console (testing)</button><button type="button" class="button secondary compact" data-tt="full">Restore full demo</button></div>
+  return `<div class="tour-head"><b>Tours${DEMO ? ' &amp; testing' : ''}</b><button type="button" class="tour-x" data-tt="close" aria-label="Close">✕</button></div>
+   <p class="muted">Pick a role. <b>Show me around</b> visits every screen of that role; the other buttons play a task from start to finish. Tours run in this browser only.</p>
+   <label class="tt-mode"><input type="checkbox" data-tt-stepmode> Step by step (I press Next)</label>
+   ${roleList()}
+   ${DEMO ? `<h4>Test it yourself</h4><div class="row-actions"><button type="button" class="button secondary compact" data-tt="fresh">Start fresh as a new user</button><button type="button" class="button secondary compact" data-tt="admin">Open admin console (testing)</button><button type="button" class="button secondary compact" data-tt="full">Restore full demo</button></div>
    ${ws.length ? `<h4>Switch role</h4><div class="tt-roles">${ws.map(k => `<button type="button" class="button text compact" data-tt-ws="${esc(k)}">${esc(label(k))}</button>`).join('')}</div>` : ''}
-   <details><summary><b>Test data</b></summary><dl class="tt-data">${TEST_DATA.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl></details>
+   <details><summary><b>Test data</b></summary><dl class="tt-data">${TEST_DATA.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl></details>` : ''}
    <p><a href="guide.html">Open the full guide — every role, flows and videos</a></p>`;
 }
 function openTester() {
@@ -143,24 +148,39 @@ function openTester() {
   if (!box) { box = document.createElement('aside'); box.id = 'tour-tester'; box.className = 'tour-tester'; document.body.appendChild(box); }
   box.hidden = false; box.innerHTML = testerHtml();
   box.querySelector('[data-tt="close"]').onclick = () => { box.hidden = true; };
-  box.querySelectorAll('[data-tt-play]').forEach(b => b.onclick = () => { box.hidden = true; start(b.dataset.ttPlay, {auto: true}); });
-  box.querySelectorAll('[data-tt-step]').forEach(b => b.onclick = () => { box.hidden = true; start(b.dataset.ttStep, {auto: false}); });
+  box.querySelectorAll('[data-tt-play]').forEach(b => b.onclick = () => { box.hidden = true; start(b.dataset.ttPlay, {auto: !box.querySelector('[data-tt-stepmode]')?.checked}); });
   box.querySelectorAll('[data-tt-ws]').forEach(b => b.onclick = () => { const k = b.dataset.ttWs; const app = window.MoveAIProductFor?.(k) || 'business'; const file = {customer: 'index.html', partner: 'partner.html', business: 'business.html', admin: 'admin.html'}[app] || 'business.html'; location.href = `${file}#/home?ws=${encodeURIComponent(k)}`; });
+  if (!DEMO) return;
   box.querySelector('[data-tt="fresh"]').onclick = () => { window.MoveAIVNextTest?.startSignup(); location.href = 'index.html#/welcome'; };
   box.querySelector('[data-tt="full"]').onclick = () => { window.MoveAIVNextTest?.reset(); location.href = 'index.html#/home'; };
   box.querySelector('[data-tt="admin"]').onclick = () => { ctx.patch(s => { s.workspaces ||= []; if (!s.workspaces.includes('admin')) s.workspaces.push('admin'); }); location.href = 'admin.html#/sellerReview?ws=admin'; };
 }
 
+// First visit: ask which role to see (everyone, including the clean ?demo=off link). Skipped in automated tests.
+function welcome() {
+  if (document.getElementById('tour-welcome') || read()) return;
+  try { if (localStorage.getItem('moveai-welcome-seen') || (navigator.webdriver && localStorage.getItem('moveai-welcome') !== 'force')) return; } catch { return; }
+  const box = document.createElement('div'); box.id = 'tour-welcome'; box.className = 'tour-welcome-overlay'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'tw-title');
+  box.innerHTML = `<section class="tour-welcome"><h2 id="tw-title">Welcome to MoveAI</h2><p>Which role would you like to see? A guided tour shows every screen of that role, with plain-language captions. You can stop at any time.</p>
+    <div class="tw-roles">${ROLES.filter(r => r.around || r.tasks?.length).map(r => `<button type="button" class="tw-role" data-tw="${r.around || r.tasks[0]}"><b>${esc(r.label)}</b><small>${esc(r.app)}</small></button>`).join('')}</div>
+    <div class="tour-actions"><a class="button secondary compact" href="guide.html">Read the guide instead</a><button type="button" class="button text compact" data-tw-skip>Skip — I'll explore myself</button></div></section>`;
+  document.body.appendChild(box);
+  const done = () => { try { localStorage.setItem('moveai-welcome-seen', '1'); } catch {} box.remove(); };
+  box.querySelector('[data-tw-skip]').onclick = done;
+  box.querySelectorAll('[data-tw]').forEach(b => b.onclick = () => { done(); start(b.dataset.tw, {auto: true}); });
+}
 export function init({demo = true} = {}) {
-  if (!demo) return;
+  DEMO = demo;
   const q = new URLSearchParams(location.search);
   if (!document.getElementById('tour-fab')) {
-    const fab = document.createElement('button'); fab.id = 'tour-fab'; fab.type = 'button'; fab.className = 'tour-fab demo-only'; fab.textContent = '▶ Tours & testing'; fab.onclick = openTester; document.body.appendChild(fab);
+    const fab = document.createElement('button'); fab.id = 'tour-fab'; fab.type = 'button'; fab.className = 'tour-fab'; fab.textContent = demo ? '▶ Tours & testing' : '▶ Guided tours'; fab.onclick = openTester; document.body.appendChild(fab);
   }
+  const side = document.getElementById('sidebar');
+  if (side && !side.querySelector('.nav-guide-link')) { const a = document.createElement('a'); a.className = 'nav-guide-link'; a.href = 'guide.html'; a.textContent = '📘 Product guide & tours'; (document.getElementById('reset-demo') || side.lastElementChild)?.insertAdjacentElement('beforebegin', a); }
   if (q.get('tour') && JOURNEYS[q.get('tour')] && !read()) {
     const speed = SPEED[q.get('speed')] ? q.get('speed') : 'normal';
     history.replaceState(null, '', location.pathname + location.hash);
     start(q.get('tour'), {auto: q.get('mode') !== 'step', speed}); return;
   }
-  if (read()) setTimeout(() => play(), 400);
+  if (read()) setTimeout(() => play(), 400); else welcome();
 }

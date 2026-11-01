@@ -48,7 +48,7 @@ footer{padding:28px 0 40px;color:var(--muted);font-size:14px;border-top:1px soli
   <span class="badge" style="background:rgba(255,255,255,.18);color:#fff">Product guide · prototype</span>
   <h1>How MoveAI works</h1>
   <p>One sign-up for everyone: customers shop from local stores, shops sell and deliver, workers find jobs, and logistics businesses run trucks and movers. This page explains every role in plain words, shows each flow as a short video, and lets you try the live demo.</p>
-  <div class="row"><a class="btn primary" href="#journeys">▶ Watch the journeys</a><a class="btn ghost" href="index.html">Open the live demo</a><a class="btn ghost" href="#roles">Who uses MoveAI</a></div>
+  <div class="row"><a class="btn primary" href="#journeys">▶ Watch the journeys</a><a class="btn ghost" href="index.html?demo=on">Open the live demo</a><a class="btn ghost" href="#roles">Who uses MoveAI</a></div>
 </div></header>
 <nav class="toc" aria-label="Sections"><div class="wrap"><a href="#start">Before you start</a><a href="#roles">Roles</a><a href="#journeys">Journeys</a><a href="#rules">How the rules work</a><a href="#features">Features by role</a><a href="#test">Try it yourself</a><a href="#faq">Questions</a></div></nav>
 
@@ -99,7 +99,7 @@ footer{padding:28px 0 40px;color:var(--muted);font-size:14px;border-top:1px soli
   <h2>Try it yourself</h2>
   <p class="lead">Open the live demo and press <b>▶ Tours &amp; testing</b> (bottom-left) to start fresh as a new user, open the admin console for testing, switch roles, or play any journey. These test values work everywhere:</p>
   <div class="table-wrap"><table id="testdata"></table></div>
-  <p class="row" style="margin-top:14px"><a class="btn solid" href="index.html">Open the live demo</a><a class="btn line" href="index.html?demo=off">Clean demo (no testing buttons)</a></p>
+  <p class="row" style="margin-top:14px"><a class="btn solid" href="index.html?demo=on">Open the live demo</a><a class="btn line" href="index.html?demo=off">Clean demo (no testing buttons)</a></p><p class="meta" style="color:var(--muted)">The clean demo remembers your choice in this browser. To get the testing button back, open <a href="index.html?demo=on">index.html?demo=on</a>.</p>
 </div></section>
 
 <section id="faq"><div class="wrap">
@@ -116,7 +116,7 @@ footer{padding:28px 0 40px;color:var(--muted);font-size:14px;border-top:1px soli
 <div class="lightbox" id="lightbox" role="dialog" aria-label="Screenshot"><img alt=""></div>
 
 <script type="module">
-import {JOURNEYS, TEST_DATA} from './js/tour-journeys.js';
+import {JOURNEYS, TEST_DATA, ROLES as TOUR_ROLES} from './js/tour-journeys.js';
 const esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m]));
 const ROLES = [
   {name: 'Customer', app: 'MoveAI', does: ['Shop from local stores in one cart; each store sends its own package', 'Pay by UPI or card (cash on delivery where allowed)', 'Track orders, cancel, return, report expired items', 'Book moves, drivers and helpers'], flow: ['Sign up', 'Shop', 'Pay', 'Track', 'Receive / report'], journey: 'customer', link: 'index.html#/search'},
@@ -127,16 +127,20 @@ const ROLES = [
   {name: 'Logistics business', app: 'MoveAI Business', does: ['Register once with several services: transport, own fleet, packers & movers', 'Post loads, take trips, manage trucks and branches', 'Invite staff; attendance, payroll and khata', 'Invoices, e-way bills and payments'], flow: ['Register', 'KYC', 'Admin approves', 'Staff', 'Trips & money'], journey: 'logistics', link: 'business.html#/businessStart'},
   {name: 'MoveAI admin', app: 'MoveAI Admin', does: ['Review sellers by risk with evidence; set strict states', 'Approve logistics businesses and delivery partners', 'Watch orders, payments, payouts and claims', 'Manage probation, strikes and suspensions'], flow: ['Queue', 'Evidence', 'Decide', 'Monitor'], journey: 'admin', link: 'admin.html#/home'},
 ];
-document.getElementById('role-cards').innerHTML = ROLES.map(r => `<article class="card"><span class="app">${esc(r.app)}</span><h3>${esc(r.name)}</h3><div class="flow">${r.flow.map(s => `<span>${esc(s)}</span>`).join('<i>›</i>')}</div><ul>${r.does.map(d => `<li>${esc(d)}</li>`).join('')}</ul><div class="row">${r.journey ? `<a class="btn solid" href="#j-${r.journey}">▶ Watch</a>` : ''}<a class="btn line" href="${r.link}">Open in demo</a></div></article>`).join('');
+const TOUR_OF = {'Customer': 'customer', 'Shop owner (seller)': 'shop-owner', 'Store manager & staff (picker)': 'store-staff', 'Logistics business': 'logistics', 'MoveAI admin': 'admin'};
+const tourBtns = r => { const tr = TOUR_ROLES.find(x => x.id === TOUR_OF[r.name]); const extra = r.name.startsWith('Store manager') ? TOUR_ROLES.find(x => x.id === 'store-manager') : null; if (!tr) return '<span class="meta">Guided tour coming next.</span>'; return [tr, extra].filter(Boolean).map(x => x.around ? `<a class="btn solid" href="index.html?demo=on&tour=${x.around}#/home">▶ Show ${esc(x.label.toLowerCase())} around</a>` : '').join('') + (tr.tasks || []).map(id => JOURNEYS[id] ? `<a class="btn line" href="#j-${id}">${esc(JOURNEYS[id].title)}</a>` : '').join(''); };
+document.getElementById('role-cards').innerHTML = ROLES.map(r => `<article class="card"><span class="app">${esc(r.app)}</span><h3>${esc(r.name)}</h3><div class="flow">${r.flow.map(s => `<span>${esc(s)}</span>`).join('<i>›</i>')}</div><ul>${r.does.map(d => `<li>${esc(d)}</li>`).join('')}</ul><div class="row">${tourBtns(r)}<a class="btn line" href="${r.link.replace('.html', '.html?demo=on')}">Open in demo</a></div></article>`).join('');
 
 const results = await fetch('docs/guide/journeys.json').then(r => r.ok ? r.json() : []).catch(() => []);
 const recorded = id => results.find(x => x.id === id && x.ok);
-document.getElementById('journey-list').innerHTML = Object.entries(JOURNEYS).map(([id, j]) => `<article class="journey" id="j-${id}">
+const card = ([id, j]) => `<article class="journey" id="j-${id}">
   <div>${recorded(id) ? `<video controls preload="none" playsinline poster="docs/guide/shots/${id}-01.jpg" src="docs/guide/${id}.mp4"></video>` : `<div class="card note">Video not recorded yet — use “Show me in the app”.</div>`}</div>
   <div><h3 style="margin:0 0 4px">${esc(j.title)}</h3><p class="meta">${esc(j.who)} · about ${j.minutes} min · ${j.steps.length} steps</p>
-    <div class="row" style="margin-bottom:10px"><a class="btn solid" href="index.html?tour=${id}#/home">▶ Show me in the app</a><a class="btn line" href="index.html?tour=${id}&mode=step#/home">Step by step</a></div>
+    <div class="row" style="margin-bottom:10px"><a class="btn solid" href="index.html?demo=on&tour=${id}#/home">▶ Show me in the app</a><a class="btn line" href="index.html?demo=on&tour=${id}&mode=step#/home">Step by step</a></div>
     <ol class="steps">${j.steps.map((s, i) => `<li>${recorded(id) ? `<img loading="lazy" src="docs/guide/shots/${id}-${String(i + 1).padStart(2, '0')}.jpg" alt="Screen for step ${i + 1}: ${esc(s.title)}">` : '<span></span>'}<span><span class="who">${esc(s.role || '')}</span><b>${i + 1}. ${esc(s.title)}</b><small>${esc(typeof s.say === 'function' ? '' : s.say || '')}</small></span></li>`).join('')}</ol>
-    <p class="meta" style="margin-top:8px">${esc(j.done || '')}</p></div></article>`).join('');
+    <p class="meta" style="margin-top:8px">${esc(j.done || '')}</p></div></article>`;
+const all = Object.entries(JOURNEYS);
+document.getElementById('journey-list').innerHTML = `<h3 id="tours-around">Show me around: every function of a role</h3>` + all.filter(([, j]) => j.kind === 'around').map(card).join('') + `<h3 id="tours-tasks">Tasks from start to finish</h3>` + all.filter(([, j]) => j.kind !== 'around').map(card).join('');
 
 const FEATURES = [
   ['Sign up once, switch roles', 1, 1, 1, 1, 1, 1, 0], ['Shop from many stores, one payment', 1, 0, 0, 0, 0, 0, 0], ['Report expired item → instant refund', 1, 0, 0, 0, 0, 0, 1],

@@ -1,5 +1,17 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-02 — Tours for every role and function (batch 2: commerce and admin)
+- **"Show me around" tours** visit every function of a role with plain-language captions:
+  - shop owner (22 screens), store manager (18), store staff (6), customer (8), MoveAI admin (18).
+- **New task tours:** book packers & movers, and an in-store sale at the counter. These sit alongside the earlier tasks: shop to first order, Bihar seller, picker joining, customer order and expired-item report, logistics registration.
+- **For every visitor:**
+  - a first-visit "Which role would you like to see?" picker;
+  - a "📘 Product guide & tours" link in every app's sidebar;
+  - "▶ Guided tours" on the clean `?demo=off` link (testing tools stay hidden there).
+- **Safety check:** a tour stops with a message if a screen is not available for the role.
+- **Guide:** role cards gain "Show me around" buttons, and journeys are grouped into role tours and task tours.
+- **Coming next (batch 1):** goods owner, transporter, truck owner, movers, drivers, helper, business staff and delivery partner.
+
 ## 2026-11-02 — Product guide, guided tours, testing panel, CI
 - **`guide.html`:** a plain-language guide covering every role, how the rules work, features by role, test data, and 6 journey videos with step screenshots.
 - **"Show me" tours** (`js/tour.js`, `js/tour-journeys.js`): play a journey inside the real app with captions and highlights, or go step by step.

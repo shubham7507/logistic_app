@@ -30,7 +30,43 @@
     "error": ""
   },
   {
-    "id": "admin",
+    "id": "role-shop-owner",
+    "steps": 23,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "role-store-manager",
+    "steps": 19,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "role-store-staff",
+    "steps": 7,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "role-customer",
+    "steps": 9,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "role-admin",
+    "steps": 19,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-booking",
+    "steps": 4,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-counter",
     "steps": 5,
     "ok": true,
     "error": ""

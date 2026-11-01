@@ -345,7 +345,9 @@ export const DEMO_ONLY_TEXT = /^(Demo|Prototype)\b|demo (manager|store staff) ac
 // Persona labels, test hints and "Reset demo" help testing but must not ship. Turn them off with
 // ?demo=off (and back on with ?demo=on); the choice is remembered on this device.
 export function demoModeFromUrl(search, stored) {
-  const v = new URLSearchParams(String(search || '')).get('demo');
+  const q = new URLSearchParams(String(search || '')), v = q.get('demo');
   if (v === 'off' || v === 'on') return v;
+  // Opening a tour link always turns demo mode back on (otherwise the tour could never start).
+  if (q.get('tour')) return 'on';
   return stored === 'off' ? 'off' : 'on';
 }
