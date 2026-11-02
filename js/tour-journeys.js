@@ -386,10 +386,11 @@ Object.assign(JOURNEYS, {
       {role: 'Packers & movers', title: 'Customer OTP', say: 'The job completes only with the customer\'s 4-digit OTP. Then the customer pays and payouts are released.', do: [{fill: '#moving-otp', value: c => (c.state().movingJobs || []).find(j => j.id === 'MOV-601')?.customerOtp}, {click: '[data-op="moving-step"]'}]},
     ]},
   'task-worker-join': {title: 'Sign up as a driver or helper', who: 'Driver / helper', minutes: 1,
+    verify: s => (s.candidates || []).some(c => c.name === 'Raju Kumar' && c.workerType === 'helper' && (c.skills || []).length) ? '' : 'Helper profile was not saved',
     done: 'One sign-up, a short work profile, and the person can browse jobs straight away. Licence checks happen before driving work.',
     steps: [...signUp('9123456791', 'work', 'New worker'),
       {role: 'New worker', title: 'What work do you want?', say: 'Commercial driver, personal driver, khalasi/helper or office staff; area, availability and expected pay.', at: 'partner.html#/candidateProfile',
-        do: [{check: 'input[name=workerType][value=helper]'}, {fill: 'input[name=name]', value: 'Raju Kumar'}, {fill: 'input[name=location]', value: 'Patna'}, {fill: 'input[name=expectedPay]', value: '600'}, {submit: '#candidate-profile-form'}]},
+        do: [{check: 'input[name=workerType][value=helper]'}, {fill: 'input[name=name]', value: 'Raju Kumar'}, {fill: 'input[name=location]', value: 'Patna'}, {check: 'input[name=skills][value="Loading / unloading"]'}, {check: 'input[name=skills][value="Moving helper / packer"]'}, {fill: 'input[name=expectedPay]', value: '600'}, {submit: '#candidate-profile-form'}]},
       {role: 'New worker', title: 'Browse jobs', say: 'Openings that match the profile; apply in one tap. Businesses can also invite the worker as staff.', focus: 'main', do: [{see: 'main h1'}]},
     ]},
   'task-staff': {title: 'Business staff: open my work and check in', who: 'Business owner · Staff', minutes: 1,
@@ -446,6 +447,117 @@ ROLES.splice(ROLES.findIndex(r => r.id === 'admin'), 0,
   {id: 'business-staff', label: 'Business staff', app: 'MoveAI Business', around: 'role-business-staff', tasks: ['task-staff']},
   {id: 'delivery-partner', label: 'Delivery partner', app: 'MoveAI Partner', around: 'role-delivery-partner', tasks: ['task-delivery-join', 'task-delivery']},
 );
+
+// ---------- batch 3: work, hiring and helper tours ----------
+const dayIso = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+const switchTo = ws => ({run: () => { window.MoveAIVNextTest?.switchWorkspace(ws); }, reload: true});
+Object.assign(JOURNEYS, {
+  'task-hire-worker': {title: 'Post when free, get hired for a trip', who: 'Commercial driver · Transporter', minutes: 2,
+    verify: s => { const o = (s.workOffers || []).find(x => x.from === 'transporter' && x.talentKey === 'PW-MOHAN' && x.place === 'Patna → Delhi'); return o?.status === 'done' && (s.workRatings || []).some(r => r.offerId === o.id) ? '' : 'Offer was not accepted, done and rated'; },
+    done: 'The driver posted when and where he is free; the transporter found him with filters, sent a one-trip offer, he accepted on his home screen, and after the job the transporter marked it done (pay approved) and rated him.',
+    steps: [enterAs('Commercial driver', 'commercialDriver', 'a commercial driver (Mohan)'),
+      {role: 'Commercial driver', title: 'Post when I am free', say: 'Like "Available truck", but for people: dates, place, a return route and pay. It expires on its own.', at: 'partner.html#/myAvailability',
+        do: [{fill: '#availability-form [name=area]', value: 'Patna'}, {fill: '#availability-form [name=routeTo]', value: 'Delhi'}, {fill: '#availability-form [name=from]', value: () => dayIso(1)}, {fill: '#availability-form [name=to]', value: () => dayIso(3)}, {fill: '#availability-form [name=pay]', value: '3000'}, {select: '#availability-form [name=payType]', value: 'per trip'}, {submit: '#availability-form'}]},
+      {role: 'Transporter', title: 'The transporter looks for a driver', say: 'Raj Logistics needs a driver for a Patna → Delhi trip.', at: 'index.html#/home', do: [switchTo('transporter')]},
+      {role: 'Transporter', title: 'Find drivers & helpers', say: 'Real filters: work, licence, area or route, free on a date, pay, rating, language. Numbers stay hidden until hiring.', at: 'business.html#/findTalent',
+        do: [{fill: '[data-talent-filter] [name=area]', value: 'Patna'}, {check: '[data-talent-filter] [name=postedOnly]'}, {see: '[data-wx="open-talent"][data-id="PW-MOHAN"]'}]},
+      {role: 'Transporter', title: 'Open the profile and send an offer', say: 'Rating, experience, licence, checks and when he is free. One trip, one day, or today with same-day pay.', do: [{click: '[data-wx="open-talent"][data-id="PW-MOHAN"]'},
+        {fill: '#hire-form [name=date]', value: () => dayIso(1)}, {fill: '#hire-form [name=pay]', value: '3000'}, {fill: '#hire-form [name=place]', value: 'Patna → Delhi'}, {submit: '#hire-form'}]},
+      {role: 'Commercial driver', title: 'The offer arrives on his home screen', say: 'Accept or decline in one tap, with the pay shown.', at: 'index.html#/home', do: [switchTo('commercialDriver')]},
+      {role: 'Commercial driver', title: 'Accept', say: 'The transporter is told at once.', at: 'partner.html#/home',
+        do: [{run: c => c.set('off', (c.state().workOffers || []).find(o => o.from === 'transporter' && o.place === 'Patna → Delhi')?.id || '')}, {click: c => `[data-op="offer-accept"][data-id="${c.vars().off}"]`}]},
+      {role: 'Transporter', title: 'After the job: done, pay and rate', say: 'Mark it done (the pay is approved), or report a no-show (a strike). Both sides rate each other.', at: 'index.html#/home', do: [switchTo('transporter')]},
+      {role: 'Transporter', title: 'Offers I sent', say: 'Waiting → accepted → done. The driver\'s number is now visible.', at: 'business.html#/hireOffers',
+        do: [{click: c => `[data-wx="done"][data-id="${c.vars().off}"]`}, {click: c => `[data-wx="rate"][data-id="${c.vars().off}"][data-stars="5"]`}]},
+    ]},
+  'task-book-helpers': {title: 'Book helpers for loading', who: 'Customer · Khalasi / helper', minutes: 1,
+    verify: s => (s.serviceRequests || []).some(r => r.type === 'helpers' && r.status === 'accepted') ? '' : 'Helpers were not confirmed',
+    done: 'The customer booked two helpers by the hour with the price shown, a verified helper accepted on his home screen, and MoveAI filled the second place from nearby helpers.',
+    steps: [enterAs('Customer', 'personal', 'a customer'),
+      {role: 'Customer', title: 'Book helpers', say: 'Loading, shifting or packing. ₹120 per helper per hour, pay after the work.', at: 'index.html#/home', do: [{click: '[data-customer-service="helpers"]'}]},
+      {role: 'Customer', title: 'How many, how long, where', say: 'The price updates as you change the numbers.', do: [{fill: '#book-helpers-form [name=count]', value: '2'}, {fill: '#book-helpers-form [name=hours]', value: '4'}, {fill: '#book-helpers-form [name=location]', value: 'Boring Road, Patna'}, {submit: '#book-helpers-form'}]},
+      {role: 'Khalasi / helper', title: 'A helper gets the job', say: 'Verified helpers nearby see it on their home screen.', at: 'index.html#/home', do: [switchTo('helper')]},
+      {role: 'Khalasi / helper', title: 'Accept', say: 'Pay and hours are shown before accepting.', at: 'partner.html#/home',
+        do: [{run: c => c.set('off', (c.state().workOffers || []).find(o => o.kind === 'helpers' && o.status === 'pending')?.id || '')}, {click: c => `[data-op="offer-accept"][data-id="${c.vars().off}"]`}]},
+      {role: 'Customer', title: 'Helpers confirmed', say: 'Names, ID check and a call button that keeps numbers hidden.', at: 'index.html#/home', do: [switchTo('personal')]},
+      {role: 'Customer', title: 'The booking', say: 'Status, helpers and the price.', at: 'index.html#/serviceDetail', focus: 'main', do: [{see: 'main h1'}]},
+    ]},
+  'task-monthly-driver': {title: 'Choose a monthly personal driver', who: 'Customer', minutes: 1,
+    verify: s => (s.serviceRequests || []).some(r => r.id === 'SR-MONTHLY' && r.status === 'accepted') && (s.favouriteDrivers || []).length ? '' : 'Driver not chosen or not saved as favourite',
+    done: 'For a monthly driver the customer sees three verified drivers near them, books a paid trial day, chooses one, sees the driver card and saves the driver as a favourite to rebook later.',
+    steps: [enterAs('Customer', 'personal', 'a customer'),
+      {role: 'Customer', title: 'A monthly driver request', say: 'Monthly drivers are chosen, not auto-assigned like hourly ones.', at: 'index.html#/home',
+        do: [{patch: s => { s.serviceRequests.unshift({id: 'SR-MONTHLY', customer: 'personal', customerName: 'Shubham Kumar', type: 'driver', title: 'Personal Driver · Monthly · Creta automatic', hireType: 'monthly', duration: 1, carType: 'SUV automatic', location: 'Sector 62, Noida', date: dayIso(5), quote: {total: 22000, driverEarning: 20900}, status: 'searching', provider: null, providerName: null, paid: false, rating: null, conversationId: null, createdAt: 'today'}); s.selectedServiceId = 'SR-MONTHLY'; }}]},
+      {role: 'Customer', title: 'Three drivers near you', say: 'Rating, experience, police check and languages; call through MoveAI.', at: 'index.html#/serviceDetail', do: [{click: '[data-route="driverChoice"]'}]},
+      {role: 'Customer', title: 'Book a trial day, then choose', say: 'A paid trial day first, then choose the driver you like.', do: [{click: '[data-wx="trial"][data-id="PW-RAJESH"]'}, {click: '[data-wx="choose-driver"][data-id="PW-ANIL"]'}]},
+      {role: 'Customer', title: 'Driver card and favourite', say: 'Save a driver you like and book them again from Hire a driver.', do: [{click: '[data-wx="favourite"]'}]},
+    ]},
+  'task-picker-expiry': {title: 'Pick an order with the expiry check', who: 'Store staff (picker)', minutes: 1,
+    verify: s => { const o = (s.customerOrders || []).find(x => x.id === s.tourPickOrder); return o?.pick?.completedAt && Object.keys(o.pick.batches || {}).length ? '' : 'Order not picked with a batch check'; },
+    done: 'Asha checked in, opened the order from her home screen, scanned each item, picked the batch MoveAI suggested (earliest safe expiry first) and confirmed the date on the pack. Expired or nearly expired stock can\'t be picked.',
+    steps: [enterAs('Store staff', 'picker', 'store staff (Asha at ABC Grocery)'),
+      {role: 'Store staff', title: 'The store accepts an order', say: 'ABC Grocery accepted an order and offered it to Asha.', at: 'index.html#/home',
+        do: [{async: true, patch: async s => { const O = await import('./product-orders.js'), C = await import('./commerce.js'), G = await import('./grocery-staff.js'), P = await import('./commerce-plus.js'); P.ensurePlus(s);
+          const back = s.currentWorkspace; s.currentWorkspace = 'grocery'; const r = O.placeOrder(s, {productId: 'PRD-101', qty: 1, address: '22 Fraser Road, Patna', method: 'cod'}); if (!r.ok) throw new Error(r.error); const e = C.sellerAction(s, 'grocery', r.order.id, 'accept'); if (e) throw new Error(e);
+          const a = G.assignPicker(s, 'grocery', r.order.id, 'PICK-001'); if (a) throw new Error(a); s.tourPickOrder = r.order.id; s.currentWorkspace = back; }}]},
+      {role: 'Store staff', title: 'Check in', say: 'The home screen says what to do now. Checking in also marks attendance for payroll.', at: 'business.html#/home', do: [{click: '[data-commerce="start-picker-shift"]'}]},
+      {role: 'Store staff', title: 'The order is on her home screen', say: 'Next order to pick, items in shelf order, one button to start.', do: [{see: '.wh-now .pick-preview'}, {click: '.wh-now [data-route="pickTasks"]'}]},
+      {role: 'Store staff', title: 'Start picking', say: 'Scan each item; MoveAI shows which batch to take.', do: [{click: c => `[data-commerce="pick-start"][data-id="${c.state().tourPickOrder}"]`}]},
+      {role: 'Store staff', title: 'Scan and check the date on the pack', say: 'Pick the suggested batch and tick that the date on the pack is that day or later. Freshness checks for fresh food.', do: [
+        {click: c => `[data-plus-demo-scan^="${c.state().tourPickOrder}|"]`}, {check: c => `[data-expiry-ok^="${c.state().tourPickOrder}|"]`},
+        {run: c => document.querySelectorAll(`[data-quality^="${c.state().tourPickOrder}|"]`).forEach(x => { if (!x.checked) x.click(); })},
+        {click: c => `[data-commerce="pick-check"][data-id="${c.state().tourPickOrder}"]`}]},
+      {role: 'Store staff', title: 'Complete picking', say: 'The store packs and seals the bag next.', do: [{click: c => `[data-commerce="pick-complete"][data-id="${c.state().tourPickOrder}"]`}]},
+    ]},
+  'task-driver-safety': {title: 'Driver safety: training, selfie, SOS', who: 'Commercial driver', minutes: 1,
+    verify: s => s.workerStatus?.commercialDriver?.trainingDone && s.workerStatus?.commercialDriver?.selfieDate && (s.cases || []).some(c => /SOS/.test(c.subject)) ? '' : 'Training, selfie or SOS missing',
+    done: 'A 3-minute safety training once, a selfie check each day so no one else uses the account, and an SOS button during a trip that alerts MoveAI and the business.',
+    steps: [enterAs('Commercial driver', 'commercialDriver', 'a commercial driver'),
+      {role: 'Commercial driver', title: 'Safety training', say: '3 short cards and 3 questions, needed once before the first MoveAI trip.', at: 'partner.html#/driverTraining',
+        do: [{check: '#training-form input[name=q0][value="0"]'}, {check: '#training-form input[name=q1][value="1"]'}, {check: '#training-form input[name=q2][value="1"]'}, {submit: '#training-form'}]},
+      {role: 'Commercial driver', title: 'Today\'s selfie check', say: 'A quick selfie each day confirms it is really him working.', at: 'partner.html#/dailySelfie', do: [{file: '#selfie-form [name=selfie]', value: 'selfie-today.jpg'}, {submit: '#selfie-form'}]},
+      {role: 'Commercial driver', title: 'SOS during a trip', say: 'If anything goes wrong, one press alerts MoveAI and the business with his location.', at: 'partner.html#/myJobs', do: [{click: '[data-op="open-trip"][data-id="TRP-501"]'}, {click: '[data-wx="sos"]'}]},
+    ]},
+  'task-in-person-join': {title: 'Join a worker in person', who: 'Shop owner', minutes: 1,
+    verify: s => (s.pickerStaff || []).some(p => p.joinMethod === 'in_person' && p.name === 'Sunita Devi') ? '' : 'Worker not added',
+    done: 'For staff without a smartphone, the owner checks the original ID face to face, the worker confirms with an OTP on a family phone, and only the last 4 characters of the ID are kept.',
+    steps: [enterAs('Shop owner', 'grocery', 'the owner of ABC Grocery'),
+      {role: 'Shop owner', title: 'Order preparation team', say: 'Invite by link as usual, or join a worker who is standing with you.', at: 'business.html#/shopTeam', do: [{click: '[data-route="inPersonJoin"]'}]},
+      {role: 'Shop owner', title: 'Check the ID face to face', say: 'Name as on the ID, an OTP to their (or a family) phone, the ID type and last 4 characters, and a photo.', do: [
+        {fill: '#in-person-form [name=name]', value: 'Sunita Devi'}, {fill: '#in-person-form [name=mobile]', value: '9876500011'}, {fill: '#in-person-form [name=otp]', value: '123456'}, {select: '#in-person-form [name=idType]', value: 'voter'},
+        {fill: '#in-person-form [name=idLast4]', value: '4321'}, {file: '#in-person-form [name=photo]', value: 'sunita.jpg'}, {check: '#in-person-form [name=sawOriginal]'}, {submit: '#in-person-form'}]},
+    ]},
+  'task-regular-crew': {title: 'Regular crew for a truck', who: 'Transporter', minutes: 1,
+    verify: s => (s.ownedVehicles?.transporter || []).some(v => v.regularCrew?.driverId === 'WORKER-001') ? '' : 'Regular crew not saved',
+    done: 'The driver and khalasi who usually work on a truck are saved once; when the truck is assigned to a trip they are picked automatically.',
+    steps: [enterAs('Transporter', 'transporter', 'a transporter'),
+      {role: 'Transporter', title: 'Open a truck', say: 'Each truck has its documents, uses and now its regular crew.', at: 'business.html#/fleet', do: [{click: '[data-op="open-vehicle"][data-id="VEH-T01"]'}]},
+      {role: 'Transporter', title: 'Save the regular crew', say: 'Mohan drives it; Ramesh is the khalasi.', do: [{select: '[data-crew-driver]', value: 'WORKER-001'}, {select: '[data-crew-helper]', value: 'WORKER-002'}, {click: '[data-wx="save-crew"]'}]},
+      {role: 'Transporter', title: 'Assign the truck to a trip', say: 'Choosing the truck fills in its crew.', at: 'business.html#/trips', do: [{click: '[data-op="open-trip"][data-id="TRP-503"]'}, {click: '[data-op="open-assign"]'}, {check: 'input[name=vehicleId][value="VEH-T01"]'}, {see: '.avail-chip'}]},
+    ]},
+  'task-practice-delivery': {title: 'Try a practice delivery', who: 'Delivery partner', minutes: 1,
+    verify: s => (s.customerOrders || []).some(o => o.practice && o.status === 'delivered') ? '' : 'Practice order not delivered',
+    done: 'A new partner can practise straight from the home screen: a sample packed order, accept, share location, collect with the store code and deliver with the customer code.',
+    steps: [enterAs('Delivery partner', 'deliveryPartner', 'a delivery partner'),
+      {role: 'Delivery partner', title: 'Try a practice delivery', say: 'When there is no real order, a sample one at ABC Grocery is offered to you.', at: 'delivery.html#/home', do: [{click: '[data-commerce="practice-delivery"]'}]},
+      {role: 'Delivery partner', title: 'Accept from home', say: 'Store, drop, bags, items and what you earn are shown.', do: [{click: '.wh-now [data-commerce="accept-job"]'}]},
+      {role: 'Delivery partner', title: 'Collect and deliver', say: 'Share location, enter the store code 2468, then the customer code 1357.', at: 'delivery.html#/deliveryJobs', do: [
+        {run: c => c.set('po', (c.state().customerOrders || []).find(o => o.practice)?.id || '')}, {click: '[data-geo-start-demo]'}, {fill: c => `[data-code="${c.vars().po}"]`, value: '2468'}, {click: c => `[data-commerce="pickup"][data-id="${c.vars().po}"]`},
+        {fill: c => `[data-code="${c.vars().po}"]`, value: '1357'}, {click: c => `[data-commerce="deliver"][data-id="${c.vars().po}"]`}]},
+    ]},
+});
+// New screens in the role tours.
+{
+  const add = (id, after, item) => { const j = JOURNEYS[id]; if (!j) return; const i = j.steps.findIndex(s => s.at && s.at.endsWith(`#/${after}`)); const file = j.steps.find(s => s.at && s.at.includes('#/') && !s.at.startsWith('index.html'))?.at.split('#')[0] || 'partner.html'; j.steps.splice(i < 0 ? j.steps.length : i + 1, 0, {role: j.steps[1]?.role || j.who, title: item[1], say: item[2], at: `${file}#/${item[0]}`, focus: 'main h1', do: [{see: 'main h1'}]}); };
+  for (const id of ['role-goods-owner', 'role-transporter', 'role-truck-owner', 'role-movers']) add(id, 'people', ['findTalent', 'Find drivers & helpers', 'Who is free, when and where, with filters; hire for one trip or one day in one tap.']);
+  for (const id of ['role-commercial-driver', 'role-personal-driver', 'role-helper']) add(id, 'work', ['myAvailability', 'When I am free', 'Post dates, place and pay so businesses nearby can send an offer.']);
+  add('role-commercial-driver', 'myAvailability', ['driverTraining', 'Safety training', 'A 3-minute training before the first trip.']);
+  add('role-commercial-driver', 'driverTraining', ['dailySelfie', 'Today\'s selfie check', 'A selfie each day so only the real driver works.']);
+}
+const rolesAdd = (id, tasks) => { const r = ROLES.find(x => x.id === id); if (r) r.tasks = [...new Set([...(r.tasks || []), ...tasks])]; };
+rolesAdd('transporter', ['task-hire-worker', 'task-regular-crew']); rolesAdd('goods-owner', ['task-hire-worker']); rolesAdd('truck-owner', ['task-regular-crew']);
+rolesAdd('commercial-driver', ['task-hire-worker', 'task-driver-safety']); rolesAdd('personal-driver', ['task-monthly-driver']); rolesAdd('helper', ['task-book-helpers']);
+rolesAdd('customer', ['task-book-helpers', 'task-monthly-driver']); rolesAdd('store-staff', ['task-picker-expiry']); rolesAdd('shop-owner', ['task-in-person-join']); rolesAdd('delivery-partner', ['task-practice-delivery']);
 
 export const TEST_DATA = [
   ['OTP (sign-up, DigiLocker, staff join)', '123456'],

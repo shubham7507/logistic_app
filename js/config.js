@@ -58,6 +58,19 @@ export const ROLE_CONFIG={
   deliveryPartner2:{label:'Delivery Partner 2',subtitle:'Store delivery',icon:'D',nav:nav.deliveryPartner2,branches:false,homePhase:'P16'},
 };
 
+
+// Work and hiring extras (js/work-extras.js): who may open each screen.
+export const WORK_EXTRA_ROUTES={
+  dailySelfie:{title:'Today\'s selfie check',roles:['commercialDriver','personalDriver','helper']},
+  driverTraining:{title:'Safety training',roles:['commercialDriver','personalDriver']},
+  myAvailability:{title:'When I am free',roles:['commercialDriver','personalDriver','helper']},
+  findTalent:{title:'Find drivers & helpers',roles:['goods','transporter','vehicle','movers','staff']},
+  talentProfile:{title:'Worker profile',roles:['goods','transporter','vehicle','movers','staff']},
+  hireOffers:{title:'Offers I sent',roles:['goods','transporter','vehicle','movers','staff']},
+  bookHelpers:{title:'Book helpers',roles:['personal']},
+  driverChoice:{title:'Choose your monthly driver',roles:['personal']},
+  inPersonJoin:{title:'Join a worker in person',roles:['grocery','groceryFresh','electrical','fashion','groceryManager','groceryFreshManager','electricalManager','fashionManager','transporter','goods','vehicle','movers']},
+};
 export const ROUTES={
   helpDesk:{title:'Help Desk',phase:'P16'},
   home:{title:'Home',phase:'P0'}, search:{title:'Search products',phase:'P4'},productDetail:{title:'Product details',phase:'P16'},cartAdded:{title:'Added to cart',phase:'P16'},cart:{title:'Cart',phase:'P16'},orders:{title:'My orders',phase:'P4'},orderTracking:{title:'Track order',phase:'P16'},pickSchedule:{title:'My schedule',phase:'P16'},pickTasks:{title:'Preparation tasks',phase:'P16'},pickEarnings:{title:'My earnings',phase:'P16'},pickProfile:{title:'Store staff profile',phase:'P16'},
@@ -96,6 +109,8 @@ export const HUBS=[
   {id:'staff',label:'Staff',icon:'♟',primary:'easyStaff'},
   {id:'money',label:'Money',icon:'₹',primary:'shopEarnings'},
   {id:'business',label:'Business',icon:'⌘',primary:'shopBranches'},
+  {id:'review',label:'Approvals & people',icon:'✓',primary:'approvals'},
+  {id:'settings',label:'Settings & reports',icon:'⚙',primary:'plusReports'},
   {id:'other',label:'More',icon:'□'},
 ];
 export const HUB_OF_ROUTE={
@@ -106,6 +121,9 @@ export const HUB_OF_ROUTE={
   shopSales:'money',shopEarnings:'money',payLedgers:'money',money:'money',invoices:'money',deliveryEarnings:'money',deliveryCash:'money',pickEarnings:'money',myHR:'money',
   shopBranches:'business',plusAnalytics:'business',plusStore:'business',shopProfile:'business',branches:'business',business:'business',bank:'business',serviceExpansion:'business',managerProfile:'business',account:'business',pickProfile:'business',deliveryProfile:'business',
 };
+// MoveAI admin: group the console instead of hiding every function under "More".
+Object.assign(HUB_OF_ROUTE,{commerceOrders:'orders',commerceIssues:'orders',plusClaims:'orders',cases:'orders',commercePartners:'review',verification:'review',approvals:'review',documents:'review',plusApprovals:'review',users:'review',commercePayments:'money',payOps:'money',plusSettings:'settings',plusReports:'settings',audit:'settings',
+  findTalent:'staff',talentProfile:'staff',hireOffers:'staff',inPersonJoin:'staff'});
 export const hubForRoute=route=>HUB_OF_ROUTE[route]||'other';
 export function groupNavByHub(nav){
   const groups=new Map(HUBS.map(h=>[h.id,{...h,items:[]}]));
@@ -150,9 +168,11 @@ export function allowedRoutes(roleKey){
     roleKey==='admin'?['verification','verificationItem','cases','tripDetail','pricingRules']:[];
   const blocked=roleKey==='goods'?['movingJob','staffEvents']:[];
   const pickerLegacy=workerWorkspaces().includes(roleKey)?['pickEarnings','myWork']:[];
-  const set=new Set([...role.nav.map(([id])=>id),'states',...extra,...common,...opsExtra,...pickerLegacy]);blocked.forEach(r=>set.delete(r));
+  const workExtra=Object.entries(WORK_EXTRA_ROUTES).filter(([,r])=>r.roles.includes(roleKey)||(r.roles.includes('grocery')&&retailOwnerAndManagers().includes(roleKey))).map(([k])=>k);
+  const set=new Set([...role.nav.map(([id])=>id),'states',...extra,...common,...opsExtra,...pickerLegacy,...workExtra]);blocked.forEach(r=>set.delete(r));
   if(roleKey==='movers')set.delete('trips');
   return set;
 }
 
 export function routeTitle(route){return ROUTES[route]?.title||'Page not found'}
+for(const [k,v] of Object.entries(WORK_EXTRA_ROUTES))ROUTES[k]??={title:v.title,phase:'Work'};

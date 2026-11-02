@@ -17,7 +17,7 @@ with sync_playwright() as p:
     pg.goto(f'{B}/index.html#/home'); pg.wait_for_timeout(300); pg.evaluate('window.MoveAIVNextTest.reset()')
     for pid in ['PRD-101', 'PRD-103']:
         go('search'); pg.locator(f'[data-po-detail="{pid}"]').first.click(); pg.wait_for_timeout(150); pg.locator(f'[data-po-add="{pid}"]').first.click(); pg.wait_for_timeout(150)
-    go('cart'); pg.locator('#main-content button:has-text("Continue to payment")').click(); pg.wait_for_timeout(250); pg.locator('form[data-po-form="checkout"] button[type=submit]').click(); pg.wait_for_timeout(300)
+    go('cart'); pg.locator('#main-content button:has-text("Continue to payment")').click(); pg.wait_for_timeout(250); pg.locator('form[data-po-form="checkout"] button[type=submit]').click(); pg.wait_for_timeout(300); pg.evaluate('window.MoveAIVNextTest.confirmPayments()'); pg.wait_for_timeout(80)
     go('orders'); pg.locator('.order-help summary:has-text("Cancel an item")').first.click(); pg.locator('[data-plus="cancel-item"]').first.click(); pg.wait_for_timeout(200)
     check(any(x['type'] == 'refund' for x in st()['ledger']), 'item cancelled with refund')
     go('monthlyStatement'); check('Monthly statement' in main() and 'Paid' in main(), 'customer statement')

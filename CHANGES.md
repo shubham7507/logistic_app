@@ -1,5 +1,47 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-02 — Work, hiring and helpers; live home screens; Hindi tours; old tests fixed
+**Worker home screens (live numbers, no developer text).** Every logistics role, worker, picker and rider now opens on the same simple layout: status switch (Go online / Check in) → "Now" card with one big next-step button → new offers with Accept → money → alerts. Goods owner, transporter, truck owner, movers and admin homes show live figures and real alerts.
+
+**Picker.**
+- Check in from home; the next order shows with items in shelf order.
+- **Expiry check while picking:** MoveAI names the batch to pick (earliest safe expiry first), the picker ticks that the date on the pack is that day or later, and batches that are expired or have fewer than 2 days left can't be picked.
+- Starting a shift also marks attendance for payroll (one attendance record, so picker pay and payroll agree).
+
+**Drivers and helpers.**
+- Post when and where you are free ("When I am free"), including a return route; posts expire on their own.
+- Daily selfie check, a 3-minute safety training with a quiz, and an SOS button on trips that alerts MoveAI and the business.
+- Voice / plain-words sign-up ("I drive trucks in Patna, 3500 per trip" or Hindi) fills the work profile.
+- Skill tick boxes fixed in sign-up (they looked like empty squares and the error showed far away).
+
+**Hiring.**
+- **Find drivers & helpers** for businesses: working filters (work, licence, area or route, free on a date, pay, rating, language, verified, posted availability), fuller cards (experience, jobs done, languages, police check), shortlist, numbers hidden until hiring, "Call via MoveAI".
+- One-tap offers for one trip, one day, or today with same-day pay; "Offers I sent" with done/pay, no-show strikes (3 strikes pause a profile) and ratings both ways.
+- Regular crew per truck, filled in automatically when the truck is assigned.
+- Join a worker in person (no smartphone or Aadhaar not linked to mobile): OTP to a family phone, original ID seen face to face, only the last 4 characters kept.
+
+**Customers.**
+- **Book helpers** by the hour (₹120 per helper per hour, pay after); a transport request can also ask for loading helpers.
+- Monthly personal driver: three verified drivers to choose from, a paid trial day, a driver card after choosing, and favourites to rebook.
+
+**Delivery partners.** Home shows the offer with Accept, today's earnings, wallet, cash to hand over and incentive progress; "Try a practice delivery" creates a sample order when there's no real one. Riders can use "Use demo location" on the clean link too.
+
+**Other fixes found while testing.**
+- Payments say clearly that they are a demo until a real gateway is connected.
+- Admin approval of a delivery partner stays disabled until both required checks are ticked.
+- Admin sidebar grouped (Orders, Approvals & people, Money, Settings & reports) instead of everything under "More".
+- Phone-width screens no longer hide page-header buttons (Go online, Check in, Add staff…).
+- A worker's past job shows only what that employer owes, not the worker's total.
+- The store's Pay workers screen lists former workers whose final pay is still due.
+- Early counter-delivery orders get the store's location, so riders can always start pickup.
+- Hindi for the Staff hub and work homes.
+
+**Tours.** 8 new tours (post when free and get hired, book helpers, monthly driver, picker expiry check, driver safety, join in person, regular crew, practice delivery); role tours include the new screens. **Every tour can be played in Hindi** ("▶ हिंदी में" in the guide, or the हिंदी switch on the tour panel). 37 tours in all.
+
+**Tests.** The 23 old failing tests (13 JavaScript, 10 Python) were updated to the current flows or fixed where they found real bugs, and added to the checks that run on every push (111 in `tests/ci-list.txt`). New unit tests cover the hiring, helper, safety, expiry and home logic.
+
+**Server.** `SERVER-REQUIREMENTS.md` lists what a real backend needs before launch (sign-in, database, KYC partners, payment gateway, files, messages, location, compliance) and in what order.
+
 ## 2026-11-02 — Fix: tours breaking after another tour ("Access denied")
 - **Cause 1 (tour engine):** after a tour finished, opening a different tour link resumed the old finished tour. It showed "Journey complete" at once and did nothing. A `?tour=` link now always starts the tour you chose.
 - **Cause 2 (app, also affected real use):** each browser tab remembers the last role used in each app.

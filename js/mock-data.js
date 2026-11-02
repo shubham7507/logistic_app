@@ -200,3 +200,21 @@ for(const k of ['commercialDriver','helper'])HOME_CONTENT[k].quick[0]=['myJobs',
 HOME_CONTENT.personalDriver.quick=[['myJobs','▦','My Jobs','Customer requests near you'],['work','⌕','Find Work','Hiring openings'],['money','₹','My Money','Work payments'],['upgradeDriver','↑','Go commercial','Upgrade with a commercial licence']];
 HOME_CONTENT.staff.quick=[['work','▦','My Work','Only assigned work'],['trips','🧭','Trips','Your branch trips'],['money','₹','My Money','Salary, advance and claims'],['profile','○','My Profile','Documents and joining status']];
 HOME_CONTENT.admin.quick=[['verification','✓','Verification','People, vehicles, businesses'],['cases','⚑','Cases','Disputes and appeals'],['approvals','✓','Approvals','Business applications'],['audit','◷','Audit','Immutable history']];
+
+
+// ---------- Work and hiring (js/work-extras.js) ----------
+// Fuller worker cards: experience, languages, trips done, strikes; two more personal drivers for the monthly shortlist.
+{const more={'PW-MOHAN':{experienceYears:9,languages:['Hindi','Bhojpuri'],tripsDone:212,mobile:'9876520101'},'PW-RAMESH':{experienceYears:4,languages:['Hindi','Maithili'],tripsDone:96,mobile:'9876520102'},'PW-ANIL':{experienceYears:7,languages:['Hindi','English'],tripsDone:340,mobile:'9876520103',policeVerified:true},'PW-SURAJ':{experienceYears:2,languages:['Hindi'],tripsDone:41,mobile:'9876520104'}};
+ for(const w of SEED.platformWorkers)Object.assign(w,{strikes:0,ratingCount:20},more[w.id]||{});
+ SEED.platformWorkers.push(
+  {id:'PW-RAJESH',name:'Rajesh Verma',persona:null,capabilities:['driver'],licences:['Personal car (LMV-NT)'],locations:['Noida','Gurugram'],status:'available',rating:4.7,ratingCount:31,expectedPay:22000,verified:true,classification:'marketplace',experienceYears:11,languages:['Hindi','English','Punjabi'],tripsDone:520,mobile:'9876520105',policeVerified:true,strikes:0},
+  {id:'PW-VIKRAM',name:'Vikram Singh',persona:null,capabilities:['driver'],licences:['Personal car (LMV-NT)'],locations:['Noida','Delhi'],status:'available',rating:4.5,ratingCount:12,expectedPay:20000,verified:true,classification:'marketplace',experienceYears:5,languages:['Hindi'],tripsDone:150,mobile:'9876520106',policeVerified:true,strikes:0});
+ for(const c of SEED.candidates)Object.assign(c,{experienceYears:c.id==='CAND-001'?6:3,languages:['Hindi'],tripsDone:c.capabilities.includes('driver')?60:0,rating:4.3,ratingCount:5,strikes:0});
+ const day=n=>new Date(Date.now()+n*86400000).toISOString().slice(0,10);
+ SEED.availabilityPosts=[
+  {id:'AV-901',workerId:'PW-MOHAN',persona:'commercialDriver',name:'Mohan Yadav',role:'driver',area:'Delhi',routeTo:'Patna',from:day(9),to:day(11),shift:'Any',pay:3200,payType:'per trip',note:'In Delhi after a delivery; want a load or a trip back to Patna. HMV licence.',status:'open',createdAt:day(0)},
+  {id:'AV-902',workerId:'PW-RAMESH',persona:'helper',name:'Ramesh Yadav',role:'helper',area:'Patna',routeTo:'',from:day(0),to:day(6),shift:'Day',pay:700,payType:'per day',note:'Loading, unloading and packing. Can come with own team of 2.',status:'open',createdAt:day(0)},
+  {id:'AV-903',workerId:'PW-SURAJ',persona:null,name:'Suraj Mandal',role:'helper',area:'Noida',routeTo:'',from:day(1),to:day(4),shift:'Night',pay:650,payType:'per day',note:'Warehouse and assembly work.',status:'open',createdAt:day(0)}];
+ SEED.talentShortlist={};SEED.workRatings=[];SEED.workerStatus={};}
+
+for(const k of ['goods','transporter','vehicle','movers'])HOME_CONTENT[k].quick.push(['findTalent','🔎','Find drivers & helpers','Who is free, when and where']);

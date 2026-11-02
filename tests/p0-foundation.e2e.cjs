@@ -16,7 +16,7 @@ const expectedNav = { // current menus (option C: the customer app shows only cu
 
 (async()=>{
   const browser=await chromium.launch({headless:true});
-  const page=await browser.newPage({viewport:{width:1440,height:900}});
+  const page=await browser.newPage({viewport:{width:1440,height:900}});await page.route(u=>!/^https?:\/\/(127\.0\.0\.1|localhost)/.test(String(u)),r=>r.fulfill({body:'',contentType:'text/plain'})); // no outside network in tests
   const errors=[];
   page.on('pageerror',e=>errors.push(String(e)));
   page.on('console',m=>{if(m.type()==='error')errors.push(m.text())});

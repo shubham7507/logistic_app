@@ -231,15 +231,35 @@ export const deliveryPay = (s, o) => Math.max(30, Math.round(20 + 8 * (o.deliver
 
 // ---------- picking ----------
 export const aisleSort = (s, items) => [...items].sort((a, b) => String(s.products.find(p => p.id === a.productId)?.aisle).localeCompare(String(s.products.find(p => p.id === b.productId)?.aisle)));
+// Expiry check while picking (first-expiry-first-out): the picker is told which batch to take and must confirm
+// the date printed on the pack. Batches that are expired or expire within MIN_SHELF_DAYS can't be picked.
+export const MIN_SHELF_DAYS = 2;
+export function pickBatch(s, p) {
+  const live = (p?.batches || []).filter(b => b.qty > 0 && !b.writtenOff).sort((a, c) => a.expiry.localeCompare(c.expiry));
+  const okFrom = addDays(today(), MIN_SHELF_DAYS);
+  return {batch: live.find(b => b.expiry >= okFrom) || null, tooClose: live.filter(b => b.expiry < okFrom), okFrom};
+}
+const expiryHtml = (s, o, p) => {
+  if (!p.batches?.length) return '';
+  const {batch, tooClose} = pickBatch(s, p);
+  if (!batch) return `<p class="action-warning"><b>No batch with ${MIN_SHELF_DAYS}+ days left.</b> Don't pick this item; mark it unavailable.</p>`;
+  return `<div class="expiry-check"><span>📅 Pick batch <b>${esc(batch.id.split('-').slice(-1)[0])}</b> · expires <b>${esc(batch.expiry)}</b> (earliest safe date)</span>${tooClose.length ? `<small class="action-warning">Leave ${tooClose.reduce((n, b) => n + b.qty, 0)} pack(s) expiring before ${esc(addDays(today(), MIN_SHELF_DAYS))} on the shelf and tell the owner.</small>` : ''}<label class="quality-check"><input type="checkbox" data-expiry-ok="${esc(o.id)}|${esc(p.id)}"> I checked the date on the pack: ${esc(batch.expiry)} or later</label></div>`;
+};
 export function pickInputs(s, o, i) {
   const p = s.products.find(x => x.id === i.productId); if (!p) return '';
-  return `<small class="muted">Aisle ${esc(p.aisle)} · barcode ${esc(p.barcode)}</small><input class="scan-input" data-scan="${esc(o.id)}|${esc(p.id)}" placeholder="Scan or type barcode"><button type="button" class="button text compact" data-plus-demo-scan="${esc(o.id)}|${esc(p.id)}" data-code="${esc(p.barcode)}">Demo: simulate scan</button>${p.soldByWeight ? `<input class="scan-input" type="number" step="0.01" data-weight="${esc(o.id)}|${esc(p.id)}" placeholder="Weighed kg (ordered ${i.quantity * (p.nominalKg || 1)})">` : ''}`;
+  return `${expiryHtml(s, o, p)}<small class="muted">Aisle ${esc(p.aisle)} · barcode ${esc(p.barcode)}</small><input class="scan-input" data-scan="${esc(o.id)}|${esc(p.id)}" placeholder="Scan or type barcode"><button type="button" class="button text compact" data-plus-demo-scan="${esc(o.id)}|${esc(p.id)}" data-code="${esc(p.barcode)}">Demo: simulate scan</button>${p.soldByWeight ? `<input class="scan-input" type="number" step="0.01" data-weight="${esc(o.id)}|${esc(p.id)}" placeholder="Weighed kg (ordered ${i.quantity * (p.nominalKg || 1)})">` : ''}`;
 }
 export function pickVerify(s, oid, pid, root) {
   ensurePlus(s);
   const o = (s.customerOrders || []).find(x => x.id === oid), p = s.products.find(x => x.id === pid), item = o?.items.find(x => x.productId === pid); if (!o || !p || !item) return 'Item not found.';
   const scanned = String(root.querySelector(`[data-scan="${oid}|${pid}"]`)?.value || '').trim();
   if (scanned !== String(p.barcode)) return `Barcode does not match ${p.name}. Scan the correct product (prototype: ${p.barcode}).`;
+  if (p.batches?.length) {
+    const {batch} = pickBatch(s, p);
+    if (!batch) return `${p.name}: no batch has ${MIN_SHELF_DAYS} or more days before expiry. Mark it unavailable instead.`;
+    if (!root.querySelector(`[data-expiry-ok="${oid}|${pid}"]`)?.checked) return `Check the expiry date on the ${p.name} pack (${batch.expiry} or later) and tick the box.`;
+    if (o.pick) (o.pick.batches ||= {})[pid] = {batch: batch.id, expiry: batch.expiry, checkedAt: new Date(clock()).toISOString()};
+  }
   if (p.soldByWeight) {
     const kg = Number(root.querySelector(`[data-weight="${oid}|${pid}"]`)?.value), ordered = item.quantity * (p.nominalKg || 1);
     if (!(kg > 0)) return 'Enter the weighed amount in kg.';

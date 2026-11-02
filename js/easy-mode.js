@@ -29,6 +29,14 @@ const words = b => WORDS[isStore(b) ? 'store' : b] || WORDS.goods;
 
 // ---------- Hindi ----------
 export const HI = {
+  // Staff hub
+  'Staff': 'स्टाफ़', 'Add worker': 'कर्मचारी जोड़ें', "Today's work": 'आज का काम', 'Pay workers': 'वेतन दें', 'Branches & team': 'शाखाएँ और टीम',
+  'People at this business': 'इस व्यवसाय के लोग', 'Speak or type': 'बोलें या लिखें', 'More staff options': 'स्टाफ़ के और विकल्प', 'View pay': 'वेतन देखें',
+  'Invite a person and set their home branch and pay plan': 'व्यक्ति को बुलाएँ, उनकी शाखा और वेतन तय करें', 'See shifts, attendance and assigned work': 'शिफ़्ट, हाज़िरी और दिया गया काम देखें',
+  'Review balances, advances and monthly pay': 'बकाया, एडवांस और मासिक वेतन देखें', 'Home branch, dated cover and team membership': 'मुख्य शाखा, अस्थायी कवर और टीम',
+  // Work homes
+  'Go online': 'ऑनलाइन हों', 'Go offline': 'ऑफ़लाइन हों', 'Check in': 'हाज़िरी लगाएँ', 'End shift': 'शिफ़्ट खत्म करें', 'New offers': 'नए ऑफ़र', 'Money': 'पैसा', 'Accept': 'स्वीकार करें', 'Decline': 'मना करें',
+  'Needs your attention': 'ध्यान दें', 'When I am free': 'मैं कब खाली हूँ', 'My khata': 'मेरा खाता', 'Earned': 'कमाया', 'Advances taken': 'लिया गया एडवांस', 'Waiting approval': 'मंज़ूरी बाकी',
   'Staff (easy)': 'स्टाफ़ (आसान)', 'Add staff': 'स्टाफ़ जोड़ें', 'Mark present': 'हाज़िरी लगाएँ', 'Give advance': 'एडवांस दें', 'Pay': 'भुगतान करें', 'See balances': 'बकाया देखें',
   'Balance due': 'बकाया', 'Balance due to you': 'आपका बकाया', 'Advance left': 'बचा एडवांस', 'Cash to confirm': 'पुष्टि के लिए नकद', 'I received it': 'मुझे मिल गया', 'Not received': 'नहीं मिला',
   'My work & pay': 'मेरा काम और वेतन', 'My work': 'मेरा काम', 'Past work': 'पिछला काम', 'Earnings statement': 'कमाई का विवरण', 'Work history': 'काम का इतिहास', 'Profile & documents': 'प्रोफ़ाइल और दस्तावेज़',

@@ -4,6 +4,7 @@
 // into the videos on guide.html (tests/tour-journeys.e2e.cjs), so the guide always matches the app.
 // Everything here is demo-only: hidden with ?demo=off and never part of a real user flow.
 import {JOURNEYS, TEST_DATA, ROLES} from './tour-journeys.js';
+import {TOUR_HI, TOUR_UI_HI} from './tour-hindi.js';
 
 const KEY = 'moveai-tour', esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m]));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -59,16 +60,20 @@ async function runAction(a, pace) {
 }
 
 // ---------- the caption panel ----------
+// Hindi captions follow the app's हिंदी switch (state.lang), or the panel's own switch.
+const tourLang = () => { const x = read(); if (x?.lang) return x.lang; try { return JSON.parse(localStorage.getItem(STATE_KEY) || '{}').lang === 'hi' ? 'hi' : 'en'; } catch { return 'en'; } };
+const H = text => tourLang() === 'hi' ? (TOUR_HI[text] || TOUR_UI_HI[text] || text) : text;
+function setTourLang(lang) { const x = read(); if (x) { x.lang = lang; write(x); } if (window.MoveAIVNextTest?.setLang) { window.MoveAIVNextTest.setLang(lang); return; } try { const s = JSON.parse(localStorage.getItem(STATE_KEY) || '{}'); s.lang = lang; localStorage.setItem(STATE_KEY, JSON.stringify(s)); } catch {} }
 function panel(t, j, step, status = '') {
   let box = document.getElementById('tour-panel');
   if (!box) { box = document.createElement('aside'); box.id = 'tour-panel'; box.className = 'tour-panel'; box.setAttribute('aria-live', 'polite'); document.body.appendChild(box); }
   const n = j.steps.length, done = t.i >= n;
   box.innerHTML = done
-    ? `<div class="tour-head"><span class="tour-role">${esc(j.title)}</span><button type="button" class="tour-x" data-tour="exit" aria-label="Close">✕</button></div><h3>Journey complete ✓</h3><p>${esc(j.done || 'That is the whole flow.')}</p><div class="tour-actions"><button type="button" class="button primary compact" data-tour="replay">Play again</button><a class="button secondary compact" href="guide.html">Back to the guide</a><button type="button" class="button secondary compact" data-tour="exit">Explore on my own</button></div>`
-    : `<div class="tour-head"><span class="tour-role">${esc(step.role || j.title)}</span><span class="tour-count">Step ${t.i + 1} of ${n}</span><button type="button" class="tour-x" data-tour="exit" aria-label="Close">✕</button></div>
+    ? `<div class="tour-head"><span class="tour-role">${esc(H(j.title))}</span><button type="button" class="tour-lang" data-tour="lang">${tourLang() === 'hi' ? 'English' : 'हिंदी'}</button><button type="button" class="tour-x" data-tour="exit" aria-label="Close">✕</button></div><h3>${esc(H('Journey complete'))} ✓</h3><p>${esc(H(j.done || 'That is the whole flow.'))}</p><div class="tour-actions"><button type="button" class="button primary compact" data-tour="replay">${esc(H('Play again'))}</button><a class="button secondary compact" href="guide.html">Back to the guide</a><button type="button" class="button secondary compact" data-tour="exit">Explore on my own</button></div>`
+    : `<div class="tour-head"><span class="tour-role">${esc(H(step.role || j.title))}</span><span class="tour-count">${tourLang() === 'hi' ? `चरण ${t.i + 1} / ${n}` : `Step ${t.i + 1} of ${n}`}</span><button type="button" class="tour-lang" data-tour="lang">${tourLang() === 'hi' ? 'English' : 'हिंदी'}</button><button type="button" class="tour-x" data-tour="exit" aria-label="Close">✕</button></div>
        <div class="tour-bar"><span style="width:${Math.round((t.i / n) * 100)}%"></span></div>
-       <h3>${esc(step.title)}</h3><p>${esc(val(step.say) || '')}</p>${status ? `<p class="tour-status">${esc(status)}</p>` : ''}
-       <div class="tour-actions">${t.auto ? `<button type="button" class="button secondary compact" data-tour="pause">${t.paused ? '▶ Play' : '❚❚ Pause'}</button>` : `<button type="button" class="button primary compact" data-tour="do">Do it for me</button>`}<button type="button" class="button ${t.auto ? 'secondary' : 'secondary'} compact" data-tour="next">${t.auto ? 'Skip ›' : 'Next ›'}</button><select data-tour="speed" aria-label="Speed">${Object.keys(SPEED).map(k => `<option ${t.speed === k ? 'selected' : ''}>${k}</option>`).join('')}</select></div>`;
+       <h3>${esc(H(step.title))}</h3><p>${esc(H(val(step.say) || ''))}</p>${status ? `<p class="tour-status">${esc(status)}</p>` : ''}
+       <div class="tour-actions">${t.auto ? `<button type="button" class="button secondary compact" data-tour="pause">${t.paused ? '▶ ' + H('Resume') : '❚❚ ' + H('Pause')}</button>` : `<button type="button" class="button primary compact" data-tour="do">${esc(H('Do it for me'))}</button>`}<button type="button" class="button ${t.auto ? 'secondary' : 'secondary'} compact" data-tour="next">${t.auto ? H('Skip') + ' ›' : H('Next') + ' ›'}</button><select data-tour="speed" aria-label="Speed">${Object.keys(SPEED).map(k => `<option ${t.speed === k ? 'selected' : ''}>${k}</option>`).join('')}</select></div>`;
   box.querySelectorAll('[data-tour]').forEach(b => {
     const k = b.dataset.tour;
     if (k === 'speed') b.onchange = () => { const x = read(); x.speed = b.value; write(x); };
@@ -78,6 +83,7 @@ function panel(t, j, step, status = '') {
 let running = false;
 async function control(k) {
   const t = read(); if (!t) return;
+  if (k === 'lang') { setTourLang(tourLang() === 'hi' ? 'en' : 'hi'); panel(t, JOURNEYS[t.id], JOURNEYS[t.id].steps[t.i]); return; }
   if (k === 'exit') { write(null); document.getElementById('tour-panel')?.remove(); document.querySelectorAll('.tour-focus').forEach(x => x.classList.remove('tour-focus')); return; }
   if (k === 'replay') { start(t.id, {auto: true, speed: t.speed}); return; }
   if (k === 'pause') { t.paused = !t.paused; write(t); if (!t.paused) play(); else panel(t, JOURNEYS[t.id], JOURNEYS[t.id].steps[t.i]); return; }
@@ -85,11 +91,12 @@ async function control(k) {
   if (k === 'do') { t.doNow = true; write(t); play(true); }
 }
 
-export function start(id, {auto = true, speed = 'normal'} = {}) {
+export function start(id, {auto = true, speed = 'normal', lang: langOpt} = {}) {
   const j = JOURNEYS[id]; if (!j) return;
   try { localStorage.setItem('moveai-demo-mode', 'on'); localStorage.setItem('moveai-welcome-seen', '1'); } catch {}
   document.body.classList.remove('demo-off'); document.getElementById('tour-welcome')?.remove();
-  write({id, i: 0, ran: false, auto, speed, vars: {}, startedAt: Date.now()});
+  const q = new URLSearchParams(location.search), lang = langOpt || (q.get('lang') === 'hi' || q.get('lang') === 'en' ? q.get('lang') : null) || (read()?.lang || (window.MoveAIVNextTest?.state()?.lang === 'hi' ? 'hi' : undefined));
+  write({id, i: 0, ran: false, auto, speed, vars: {}, startedAt: Date.now(), ...(lang ? {lang} : {})});
   window.__tourDone = false; window.__tourError = '';
   play(true);
 }
@@ -182,7 +189,7 @@ export function init({demo = true} = {}) {
   if (q.get('tour') && JOURNEYS[q.get('tour')]) {
     const speed = SPEED[q.get('speed')] ? q.get('speed') : 'normal';
     history.replaceState(null, '', location.pathname + location.hash);
-    start(q.get('tour'), {auto: q.get('mode') !== 'step', speed}); return;
+    start(q.get('tour'), {auto: q.get('mode') !== 'step', speed, lang: ['hi', 'en'].includes(q.get('lang')) ? q.get('lang') : undefined}); return;
   }
   if (read()) setTimeout(() => play(), 400); else welcome();
 }

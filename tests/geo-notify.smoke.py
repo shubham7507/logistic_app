@@ -20,18 +20,19 @@ with sync_playwright() as p:
     cust.select_option('[data-geo-area]', 'Sector 62, Noida'); cust.wait_for_timeout(200); check('outside its' in cust.locator('#main-content').inner_text(), 'outside delivery area shown')
     cust.select_option('[data-geo-area]', 'Connaught Place, Delhi'); cust.wait_for_timeout(200)
     if SHOTS: cust.screenshot(path=f'{SHOTS}/130-pin.png', full_page=True)
-    cust.locator('form[data-po-form="checkout"] button[type=submit]').click(); cust.wait_for_timeout(300)
+    cust.locator('form[data-po-form="checkout"] button[type=submit]').click(); cust.wait_for_timeout(300); cust.evaluate('window.MoveAIVNextTest.confirmPayments()'); cust.wait_for_timeout(100)
     o = [x for x in st(cust)['customerOrders'] if x['status'] == 'paid'][0]; oid = o['id']; check(o['destLabel'] == 'Connaught Place, Delhi', 'pin saved')
     # store: accept, pick (demo scan), pack
     sel = ctx.new_page(); sel.on('pageerror', lambda e: errs.append(str(e))); sel.goto(f'{B}/seller.html#/shopOrders'); sel.wait_for_timeout(300)
     sel.locator(f'[data-commerce="accept"][data-id="{oid}"]').click(); sel.wait_for_timeout(150); sel.locator(f'[data-commerce="pick-start"][data-id="{oid}"]').click(); sel.wait_for_timeout(150)
-    sel.locator(f'[data-plus-demo-scan^="{oid}|"]').first.click(); sel.locator(f'[data-commerce="pick-check"][data-id="{oid}"]').first.click(); sel.wait_for_timeout(150)
+    sel.locator(f'[data-plus-demo-scan^="{oid}|"]').first.click(); [cb.check() for cb in sel.locator(f'[data-expiry-ok^="{oid}|"]').all()]; sel.locator(f'[data-commerce="pick-check"][data-id="{oid}"]').first.click(); sel.wait_for_timeout(150)
     sel.locator(f'[data-commerce="pick-complete"][data-id="{oid}"]').click(); sel.wait_for_timeout(150); sel.locator(f'[data-commerce="pack"][data-id="{oid}"]').click(); sel.wait_for_timeout(200)
     o = next(x for x in st(sel)['customerOrders'] if x['id'] == oid); pid = o['deliveryAssignment']['partnerId']
     # courier tab
     cour = ctx.new_page(); cour.on('pageerror', lambda e: errs.append(str(e))); cour.goto(f'{B}/delivery.html#/deliveryJobs'); cour.wait_for_timeout(300)
     wsk = [k for k, v in st(cour)['deliveryPartners'].items() if v['id'] == pid][0]; cour.evaluate(f"window.MoveAIVNextTest.switchWorkspace('{wsk}')"); cour.evaluate("location.hash='#/deliveryJobs'"); cour.wait_for_timeout(200)
     cour.locator(f'[data-commerce="accept-job"][data-id="{oid}"]').click(); cour.wait_for_timeout(200)
+    if cour.locator(f'[data-geo-start-demo="{oid}"]').count(): cour.locator(f'[data-geo-start-demo="{oid}"]').first.click(); cour.wait_for_timeout(150)
     check('Navigate' in cour.locator('#main-content').inner_text(), 'courier map + navigate')
     for _ in range(40):
         if next(x for x in st(cour)['customerOrders'] if x['id'] == oid).get('geo', {}).get('arrivedStoreAt'): break

@@ -7,6 +7,7 @@ const head = (title, text, action = '') => `<div class="page-header"><div><h1>${
 const SERVICES = [
   ['moving', '🚚', 'Packers & movers', 'Home or office shifting with a clear price'],
   ['driver', '🧑‍✈️', 'Hire a driver', 'By the hour, day or month for your car'],
+  ['helpers', '💪', 'Book helpers', 'Loading, shifting or packing, by the hour'],
   ['products', '🛒', 'Buy products', 'Search and order; we pick the store'],
   ['general', '🛠', 'Home services', 'Plumber, electrician, carpenter and more'],
 ];

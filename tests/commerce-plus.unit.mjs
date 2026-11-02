@@ -47,11 +47,13 @@ assert.equal(r.order.feeBreakdown.productCommission,Math.round(r.order.itemTotal
 
 // picking: barcode must match, weight items adjust price
 s=fresh();r=O.placeOrder(s,{productId:'PRD-106',qty:2,address:'Flat 4',method:'upi',vpa:'a@okaxis',billing:{name:'S'}});o=r.order;
-const root=v=>({querySelector:q=>({value:v[q]??''})});
+const root=v=>({querySelector:q=>({value:v[q]??'',checked:!!v[q]})});
 assert.match(X.pickVerify(s,o.id,'PRD-106',root({})),/Barcode does not match/);
 const tomato=s.products.find(p=>p.id==='PRD-106');
-assert.match(X.pickVerify(s,o.id,'PRD-106',root({[`[data-scan="${o.id}|PRD-106"]`]:tomato.barcode,[`[data-weight="${o.id}|PRD-106"]`]:'2.5'})),/more than 10%/);
-const before=o.total;assert.equal(X.pickVerify(s,o.id,'PRD-106',root({[`[data-scan="${o.id}|PRD-106"]`]:tomato.barcode,[`[data-weight="${o.id}|PRD-106"]`]:'1.8'})),'');
+assert.match(X.pickVerify(s,o.id,'PRD-106',root({[`[data-scan="${o.id}|PRD-106"]`]:tomato.barcode,[`[data-weight="${o.id}|PRD-106"]`]:'1.8'})),/Check the expiry date on the Tomato/,'expiry must be checked on the pack');
+const ok={[`[data-expiry-ok="${o.id}|PRD-106"]`]:true};
+assert.match(X.pickVerify(s,o.id,'PRD-106',root({...ok,[`[data-scan="${o.id}|PRD-106"]`]:tomato.barcode,[`[data-weight="${o.id}|PRD-106"]`]:'2.5'})),/more than 10%/);
+const before=o.total;assert.equal(X.pickVerify(s,o.id,'PRD-106',root({...ok,[`[data-scan="${o.id}|PRD-106"]`]:tomato.barcode,[`[data-weight="${o.id}|PRD-106"]`]:'1.8'})),'');
 assert.equal(o.total,before-8,'lighter weight → ₹8 back');assert.equal(s.customerWallet.balance,8);
 // courier: capacity and batching
 s=fresh();const mk=()=>O.placeOrder(s,{productId:'PRD-103',qty:1,address:'Flat 4',method:'upi',vpa:'a@okaxis',billing:{name:'S'}}).order;

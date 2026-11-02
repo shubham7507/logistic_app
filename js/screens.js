@@ -1,10 +1,13 @@
 import {HOME_CONTENT} from './mock-data.js';
 import {ROUTES} from './config.js';
+import {businessHome,workerHome,WORKER_WS} from './work-home.js';
 
 const esc=v=>String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const header=(title,description,action='')=>`<div class="page-header"><div><h1>${esc(title)}</h1><p>${esc(description)}</p></div>${action}</div>`;
 
-export function homeScreen(role,state){
+export function homeScreen(role,state,opts={}){
+  if(state&&WORKER_WS.includes(role))return workerHome(state,role,opts);
+  if(state&&['goods','transporter','vehicle','movers','admin'].includes(role))return businessHome(state,role);
   const h=HOME_CONTENT[role]||HOME_CONTENT.personal;
   const pending=state?.invitations?.filter(x=>x.status==='pending').length||0;
   const primaryAction=role==='personal'?'<button class="button primary" data-action="start-signup-demo">Test signup journey</button>':'<button class="button primary" data-route="states">Check shared states</button>';

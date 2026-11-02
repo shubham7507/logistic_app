@@ -1,3 +1,4 @@
+import * as H from './_flow-helpers.mjs';
 import assert from 'node:assert/strict';
 import {SEED} from '../js/mock-data.js';
 import * as Orders from '../js/product-orders.js';
@@ -10,7 +11,7 @@ for(const id of ['PRD-101','PRD-103','PRD-102'])assert.equal(Orders.addToCart(s,
 assert.equal(Orders.updateCart(s,'PRD-101',2),'');
 assert.match(Orders.cartScreen(s),/data-po-cart-qty="PRD-101"><option[\s\S]*?<option value="2" selected>2<\/option>/);
 assert.equal(Orders.cartLines(s).length,3);
-const checkout=Orders.placeOrder(s,{fromCart:true,address,method:'upi',vpa:'test@okaxis'});
+const checkout=Orders.placeOrder(s,{fromCart:true,address,method:'upi',vpa:'test@okaxis'});for(const x of checkout.orders||[checkout.order])H.confirmPaid(s,x);
 assert.equal(checkout.ok,true,checkout.error);
 assert.equal(checkout.total,1973);
 assert.equal(checkout.orders.length,2);
@@ -46,8 +47,8 @@ for(const [ws,store,expectedTotal,expectedLines] of [
  assert.match(Commerce.screen(s,'deliveryJobs','deliveryPartner'),new RegExp(o.id));
  assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');
  assert.equal(o.deliveryAssignment.status,'accepted');
- assert.match(Commerce.deliveryAction(s,'deliveryPartner',o.id,'pickup','0000'),/pickup code/);
- assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,o.bagCount),'');
+ assert.match(Commerce.deliveryAction((H.shareLocation(s,o),s),'deliveryPartner',o.id,'pickup','0000'),/pickup code/);
+ assert.equal(Commerce.deliveryAction((H.shareLocation(s,o),s),'deliveryPartner',o.id,'pickup',o.pickupCode,o.bagCount),'');
  assert.equal(o.status,'out_for_delivery');
  s.selectedTrackingOrderId=o.id;
  assert.match(Orders.trackingScreen(s),/Courier collected/);
@@ -59,7 +60,7 @@ for(const [ws,store,expectedTotal,expectedLines] of [
  assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode),'');
  assert.equal(o.status,'delivered');assert.equal(o.paymentStatus,'paid');
  assert.match(Orders.trackingScreen(s),/✓ Delivered/);
- assert.equal(o.settlementStatus,'pending');assert.equal(o.deliveryPayoutStatus,'pending');
+ assert.equal(o.settlementStatus,'pending');assert.equal(o.deliveryPayoutStatus,'wallet_credited');
  assert.ok(s.customerInvoices.some(i=>i.ref===o.id));
  assert.ok(o.history.some(h=>/accepted order/.test(h.text)));
  assert.ok(o.history.some(h=>/collected from store/.test(h.text)));

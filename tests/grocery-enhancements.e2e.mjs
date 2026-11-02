@@ -1,3 +1,4 @@
+import * as H from './_flow-helpers.mjs';
 import assert from 'node:assert/strict';
 import {SEED} from '../js/mock-data.js';
 import * as PO from '../js/product-orders.js';
@@ -5,8 +6,8 @@ import * as C from '../js/commerce.js';
 import {assignPicker} from '../js/grocery-staff.js';
 import {bindOps} from '../js/ops-actions.js';
 
-const fresh=()=>structuredClone(SEED);
-const order=(s,productId='PRD-101',method='upi')=>{const r=PO.placeOrder(s,{productId,qty:2,address:'42 MG Road, Delhi 110001',method,vpa:'test@okaxis'});assert.ok(r.ok,r.error);return r.order;};
+const fresh=()=>H.approveSecondRider(structuredClone(SEED));
+const order=(s,productId='PRD-101',method='upi')=>{const r=PO.placeOrder(s,{productId,qty:2,address:'42 MG Road, Delhi 110001',method,vpa:'test@okaxis'});assert.ok(r.ok,r.error);return H.confirmPaid(s,r.order);};
 
 // Small store: seller picks, verifies quantities and seals two bags.
 let s=fresh(),o=order(s);
@@ -22,8 +23,8 @@ assert.equal(C.sellerAction(s,'grocery',o.id,'pack',2),'');
 assert.equal(o.bagCount,2);
 assert.match(C.screen(s,'deliveryJobs','deliveryPartner'),/2 sealed bag/);
 assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');
-assert.match(C.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,1),/2 sealed bag/);
-assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,2),'');
+assert.match(C.deliveryAction((H.shareLocation(s,o),s),'deliveryPartner',o.id,'pickup',o.pickupCode,1),/2 sealed bag/);
+assert.equal(C.deliveryAction((H.shareLocation(s,o),s),'deliveryPartner',o.id,'pickup',o.pickupCode,2),'');
 assert.equal(C.updateLocation(s,'deliveryPartner',o.id,'En route'),'');
 const historyLength=o.history.length;
 assert.match(C.updateLocation(s,'deliveryPartner',o.id,'En route'),/already shared/);
@@ -46,7 +47,7 @@ assert.equal(route,'orderTracking');assert.equal(s.selectedTrackingOrderId,o.id)
 
 // Customer approves a lower-cost, same-store alternative; the difference is refunded.
 s=fresh();PO.addToCart(s,'PRD-101');PO.addToCart(s,'PRD-103');
-o=PO.placeOrder(s,{fromCart:true,address:'Delhi',method:'upi',vpa:'test@okaxis',substitution:'contact'}).order;
+o=H.confirmPaid(s,PO.placeOrder(s,{fromCart:true,address:'Delhi',method:'upi',vpa:'test@okaxis',substitution:'contact'}).order);
 assert.equal(C.sellerAction(s,'grocery',o.id,'accept'),'');
 assert.equal(C.unavailableItem(s,'grocery',o.id,'PRD-101'),'');
 assert.match(C.suggestReplacement(s,'groceryFresh',o.id,'PRD-104'),/denied/);
@@ -71,11 +72,11 @@ o.deliveryAssignment.offeredAt-=11*60000;
 assert.equal(C.expireOffer(s,o.id),'');
 assert.equal(o.deliveryAssignment.partnerId,'DP-002');
 assert.equal(C.deliveryAction(s,'deliveryPartner2',o.id,'accept'),'');
-assert.equal(C.deliveryAction(s,'deliveryPartner2',o.id,'pickup',o.pickupCode,1),'');
-assert.match(C.deliveryAction(s,'deliveryPartner2',o.id,'issue',''),/reason/);
-assert.equal(C.deliveryAction(s,'deliveryPartner2',o.id,'issue','Customer unavailable'),'');
+assert.equal(C.deliveryAction((H.shareLocation(s,o),s),'deliveryPartner2',o.id,'pickup',o.pickupCode,1),'');
+assert.match(C.deliveryAction((H.reachCustomer(s,o),s),'deliveryPartner2',o.id,'issue',''),/reason/);
+assert.equal(C.deliveryAction((H.reachCustomer(s,o),s),'deliveryPartner2',o.id,'issue','Customer unavailable'),'');
 assert.equal(o.status,'out_for_delivery','first failed attempt is retried automatically');assert.equal(o.attempts,1);
-assert.equal(C.deliveryAction(s,'deliveryPartner2',o.id,'issue','Customer unavailable'),'');assert.equal(o.attempts,2,'second failure returns the order to the store');
+assert.equal(C.deliveryAction((H.reachCustomer(s,o),s),'deliveryPartner2',o.id,'issue','Customer unavailable'),'');assert.equal(o.attempts,2,'second failure returns the order to the store');
 assert.equal(o.status,'cancelled');assert.equal(o.paymentStatus,'refund_pending');
 assert.equal(o.settlementStatus,'not_eligible');
 assert.equal(s.ledger.find(e=>e.orderId===o.id&&e.type==='refund').amount,o.total);

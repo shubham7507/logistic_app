@@ -25,7 +25,7 @@ with sync_playwright() as p:
     check('checkout' in main().lower() and 'Delivery' in main(), 'checkout with delivery fee'); shot('80-product-checkout')
     pg.fill('#pay-vpa', 'fail@upi'); pg.locator('form[data-po-form="checkout"] button[type=submit]').click(); pg.wait_for_timeout(100)
     check('declined' in pg.locator('#po-error').inner_text(), 'failed product payment')
-    pg.fill('#pay-vpa', 'shubham@okaxis'); pg.locator('form[data-po-form="checkout"] button[type=submit]').click(); pg.wait_for_timeout(150)
+    pg.fill('#pay-vpa', 'shubham@okaxis'); pg.locator('form[data-po-form="checkout"] button[type=submit]').click(); pg.wait_for_timeout(150); pg.evaluate('window.MoveAIVNextTest.confirmPayments()'); pg.wait_for_timeout(80)
     o = st()['customerOrders'][0]; check(o['status'] == 'paid', 'order paid and held')
     # delivery itself is covered by v4's commerce tests; mark delivered and use "Help with this order"
     pg.evaluate(f"""(()=>{{const k=Object.keys(localStorage).find(k=>k.startsWith('moveai-vnext'));const d=JSON.parse(localStorage.getItem(k));const o=d.customerOrders.find(x=>x.id==='{o["id"]}');o.status='delivered';o.deliveredAt=Date.now();localStorage.setItem(k,JSON.stringify(d))}})()"""); pg.reload(); pg.wait_for_timeout(250)
@@ -37,7 +37,7 @@ with sync_playwright() as p:
     c = st()['claims'][0]; check(c['status'] == 'pickup_assigned', 'damaged item → return pickup assigned'); shot('81-orders')
     # products: cash on delivery, cancel before dispatch
     go('search'); pg.locator('[data-po-detail="PRD-103"]').first.click(); pg.wait_for_timeout(120); pg.locator('[data-action="buy-product"]').first.click(); pg.wait_for_timeout(120)
-    pg.check('input[name="method"][value="cod"]'); pg.locator('form[data-po-form="checkout"] button[type=submit]').click(); pg.wait_for_timeout(150)
+    pg.check('input[name="method"][value="cod"]'); pg.locator('form[data-po-form="checkout"] button[type=submit]').click(); pg.wait_for_timeout(150); pg.evaluate('window.MoveAIVNextTest.confirmPayments()'); pg.wait_for_timeout(80)
     cod = st()['customerOrders'][0]; check(cod['cod'] and cod['status'] == 'confirmed', 'COD order')
     pg.locator(f'[data-po="cancel"][data-id="{cod["id"]}"]').click(); pg.wait_for_timeout(80)
     check(next(x for x in st()['customerOrders'] if x['id'] == cod['id'])['status'] == 'cancelled', 'COD cancelled')

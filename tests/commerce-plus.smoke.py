@@ -34,7 +34,7 @@ with sync_playwright() as p:
     pg.fill('[name="plusCoupon"]', 'SAVE10'); pg.click('[data-plus="apply-checkout"]'); pg.wait_for_timeout(150)
     check('needs' in main() or 'applied' in main(), 'coupon validated'); shot('122-checkout')
     pg.fill('[name="plusCoupon"]', ''); pg.select_option('[name="plusTip"]', '20'); pg.click('[data-plus="apply-checkout"]'); pg.wait_for_timeout(150)
-    pg.locator('form[data-po-form="checkout"] button[type=submit]').click(); pg.wait_for_timeout(300)
+    pg.locator('form[data-po-form="checkout"] button[type=submit]').click(); pg.wait_for_timeout(300); pg.evaluate('window.MoveAIVNextTest.confirmPayments()'); pg.wait_for_timeout(80)
     o = [x for x in st()['customerOrders'] if any(i['productId'] in ('PRD-105', 'PRD-106') for i in x['items'])]
     check(o and any(x.get('tip') == 20 for x in o), f'order placed with tip ({[x.get("status") for x in o]})')
     # mark the Fresh Mart order delivered (seller/picker/courier steps are covered by v4's own tests), then raise a claim + review
@@ -47,7 +47,7 @@ with sync_playwright() as p:
     go('wishlist'); check('Buy again' in main() and 'Wishlist' in main(), 'wishlist screen')
     # seller
     pg.goto(f'{B}/seller.html#/plusListings'); pg.wait_for_timeout(300)
-    check('Products and stock' in main(), 'seller catalogue redirect'); pg.locator('[data-plus="edit-listing"]').first.click(); pg.wait_for_timeout(150)
+    check('Products and stock' in main(), 'seller catalogue redirect'); pg.locator('#catalog-advanced [data-plus="edit-listing"]').first.click(); pg.wait_for_timeout(150)
     pg.fill('form[data-plus-form="listing"] [name="mrp"]', '1'); pg.locator('form[data-plus-form="listing"] button').click(); pg.wait_for_timeout(120)
     check('MRP' in pg.locator('.plus-error').inner_text() or 'above' in pg.locator('.plus-error').inner_text(), 'price above MRP refused'); shot('124-listings')
     go('plusStore'); pg.click('[data-plus="toggle-pause"]'); pg.wait_for_timeout(120); check(any(p.get('paused') for p in st()['shopPartners'].values()), 'store paused'); pg.click('[data-plus="toggle-pause"]'); pg.wait_for_timeout(100)

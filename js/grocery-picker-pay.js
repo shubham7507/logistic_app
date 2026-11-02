@@ -2,6 +2,7 @@ import {SELLER_WORKSPACES,STORE_BY_MANAGER,STORE_BY_WORKER} from './seller-roles
 // Store-funded picker pay: mock tracking and recorded offline payment only.
 import {currentPicker,staffFor,storeWorkspace} from './grocery-staff.js';
 import {record} from './pay.js';
+import * as Time from './staff-time.js';
 import {defaultBranch,staffAt,staffBranches,branch} from './seller-branches.js';
 
 const seller=ws=>SELLER_WORKSPACES.includes(ws);
@@ -37,13 +38,17 @@ export function startPickerShift(s,ws){
  if(payRunFor(s,p.id,period))return 'This pay period is already under review. Ask the store to correct it.';
  if(shiftsFor(s,p.id,day).length)return 'You already have a shift for today.';
  (s.pickerShifts||=[]).push({id:`SHIFT-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,pickerId:p.id,store,branchId,date:day,scheduleId:planned?.id||null,startAt:now(),endAt:null,status:'open',planType:p.payPlan.type,rate:p.payPlan.rate});
+ // One attendance record: starting the shift also marks the worker present for payroll (unless already marked).
+ {const shift=s.pickerShifts.at(-1);let row=(s.staffDays||[]).find(d=>d.store===store&&d.personId===p.id&&d.date===day&&d.status!=='rejected');
+  if(!row&&Time.checkIn(s,store,p.id,branchId,day))(s.staffDays||=[]).push(row={id:`DAY-${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`,store,personId:p.id,date:day,branchId,cover:false,status:'pending',units:1,by:p.name,source:'shift',at:new Date().toLocaleString('en-IN')});
+  row||=(s.staffDays||[]).find(d=>d.store===store&&d.personId===p.id&&d.date===day&&d.status!=='rejected');if(row){row.shiftId=shift.id;if(row.source==='worker')row.source='shift';}}
  log(s,p.name,`Started picker shift ${day}`);return '';
 }
 export function endPickerShift(s,ws){
  if(!picker(ws))return 'Picker access required.';
  const p=currentPicker(s,ws),x=(s.pickerShifts||[]).find(y=>y.pickerId===p?.id&&y.status==='open');
  if(!x)return 'No open shift to finish.';
- x.endAt=now();x.status='submitted';log(s,p.name,`Submitted picker shift ${x.date}`);return '';
+ x.endAt=now();x.status='submitted';{const d=(s.staffDays||[]).find(y=>y.store===x.store&&y.personId===p.id&&y.date===x.date&&['pending','approved'].includes(y.status)&&!y.leftAt);if(d)Time.checkOut(s,x.store,p.id,x.date);}log(s,p.name,`Submitted picker shift ${x.date}`);return '';
 }
 export function approvePickerShift(s,ws,id){
  const store=managerStore(ws)||ws;

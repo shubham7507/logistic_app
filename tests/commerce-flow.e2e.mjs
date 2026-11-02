@@ -1,3 +1,4 @@
+import * as H from './_flow-helpers.mjs';
 import assert from 'node:assert/strict';
 import {SEED} from '../js/mock-data.js';
 import * as PO from '../js/product-orders.js';
@@ -7,11 +8,11 @@ import {canOpen} from '../js/permissions.js';
 const fresh=()=>{globalThis.__moveaiClockOffset=0;return structuredClone(SEED)};
 const order=(s,method='upi',productId='PRD-101')=>{
  const v={productId,qty:1,address:'42 MG Road, Delhi 110001',method,vpa:'test@okaxis'};
- const r=PO.placeOrder(s,v);assert.ok(r.ok,r.error);return r.order;
+ const r=PO.placeOrder(s,v);assert.ok(r.ok,r.error);return v.vpa&&/pending/.test(v.vpa)?r.order:H.confirmPaid(s,r.order);
 };
 const pick=(s,o,ws='picker')=>{assert.equal(assignPicker(s,ws==='picker'?'grocery':'groceryFresh',o.id,s.activePicker[ws]),'');assert.equal(C.pickerAction(s,ws,o.id,'start'),'');for(const i of o.items)assert.equal(C.pickerAction(s,ws,o.id,'check',i.productId),'');assert.equal(C.pickerAction(s,ws,o.id,'complete'),'');};
 const pack=(s,o,ws='grocery')=>{assert.equal(C.sellerAction(s,ws,o.id,'accept'),'');pick(s,o,ws==='grocery'?'picker':'pickerFresh');assert.equal(C.sellerAction(s,ws,o.id,'pack'),'');};
-const deliver=(s,o,ws='deliveryPartner')=>{assert.equal(C.deliveryAction(s,ws,o.id,'accept'),'');assert.match(C.deliveryAction(s,ws,o.id,'pickup','0000'),/pickup code/);assert.equal(C.deliveryAction(s,ws,o.id,'pickup',o.pickupCode,o.bagCount),'');assert.match(C.deliveryAction(s,ws,o.id,'deliver','0000'),/delivery code/);assert.equal(C.deliveryAction(s,ws,o.id,'deliver',o.deliveryCode),'');};
+const deliver=(s,o,ws='deliveryPartner')=>{assert.equal(C.deliveryAction(s,ws,o.id,'accept'),'');assert.match(C.deliveryAction((H.shareLocation(s,o),s),ws,o.id,'pickup','0000'),/pickup code/);assert.equal(C.deliveryAction((H.shareLocation(s,o),s),ws,o.id,'pickup',o.pickupCode,o.bagCount),'');assert.match(C.deliveryAction(s,ws,o.id,'deliver','0000'),/delivery code/);assert.equal(C.deliveryAction(s,ws,o.id,'deliver',o.deliveryCode),'');};
 // Prepaid: distinct role scopes, verified handoff, delayed settlement, idempotence, invoice.
 let s=fresh(),o=order(s);
 assert.equal(C.visibleOrders(s,'grocery').some(x=>x.id===o.id),true);
@@ -20,7 +21,7 @@ assert.match(C.sellerAction(s,'groceryFresh',o.id,'accept'),/denied/);
 assert.match(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),/denied/);
 pack(s,o);assert.equal(o.deliveryAssignment.partnerId,'DP-001');
 assert.equal(C.visibleOrders(s,'deliveryPartner2').some(x=>x.id===o.id),false);
-assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,o.bagCount),'');
+assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');assert.equal(C.deliveryAction((H.shareLocation(s,o),s),'deliveryPartner',o.id,'pickup',o.pickupCode,o.bagCount),'');
 assert.match(C.updateLocation(s,'deliveryPartner2',o.id,'En route'),/only for your/);
 assert.equal(C.updateLocation(s,'deliveryPartner',o.id,'Near destination'),'');assert.equal(o.latestLocation.label,'Near destination');
 assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode),'');assert.equal(o.status,'delivered');assert.equal(o.settlementStatus,'pending');
@@ -30,23 +31,25 @@ assert.equal(s.customerInvoices.find(x=>x.ref===o.id).total,710);
 assert.match(C.settle(s,o.id),/reserve period/);
 C.advanceDemoClock(s);assert.equal(C.settle(s,o.id),'');assert.equal(o.settlementStatus,'paid');
 assert.match(C.settle(s,o.id),/not ready/);
-assert.equal(s.ledger.filter(x=>x.orderId===o.id&&x.type==='delivery_earning').length,1);
+// Delivery earnings now go straight to the partner's MoveAI Pay wallet when a prepaid order is delivered.
+assert.equal(s.ledger.filter(x=>x.orderId===o.id&&x.type==='wallet_credit').length,1);
 assert.equal(s.ledger.filter(x=>x.orderId===o.id&&x.type==='seller_settlement').length,1);
-assert.equal(C.payDelivery(s,o.id),'');assert.equal(o.deliveryPayoutStatus,'paid');assert.match(C.payDelivery(s,o.id),/not ready/);
+assert.equal(o.deliveryPayoutStatus,'wallet_credited');assert.match(C.payDelivery(s,o.id),/not ready/,'no second payout');
 // Return after payout creates refund and a future adjustment; wrong actors remain isolated.
 assert.equal(C.requestReturn(s,o.id,'Damaged pack'),'');assert.equal(C.resolveReturn(s,o.id,true),'');
 assert.equal(o.settlementStatus,'adjustment_due');assert.ok(s.ledger.some(x=>x.orderId===o.id&&x.type==='settlement_adjustment'&&x.amount===653));
 assert.ok(s.ledger.some(x=>x.orderId===o.id&&x.type==='refund'&&x.amount===710));
 // COD: offer decline → alternate driver → collection → handover → admin reconciliation → settlement.
-s=fresh();o=order(s,'cod');pack(s,o);
+s=fresh();{const d2=s.deliveryPartners.deliveryPartner2;Object.assign(d2,{...structuredClone(s.deliveryPartners.deliveryPartner),id:'DP-002',name:d2.name,mobile:d2.mobile});} // Sana starts the demo mid-joining; approve her for this test
+o=order(s,'cod');pack(s,o);
 assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'decline'),'');assert.equal(o.deliveryAssignment.partnerId,'DP-002');
 assert.match(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),/denied/);
 deliver(s,o,'deliveryPartner2');assert.equal(o.codCash.status,'collected');
 C.advanceDemoClock(s);assert.match(C.settle(s,o.id),/reconciled/);
-assert.match(C.payDelivery(s,o.id),/Reconcile COD/);
+assert.equal(o.deliveryPayoutStatus,'awaiting_cod_reconciliation');
 assert.match(C.reconcileCash(s,o.id),/submit COD cash/);
 assert.equal(C.deliveryAction(s,'deliveryPartner2',o.id,'remit','','',{amount:o.total,receiver:'Cash desk'}),'');assert.equal(C.reconcileCash(s,o.id,o.total,'RCPT-001','Cash desk'),'');assert.equal(C.settle(s,o.id),'');
-assert.equal(C.payDelivery(s,o.id),'');
+assert.equal(o.deliveryPayoutStatus,'wallet_credited');
 assert.match(C.requestReturn(s,o.id,'Wrong item','bad'),/UPI/);
 assert.equal(C.requestReturn(s,o.id,'Wrong item','customer@okaxis'),'');assert.equal(C.resolveReturn(s,o.id,true),'');
 assert.equal(s.ledger.find(x=>x.orderId===o.id&&x.type==='refund').destination,'customer@okaxis');
@@ -57,9 +60,9 @@ o=order(s);assert.equal(C.customerCancel(s,o.id),'');assert.equal(o.status,'canc
 s.deliveryPartners.deliveryPartner.available=false;s.deliveryPartners.deliveryPartner2.available=false;
 o=order(s);pack(s,o);assert.equal(o.deliveryAssignment,null);assert.match(C.assign(s,o.id,'DP-001'),/not found/);
 s.deliveryPartners.deliveryPartner.available=true;assert.equal(C.assign(s,o.id,'DP-001'),'');
-assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,o.bagCount),'');
+assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');assert.equal(C.deliveryAction((H.shareLocation(s,o),s),'deliveryPartner',o.id,'pickup',o.pickupCode,o.bagCount),'');
 assert.match(C.customerCancel(s,o.id),/before pickup/);
-assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'issue','Customer unavailable'),'');assert.equal(o.status,'out_for_delivery','first failed attempt is retried automatically');assert.equal(o.attempts,1);
+assert.equal(C.deliveryAction((H.reachCustomer(s,o),s),'deliveryPartner',o.id,'issue','Customer unavailable'),'');assert.equal(o.status,'out_for_delivery','first failed attempt is retried automatically');assert.equal(o.attempts,1);
 assert.equal(C.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode),'');
 assert.equal(C.requestReturn(s,o.id,'Damaged pack'),'');assert.equal(C.resolveReturn(s,o.id,false),'');assert.equal(o.status,'delivered');
 // A seller toggles only its own stock, and new orders respect availability.
@@ -89,7 +92,7 @@ assert.match(C.settle(s,o.id),/Bank rejected/);assert.equal(o.settlementStatus,'
 s.shopPartners.grocery.payoutAccount.accountNumber='1234561254';assert.equal(C.settle(s,o.id),'');
 // A multi-item store order follows the customer's substitution preference.
 s=fresh();PO.addToCart(s,'PRD-101');PO.addToCart(s,'PRD-103');
-cart=PO.placeOrder(s,{fromCart:true,address:'Delhi',method:'upi',vpa:'test@okaxis',substitution:'contact'});o=cart.order;
+cart=PO.placeOrder(s,{fromCart:true,address:'Delhi',method:'upi',vpa:'test@okaxis',substitution:'contact'});o=H.confirmPaid(s,cart.order);
 assert.equal(C.sellerAction(s,'grocery',o.id,'accept'),'');
 assert.equal(C.unavailableItem(s,'grocery',o.id,'PRD-103'),'');assert.equal(o.status,'item_review');
 assert.match(C.sellerAction(s,'grocery',o.id,'pack'),/not available/);

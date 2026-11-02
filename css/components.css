@@ -153,3 +153,25 @@ body.demo-off .mock-hint,body.demo-off #reset-demo,body.demo-off [data-action="r
 .tour-welcome h2{margin:0}.tour-welcome p{margin:0;color:var(--muted)}
 .tw-roles{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr));gap:8px}
 .tw-role{display:grid;gap:2px;text-align:left;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface,#fff);cursor:pointer}.tw-role:hover{border-color:var(--brand);background:var(--brand-soft)}.tw-role small{color:var(--muted)}
+
+/* Tick boxes in a grid: small square boxes with the label beside them, the whole tile clickable. */
+.check-grid label{display:flex;align-items:center;gap:10px;cursor:pointer;min-height:44px}.check-grid label input[type=checkbox],.check-grid label input[type=radio]{width:20px;height:20px;min-height:0;flex:none;position:static;opacity:1;margin:0;accent-color:var(--brand,#0f6b4f)}.check-grid label:has(input:checked){border-color:var(--brand,#0f6b4f);background:var(--brand-soft,#e8f4ef);font-weight:700}
+
+/* Live work homes */
+.metric-link{text-align:left;border:1px solid var(--line);cursor:pointer;font:inherit;color:inherit}.metric-link:disabled{cursor:default}.metric-link:hover:not(:disabled){border-color:var(--brand,#0f6b4f)}
+.wh-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;margin-bottom:16px}.wh-now{border:2px solid var(--brand,#0f6b4f)}.wh-kicker{margin:0;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--brand,#0f6b4f)}.wh-now h2{margin:4px 0 8px}
+.wh-big{width:100%;min-height:52px;font-size:16px;margin-top:10px}.wh-toggle{min-width:130px}
+.wh-strip{display:flex;gap:4px;list-style:none;padding:0;margin:10px 0}.wh-strip li{flex:1;font-size:11px;text-align:center;padding:6px 2px;border-radius:8px;background:var(--surface-2,#f1f4f2);color:var(--muted,#667)}.wh-strip li.done{background:var(--brand-soft,#e8f4ef);color:var(--brand,#0f6b4f);font-weight:700}.wh-strip li.current{background:var(--brand,#0f6b4f);color:#fff;font-weight:800}
+.wh-money{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}.wh-money span{display:block;font-size:12px;color:var(--muted,#667)}.wh-money b{font-size:20px}.wh-money small{display:block;font-size:11px;color:var(--muted,#667)}
+@media(max-width:760px){.wh-grid{grid-template-columns:1fr}.wh-money{grid-template-columns:1fr 1fr}}
+
+.expiry-check{display:grid;gap:4px;margin:6px 0;padding:8px 10px;border-radius:10px;background:var(--warning-soft,#fff6e5);font-size:12px}
+.pick-preview{margin:8px 0;padding-left:20px;display:grid;gap:4px}.pick-preview li small{display:block;color:var(--muted,#667);font-size:11px}
+
+.talent-filters{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px 14px;align-items:end;margin-bottom:12px}.talent-filters label{display:grid;gap:4px;font-size:12px;font-weight:700}.talent-filters label.check-inline,.check-inline{display:flex;align-items:center;gap:8px;font-weight:600}.check-inline input{width:18px;height:18px;min-height:0;flex:none}
+.avail-chip{margin:8px 0;padding:8px 10px;border-radius:10px;background:var(--brand-soft,#e8f4ef);font-size:13px}.talent-card .row-actions{flex-wrap:wrap}
+.voice-box .row-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.voice-box input{flex:1;min-width:200px}
+.sos-button{margin:8px 0 12px;min-height:48px;font-size:16px;font-weight:800}.driver-card .row-actions{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.grid.three{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}@media(max-width:760px){.grid.three{grid-template-columns:1fr}}
+.demo-pay-note{margin:0 0 10px;padding:8px 10px;border-radius:10px;background:var(--warning-soft,#fff6e5);font-size:12px}
+.tour-lang{margin-left:auto;margin-right:6px;border:1px solid rgba(255,255,255,.35);background:transparent;color:inherit;border-radius:999px;padding:2px 10px;font:inherit;font-size:12px;cursor:pointer}

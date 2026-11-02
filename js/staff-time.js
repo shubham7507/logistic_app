@@ -38,6 +38,8 @@ export function checkIn(s,store,pid,branchId,date=today()){
  s.staffDays||=[];if(s.staffDays.some(d=>d.store===store&&d.personId===pid&&d.date===date&&d.status!=='rejected'))return 'Attendance is already recorded for this day.';
  if((s.staffLeaveRequests||[]).some(l=>l.store===store&&l.personId===pid&&l.status==='approved'&&l.dates.includes(date)&&l.units===1))return 'Full-day leave is approved for this date. Ask the owner to correct it.';
  const row={id:uid('DAY'),store,personId:pid,date,branchId,cover:branchId!==hr?.homeBranch,status:'pending',units:1,by:storeWorker(s,store,pid).name,source:'worker',at:at()};s.staffDays.push(row);
+ // One attendance record: a picker who marks themselves present today also starts their pick shift, so picker pay and payroll agree.
+ {const pk=(s.pickerStaff||[]).find(p=>p.id===pid&&p.store===store&&p.payPlan);if(pk&&date===today()&&!(s.pickerShifts||[]).some(x=>x.pickerId===pid&&x.date===date)){const sh={id:`SHIFT-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,pickerId:pid,store,branchId,date,scheduleId:null,startAt:new Date(clock()).toISOString(),endAt:null,status:'open',planType:pk.payPlan.type,rate:pk.payPlan.rate,source:'attendance'};(s.pickerShifts||=[]).push(sh);row.shiftId=sh.id;}}
  notify(s,store,'storeHR',`${row.by} says they are present on ${date} · approve attendance`,row.id);
  return '';
 }
@@ -45,7 +47,7 @@ export function checkOut(s,store,pid,date=today()){
  const d=(s.staffDays||[]).find(x=>x.store===store&&x.personId===pid&&x.date===date&&['pending','approved'].includes(x.status));
  if(!d)return 'Mark yourself present before leaving.';
  if(d.leftAt)return 'You already marked that you left today.';
- d.leftAt=at();notify(s,store,'storeHR',`${storeWorker(s,store,pid)?.name||'Worker'} finished the shift on ${date}`,d.id);return '';
+ d.leftAt=at();{const sh=(s.pickerShifts||[]).find(x=>x.pickerId===pid&&x.date===date&&x.status==='open');if(sh){sh.endAt=new Date(clock()).toISOString();sh.status='submitted';}}notify(s,store,'storeHR',`${storeWorker(s,store,pid)?.name||'Worker'} finished the shift on ${date}`,d.id);return '';
 }
 export function markByOwner(s,store,pid,branchId,date,actor){
  if(!storeWorker(s,store,pid))return 'Choose an active worker at this store.';

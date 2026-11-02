@@ -207,7 +207,7 @@ with sync_playwright() as p:
         nav = page.locator('#desktop-nav').inner_text()
         if product == 'customer':
             for word in ['Work', 'Invitations', 'Payments', 'Find work']: check(word not in nav, f'customer menu hides {word}')
-            check('Book' in nav and 'Account' in nav, 'customer menu')
+            check('Shop' in nav and 'Account' in nav and 'Orders' in nav, 'customer menu (booking lives on Home and under More)')
             check('Earn with MoveAI Partner' not in page.locator('#main-content').inner_text(), 'no partner pitch on customer home')
             page.click('#workspace-button'); lst = page.locator('#workspace-list').inner_text(); page.keyboard.press('Escape')
             check('Raj Logistics' not in lst.split('Other MoveAI apps')[0], 'customer switcher lists no business roles')

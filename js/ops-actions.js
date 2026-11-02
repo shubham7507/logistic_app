@@ -1,3 +1,4 @@
+import * as WX from './work-extras.js';
 // MoveAI One — operations actions. Every handler re-checks permissions (never rely on hidden buttons)
 // and writes an audit event. `api` is supplied by app.js so state stays single-sourced.
 import * as Pay from './pay.js';
@@ -133,9 +134,9 @@ export function bindOps(root, api) {
         notify(s, [branch.workspace], `New auto-assigned request ${jobId} for ${branch.name}.`, jobId);
       } else if (d.service === 'driver') {
         const conv = `CNV-${id}`;
-        s.serviceRequests.unshift({...base, type: 'driver', title: `Personal Driver · ${d.hireType} · ${d.carType}`, hireType: d.hireType, duration: Number(d.duration), carType: d.carType, location: d.location, provider: null, providerName: null, status: 'searching', conversationId: conv});
+        s.serviceRequests.unshift({...base, type: 'driver', title: `Personal Driver · ${d.hireType} · ${d.carType}`, hireType: d.hireType, duration: Number(d.duration), carType: d.carType, location: d.location, provider: null, providerName: null, status: 'searching', conversationId: conv, preferredWorkerId: d.favouriteWorkerId || null});
         s.conversations.unshift({id: conv, kind: 'job', ref: id, title: `${id} · Personal Driver booking`, participants: ['personal', 'personalDriver'], status: 'open', messages: []});
-        notify(s, ['personalDriver'], `New customer request ${id} near ${d.location}.`, id);
+        { const fav = d.favouriteWorkerId ? s.platformWorkers.find(w => w.id === d.favouriteWorkerId) : null; notify(s, ['personalDriver'], fav ? `${s.person?.name || 'Your regular customer'} asked for you again (${id}, ${d.location}).` : `New customer request ${id} near ${d.location}.`, id); }
       } else {
         s.serviceRequests.unshift({...base, type: 'general', title: `${d.category} visit`, category: d.category, provider: 'partner', providerName: 'Verified service partner', status: 'accepted', conversationId: null});
       }
@@ -296,6 +297,7 @@ export function bindOps(root, api) {
       if (o.kind === 'job') { const j = s.movingJobs.find(x => x.id === o.ref); const c = j?.crew.find(x => x.persona === o.to); if (c) c.accepted = true; else if (j) { j.crew.push({id: worker.id, name: worker.name, role: 'helper', persona: o.to, classification: 'marketplace', accepted: true}); j.parties.push(o.to); const conv = s.conversations.find(x => x.id === j.conversationId); if (conv && !conv.participants.includes(o.to)) conv.participants.push(o.to); } if (o.platformFee) addLedger(s, {owner: o.from, sourceType: 'hiring', sourceId: o.id, type: 'platform_fee', direction: 'payable', payer: o.from, payee: 'platform', responsible: o.from, amount: o.platformFee, method: 'platform', reference: `PF-${o.id}`, status: 'paid', forWorker: o.to, note: 'Hiring fee (paid by business)'}); }
       if (o.kind === 'invite' && worker) worker.status = 'employed';
       o.status = 'accepted';
+      WX.onOfferAccepted(s, o);
       notify(s, [o.from], `${worker?.name || partyName(s, o.to)} accepted: ${o.title}.`, o.ref || o.id);
       audit(s, `Worker accepted offer ${o.id} (${o.kind})`);
       done(o.kind === 'invite' ? 'Invite accepted. Staff onboarding opens with the business.' : 'Accepted. It is now in your assigned work.');

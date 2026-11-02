@@ -59,9 +59,10 @@ export function jobs(s, person) {
     // (ledger-core.js's rows()) were two of several places silently reading the old numbers directly.
     Payroll.ensurePayrollCore(s);
     const money = {
-      balance: Payroll.balance(s, e.personId),
-      advance: Payroll.advanceOutstanding(s, e.personId),
-      cashToConfirm: Payroll.history(s, e.personId).filter(h => ['pending_confirmation', 'pending_ack', 'pending_handoff'].includes(h.status)),
+      // Money is per employer: an old job shows only what that business still owes, not the worker's total.
+      balance: Payroll.balance(s, e.personId, e.business),
+      advance: Payroll.advanceOutstanding(s, e.personId, e.business),
+      cashToConfirm: Payroll.history(s, e.personId).filter(h => (!h.business || h.business === e.business) && ['pending_confirmation', 'pending_ack', 'pending_handoff'].includes(h.status)),
     };
     return {kind: 'employment', e, employer: PC.bizName(s, e.business), branch: PC.branchesFor(s, e.business).find(b => b.id === e.homeBranch)?.name || '', teams: (s.teams || []).filter(t => t.members.includes(e.id) && !t.ended).map(t => t.name), money, home: e.role === 'picker' || e.source.kind === 'picker' ? 'pickTasks' : ['driver', 'helper'].includes(e.role) ? 'myJobs' : 'work'};
   });

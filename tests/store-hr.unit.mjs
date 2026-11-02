@@ -25,6 +25,7 @@ assert.equal(H.setBranches(s,'grocery','PICK-001',B1,[B2],'Weekend cover'),'');
 // attendance by branch → payroll split, meal + cover allowances
 priya.status='active';
 assert.match(H.markDay(s,'grocery',priya.id,'2026-10-01','grocery-B9'),/not assigned/);
+globalThis.__moveaiClockOffset=10-new Date().getDate(); // run as if it were the 10th, so the 1st–3rd are never in the future
 const m=new Date().toISOString().slice(0,7);
 H.markDay(s,'grocery',priya.id,`${m}-01`,B2);H.markDay(s,'grocery',priya.id,`${m}-02`,B2);H.markDay(s,'grocery',priya.id,`${m}-03`,B1);
 let l=H.payrollLines(s,'grocery').find(x=>x.p.id===priya.id);assert.equal(l.base,1350);assert.equal(l.meal,180);assert.equal(l.coverPay,100);assert.deepEqual(l.byBranch,{[B2]:2,[B1]:1});

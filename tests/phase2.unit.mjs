@@ -1,3 +1,4 @@
+import * as H from './_flow-helpers.mjs';
 import assert from 'node:assert/strict';
 import * as O from '../js/product-orders.js';
 import * as C from '../js/commerce.js';
@@ -9,7 +10,7 @@ const fresh=()=>{const s=structuredClone(SEED);s.person={id:'P1',name:'S'};X.ens
 let s=fresh();
 // cancel one item before packing → refund; cannot cancel the only item
 s.productCart=[{productId:'PRD-101',quantity:1},{productId:'PRD-103',quantity:2}];
-let r=O.placeOrder(s,{fromCart:true,address:'Flat 4',method:'upi',vpa:'a@okaxis',billing:{name:'S'}});let o=(r.orders||[r.order]).find(x=>x.items.length===2);
+let r=O.placeOrder(s,{fromCart:true,address:'Flat 4',method:'upi',vpa:'a@okaxis',billing:{name:'S'}});let o=(r.orders||[r.order]).find(x=>x.items.length===2);H.confirmPaid(s,o);
 const before=o.total;assert.equal(X.cancelItem(s,o,'PRD-103'),'');assert.equal(o.total,before-56);assert.ok(s.ledger.some(x=>x.orderId===o.id&&x.type==='refund'&&x.amount===56));
 assert.match(X.cancelItem(s,o,'PRD-101'),/only item/);
 // stock-outs counted; admin alerted at 3

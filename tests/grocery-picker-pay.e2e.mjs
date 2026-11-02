@@ -1,3 +1,4 @@
+import * as H from './_flow-helpers.mjs';
 import assert from 'node:assert/strict';
 import {SEED} from '../js/mock-data.js';
 import * as Pay from '../js/grocery-picker-pay.js';
@@ -7,11 +8,11 @@ import * as Orders from '../js/product-orders.js';
 import {canOpen} from '../js/permissions.js';
 
 const s=structuredClone(SEED);
-assert.equal(canOpen('grocery','shopPickerPay'),true);
+assert.equal(canOpen('grocery','staffPay'),true,'picker pay now lives in Staff pay');
 assert.equal(canOpen('picker','pickEarnings'),true);
 assert.equal(canOpen('picker','shopPickerPay'),false);
 assert.match(Commerce.screen(s,'shopTeam','grocery'),/Monthly/);
-assert.match(Commerce.screen(s,'shopEarnings','grocery'),/Staff pay/);
+assert.match(Commerce.screen(s,'shopEarnings','grocery'),/Pay workers/);
 assert.match(Commerce.screen(s,'pickEarnings','picker'),/12,000/);
 assert.match(Pay.startPickerShift(s,'grocery'),/Picker access/);
 assert.equal(Pay.startPickerShift(s,'picker'),'');
@@ -35,8 +36,8 @@ assert.equal(Pay.recordPickerPayment(s,'grocery',monthly.id,'upi','UPI-ABC-03'),
 assert.equal(monthly.status,'paid');
 assert.match(Pay.recordPickerPayment(s,'grocery',monthly.id,'upi','UPI-ABC-03'),/Approve/);
 assert.match(Commerce.screen(s,'pickEarnings','picker'),/12,200/);
-assert.match(Commerce.screen(s,'shopPickerPay','grocery'),/UPI-ABC-03/);
-assert.doesNotMatch(Commerce.screen(s,'shopPickerPay','groceryFresh'),/UPI-ABC-03/);
+// Picker pay now shows in the store's Staff pay screen; the payment is one ledger record owned by ABC Grocery only.
+{const e=s.ledger.filter(x=>x.reference==='UPI-ABC-03');assert.equal(e.length,1);assert.ok(!s.ledger.some(x=>x.reference==='UPI-ABC-03'&&/fresh/i.test(String(x.owner))));}
 
 // Imran works a daily shift. The daily rate is counted once, independent of task count.
 assert.equal(Pay.startPickerShift(s,'pickerFresh'),'');
@@ -51,7 +52,7 @@ assert.equal(Pay.approvePickerPayRun(s,'groceryFresh',daily.id),'');
 assert.equal(Pay.recordPickerPayment(s,'groceryFresh',daily.id,'bank','BANK-FM-03'),'');
 
 // Order settlements do not change when the store records staff pay.
-const o=Orders.placeOrder(s,{productId:'PRD-101',qty:1,address:'Delhi',method:'upi',vpa:'test@okaxis'}).order;
+const o=H.confirmPaid(s,Orders.placeOrder(s,{productId:'PRD-101',qty:1,address:'Delhi',method:'upi',vpa:'test@okaxis'}).order);
 assert.equal(Commerce.sellerAction(s,'grocery',o.id,'accept'),'');
 assert.equal(Staff.assignPicker(s,'grocery',o.id,'PICK-001'),'');
 assert.equal(Commerce.pickerAction(s,'picker',o.id,'start'),'');
@@ -59,9 +60,9 @@ assert.equal(Commerce.pickerAction(s,'picker',o.id,'check','PRD-101'),'');
 assert.equal(Commerce.pickerAction(s,'picker',o.id,'complete'),'');
 assert.equal(Commerce.sellerAction(s,'grocery',o.id,'pack',1),'');
 assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'accept'),'');
-assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'pickup',o.pickupCode,1),'');
+assert.equal(Commerce.deliveryAction((H.shareLocation(s,o),s),'deliveryPartner',o.id,'pickup',o.pickupCode,1),'');
 assert.equal(Commerce.deliveryAction(s,'deliveryPartner',o.id,'deliver',o.deliveryCode),'');
-assert.equal(o.sellerDue,653);assert.equal(o.deliveryPayoutStatus,'pending');
+assert.equal(o.sellerDue,653);assert.equal(o.deliveryPayoutStatus,'wallet_credited');
 assert.equal(s.pickerPayRuns.filter(r=>r.pickerId==='PICK-001').length,1);
 assert.equal(s.ledger.some(e=>e.type==='picker_pay'),false);
 
@@ -72,14 +73,14 @@ assert.equal(Staff.removePicker(t,'grocery','PICK-001'),'');
 assert.equal(t.pickerShifts[0].status,'submitted');
 assert.equal(Pay.approvePickerShift(t,'grocery',t.pickerShifts[0].id),'');
 assert.equal(Pay.createPickerPayRun(t,'grocery','PICK-001'),'');
-assert.match(Commerce.screen(t,'shopPickerPay','grocery'),/Former picker/);
+{const SP=await import('../js/staff-pay.js');t.currentWorkspace='grocery';assert.match(SP.screen(t,'staffPay','grocery'),/Former workers · final pay[\s\S]*Asha Picker[\s\S]*Former picker/,'removed staff still appear for their final pay');}
 
 // The controls on the rendered pages invoke the same actions through the UI binder.
 const ui=structuredClone(SEED);let saved=0;
 function tap(ws,action,id,fields={}){
  ui.currentWorkspace=ws;
  const button={dataset:{commerce:action,id},onclick:null};
- const root={querySelectorAll:selector=>selector==='[data-commerce]'?[button]:[],querySelector:selector=>({value:fields[selector]||''})};
+ const root={querySelectorAll:selector=>selector==='[data-commerce]'?[button]:[],querySelector:selector=>{const el=sel=>({value:fields[sel]||'',checked:false,dataset:{},addEventListener(){},querySelectorAll:()=>[],querySelector:x=>el(x)});return el(selector)}};
  Commerce.bind(root,{getState:()=>ui,save:()=>saved++,render:()=>{},toast:message=>{if(message!=='Updated')throw new Error(message)}});
  button.onclick();
 }

@@ -1,3 +1,4 @@
+import * as WX from './work-extras.js';
 // MoveAI One — operations screens (draw.io pages 02, 03–11, 13, 15–20).
 import {ROLE_TEMPLATES} from './people-rules.js';
 import * as Geo from './geo.js';
@@ -106,7 +107,7 @@ export function bookScreen(state) {
       <label><span>Insure goods — declared value ₹ (optional)</span><input type="number" name="declaredValue" min="0" value="${esc(d.declaredValue || '')}" placeholder="e.g. 300000"></label>
       <label class="wide"><span>Inventory (one item per line or comma separated)</span><textarea name="inventory" rows="3">${esc(d.inventory || 'Beds and mattresses, Wardrobe, Kitchen cartons, TV and electronics')}</textarea></label>`
     : svc === 'driver' ? `
-      <label><span>Hire for</span><select name="hireType">${Object.entries(DRIVER_RATES).map(([id, r]) => `<option value="${id}" ${(d.hireType || 'daily') === id ? 'selected' : ''}>${r.label}</option>`).join('')}</select></label>
+      <label><span>Hire for</span><select name="hireType">${Object.entries(DRIVER_RATES).map(([id, r]) => `<option value="${id}" ${(d.hireType || 'daily') === id ? 'selected' : ''}>${r.label}</option>`).join('')}</select></label>${(state.favouriteDrivers || []).length ? `<label class="wide"><span>Book a favourite driver again</span><select name="favouriteWorkerId"><option value="">Any verified driver near me</option>${(state.favouriteDrivers || []).map(id => state.platformWorkers.find(w => w.id === id)).filter(Boolean).map(w => `<option value="${w.id}" ${d.favouriteWorkerId === w.id ? 'selected' : ''}>★ ${esc(w.name)} (${esc(w.rating)})</option>`).join('')}</select></label>` : ''}
       <label><span>How many (hours / days / trips / months)</span><input type="number" name="duration" min="1" value="${esc(d.duration || 1)}"></label>
       <label><span>Nights away (outstation only)</span><input type="number" name="nights" min="0" value="${esc(d.nights || 0)}"></label>
       <label><span>Car</span><select name="carType">${['Hatchback manual', 'Sedan manual', 'SUV automatic', 'SUV manual', 'Luxury automatic'].map(c => `<option ${d.carType === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
@@ -154,7 +155,16 @@ export function servicesScreen(state) {
 
 export function serviceDetailScreen(state) {
   const __r = state.serviceRequests.find(x => x.id === state.selectedServiceId && x.customer === 'personal') || state.serviceRequests.find(x => x.customer === 'personal');
-  return serviceDetailBase(state) + (__r ? Bill.billPanel(state, __r, Pay.paySummary(state, __r)) + Pay.surveyPanel(state, __r) + Pay.servicePayPanel(state, __r) + (globalThis.__moveaiPlus?.serviceClaimHtml?.(state, __r) || '') : '');
+  if (__r?.type === 'helpers') return helperRequestScreen(state, __r);
+  const __extra = __r?.type === 'driver' ? (__r.hireType === 'monthly' && __r.status === 'searching' ? `<div class="info-banner"><b>Monthly driver: choose who you want</b><span>See 3 verified drivers near you, call them and book a paid trial day before choosing.</span><button class="button primary" data-route="driverChoice">Choose your driver</button></div>` : '') + WX.driverCardHtml(state, __r) : '';
+  return __extra + serviceDetailBase(state) + (__r ? Bill.billPanel(state, __r, Pay.paySummary(state, __r)) + Pay.surveyPanel(state, __r) + Pay.servicePayPanel(state, __r) + (globalThis.__moveaiPlus?.serviceClaimHtml?.(state, __r) || '') : '');
+}
+function helperRequestScreen(state, r) {
+  const steps = [['searching', 'Finding helpers'], ['accepted', 'Helpers confirmed'], ['completed', 'Work done'], ['paid', 'Paid']], cur = steps.findIndex(s => s[0] === r.status);
+  return `${head(r.title, `${r.id} · ${r.date} ${r.time || ''} · ${r.location}`)}
+  <div class="grid two"><section class="panel"><h2>Status</h2><ol class="milestones">${steps.map((s, n) => `<li class="ms ${n <= cur ? 'done' : n === cur + 1 ? 'current' : ''}"><i></i><span><b>${esc(s[1])}</b></span></li>`).join('')}</ol>
+  ${r.helpers?.length ? `<h3>Your helpers</h3><ul>${r.helpers.map(h => `<li>${esc(h)} · ✓ ID verified</li>`).join('')}</ul><button class="button secondary" data-wx="call" data-name="${esc(r.helpers[0])}">📞 Call via MoveAI</button>` : '<p class="muted">We sent your request to verified helpers nearby. You will be notified when they accept.</p>'}</section>
+  <section class="panel"><h2>Price</h2>${(r.quote?.lines || []).map(([l, a]) => `<p class="price-line"><span>${esc(l)}</span> <b>${inr(a)}</b></p>`).join('')}<p class="price-line"><span>Total</span> <b>${inr(r.quote?.total)}</b></p><p class="muted">Pay after the work is done. Helpers' numbers stay hidden; calls go through MoveAI.</p></section></div>`;
 }
 function serviceDetailBase(state) {
   const r = state.serviceRequests.find(x => x.id === state.selectedServiceId && x.customer === 'personal') || state.serviceRequests.find(x => x.customer === 'personal');
@@ -226,6 +236,7 @@ export function tripDetailScreen(state) {
   const settleReady = cm?.key === 'settled' && can(state, 'trip.settle', t);
   return `${head(t.title, `${t.id} · ${t.quantity} ${t.unit} · ${t.from} → ${t.to}`, `<button class="button secondary" data-op="open-conversation" data-id="${t.conversationId}">Trip chat</button>`)}
   ${t.hold ? `<div class="action-warning"><b>On hold: ${esc(t.hold)}</b><span>Only affected parties were notified. Open the exception for the safe next action.</span><button class="button secondary" data-route="exceptions">Open exceptions</button></div>` : ''}
+  ${WX.sosButton(state, t)}
   <div class="route-strip" aria-label="Route"><span><small>Pickup</small><b>${esc(t.from)}</b></span><i aria-hidden="true"></i><span class="truck-dot" style="--p:${tripProgress(t)}%">🚚</span><span><small>Drop</small><b>${esc(t.to)}</b></span></div>
   <div class="grid two trip-grid">
     <section class="panel"><div class="panel-header"><div><h2>Milestones</h2><p>${t.dharamkata ? 'Dharamkata was selected, so weighment is mandatory with proof.' : 'Dharamkata not selected for this trip.'}</p></div></div>
@@ -263,16 +274,19 @@ export function assignTripScreen(state) {
   const external = (state.ownedVehicles.vehicle || []).filter(() => ownerWs !== 'vehicle');
   const posted = state.truckAvailability.filter(a => a.status === 'available');
   const staffCrew = (state.peopleByWorkspace[ownerWs] || []).filter(p => ['driver', 'helper'].includes(p.role) && p.status === 'active');
-  const d = state.assignDraft?.tripId === t.id ? state.assignDraft : {vehicleSource: 'own_fleet', crewSource: 'staff'};
+  let d = state.assignDraft?.tripId === t.id ? state.assignDraft : {vehicleSource: 'own_fleet', crewSource: 'staff'};
+  const rc = d.vehicleSource === 'own_fleet' ? own.find(v => v.id === d.vehicleId)?.regularCrew : null;
+  if (rc && d.crewSource === 'staff' && !d.driverId && !d.helperId) d = {...d, driverId: rc.driverId, helperId: rc.helperId, fromRegularCrew: true};
   const radio = (name, value, text, small) => `<label class="arrangement-choice"><input type="radio" name="${name}" value="${value}" ${d[name] === value ? 'checked' : ''} data-op-change="assign-draft"><span><b>${text}</b><small>${small}</small></span></label>`;
   return `${head('Assign vehicle and crew', `${t.id} · ${t.from} → ${t.to} · ${t.quantity} t · ${t.window.from.slice(0, 10)}`)}
   <form data-op-form="assign-trip" data-id="${t.id}" class="panel form-panel">
     <h2>1. Vehicle source</h2><div class="arrangement-grid three-col">${radio('vehicleSource', 'own_fleet', 'Own fleet', `${own.length} vehicle(s) in this business`)}${ownerWs !== 'vehicle' ? radio('vehicleSource', 'external_owner', 'Offer to a Vehicle Owner', 'Owner accepts and may bring crew') + radio('vehicleSource', 'posted', 'Trucks posted as available', `${posted.length} verified post(s)`) : ''}</div>
-    ${d.vehicleSource === 'own_fleet' ? `<label class="field-label">Vehicle</label><div class="choice-list">${own.map(v => { const ok = docsValid(v, t.window.from); return `<label class="choice-item ${ok ? '' : 'blocked'}"><input type="radio" name="vehicleId" value="${v.id}" ${d.vehicleId === v.id ? 'checked' : ''}><span><b>${esc(v.registration)}</b><small>${esc(v.truckType)} · ${v.capacity} t · ${ok ? 'documents valid' : 'documents expired'}</small></span></label>` }).join('') || empty('No owned vehicles', 'Add a vehicle in Fleet or use another source.')}</div>` : ''}
+    ${d.vehicleSource === 'own_fleet' ? `<label class="field-label">Vehicle</label><div class="choice-list">${own.map(v => { const ok = docsValid(v, t.window.from); return `<label class="choice-item ${ok ? '' : 'blocked'}"><input type="radio" name="vehicleId" value="${v.id}" ${d.vehicleId === v.id ? 'checked' : ''} data-op-change="assign-draft">${v.regularCrew?.driverId ? '<small class="avail-chip">Regular crew</small>' : ''}<span><b>${esc(v.registration)}</b><small>${esc(v.truckType)} · ${v.capacity} t · ${ok ? 'documents valid' : 'documents expired'}</small></span></label>` }).join('') || empty('No owned vehicles', 'Add a vehicle in Fleet or use another source.')}</div>` : ''}
     ${d.vehicleSource === 'external_owner' ? `<label class="field-label">Vehicle Owner's approved truck</label><div class="choice-list">${external.map(v => `<label class="choice-item"><input type="radio" name="vehicleId" value="${v.id}" ${d.vehicleId === v.id ? 'checked' : ''}><span><b>${esc(v.registration)} · Raj Transport</b><small>${esc(v.truckType)} · ${v.capacity} t · ${esc(v.status)}</small></span></label>`).join('')}</div><label><span>Payout offered to owner</span><input name="payout" type="number" value="${t.terms.truckOwnerPayout || 30000}"></label><label><span>Advance</span><input name="advance" type="number" value="${t.terms.advance || 8000}"></label>` : ''}
     ${d.vehicleSource === 'posted' ? `<label class="field-label">Available truck posts</label><div class="choice-list">${posted.map(a => `<label class="choice-item"><input type="radio" name="vehicleId" value="${a.vehicleId}" ${d.vehicleId === a.vehicleId ? 'checked' : ''}><span><b>${esc(a.registration)} · ${esc(a.location)}</b><small>${esc(a.truckType)} · ${a.capacity} t · from ${esc(a.availableDate)} · ${esc(a.crew)}</small></span></label>`).join('')}</div><label><span>Payout offered</span><input name="payout" type="number" value="${t.terms.truckOwnerPayout || 30000}"></label><label><span>Advance</span><input name="advance" type="number" value="${t.terms.advance || 8000}"></label>` : ''}
     <h2>2. Driver and Khalasi source</h2><div class="arrangement-grid three-col">${radio('crewSource', 'staff', 'Existing staff / partner crew', `${staffCrew.length} active`)}${radio('crewSource', 'platform', 'Hire from platform', `${state.platformWorkers.filter(w => w.status === 'available').length} verified workers`)}${d.vehicleSource !== 'own_fleet' ? radio('crewSource', 'owner', 'Vehicle Owner provides crew', 'Owner assigns own Driver/Khalasi') : ''}</div>
     ${d.crewSource === 'owner' ? '<p class="mock-hint">The Vehicle Owner assigns crew when accepting your offer.</p>' : crewPickers(state, d.crewSource === 'platform' ? state.platformWorkers.filter(w => w.status === 'available').map(w => ({...w})) : staffCrew.map(p => ({id: p.id, name: p.name, capabilities: [p.role], licences: p.role === 'driver' ? ['Heavy vehicle'] : [], status: p.status, classification: 'staff'})), d)}
+    ${d.fromRegularCrew ? '<p class="avail-chip">✓ This truck\'s regular crew is selected. Change it above if needed.</p>' : ''}
     <p id="assign-error" class="field-error" hidden></p>
     <div class="form-actions"><button type="button" class="button secondary" data-op="open-trip" data-id="${t.id}">Back</button><button class="button primary" type="submit">${d.vehicleSource === 'own_fleet' ? 'Validate and assign' : 'Validate and send offer'}</button></div>
   </form>`;
@@ -324,7 +338,7 @@ export function vehicleDetailScreen(state) {
     ${can(state, 'fleet.review') && allUp && docs.some(d => d.status === 'uploaded') && !pendingAdmin ? `<button class="button primary full" data-op="vehicle-owner-review" data-id="${v.id}">Owner reviewed · submit to Admin</button>` : ''}
     ${pendingAdmin ? '<div class="info-banner"><b>Waiting for Admin approval</b><span>You will be notified. The vehicle stays blocked for new trips until approved.</span></div>' : ''}
   </section>
-  <div class="stack"><section class="panel"><h2>How will this vehicle be used?</h2><div class="arrangement-grid">
+  <div class="stack">${WX.regularCrewPanel(state, ownerWs, v)}<section class="panel"><h2>How will this vehicle be used?</h2><div class="arrangement-grid">
     <button class="arrangement-choice as-button" data-op="vehicle-use" data-id="${v.id}" data-use="own"><span class="arrangement-icon">🏠</span><span><b>Own goods / own work</b><small>Reserve for this business</small></span></button>
     ${['goods', 'transporter', 'vehicle'].includes(ownerWs) ? `<button class="arrangement-choice as-button" data-route="postAvailableTruck"><span class="arrangement-icon">📣</span><span><b>Post availability</b><small>Transporters and goods owners see it</small></span></button>` : ''}
     ${ownerWs === 'vehicle' ? `<button class="arrangement-choice as-button" data-route="trips"><span class="arrangement-icon">📨</span><span><b>Transporter offers</b><small>${state.vehicleOffers.filter(o => o.to === 'vehicle' && o.status === 'sent').length} waiting</small></span></button>

@@ -1,3 +1,4 @@
+import {voiceBox} from './work-extras.js';
 // MoveAI One — worker onboarding with verification levels (draw.io 09, 10, 11; recommendation B + D + C + E).
 // Level 1 Browse: OTP + work type + city → see jobs and pay.
 // Level 2 Verified: licence (drivers) or Aadhaar (others) checked instantly + live selfie → apply, receive offers, appear in search.
@@ -189,13 +190,14 @@ export function workerDetailsScreen(state) {
   const type = c.workerType;
   return `${head(c.id ? 'Edit work profile' : 'Start working', c.id ? 'Update what businesses see.' : 'Takes about a minute. You can browse jobs right after this; verification comes when you are ready to apply.')}${levelBar(c.id ? c : null)}
   ${invite && !c.id ? `<div class="info-banner"><b>${esc(invite.business)} invited you</b><span>${esc(invite.role)} · ₹${Number(invite.pay).toLocaleString('en-IN')} ${esc(invite.payType)}. We filled in what they told us. You only need to verify your licence and selfie to join them.</span></div>` : ''}
+  ${voiceBox()}
   <form id="candidate-profile-form" class="panel form-panel narrow">
     <fieldset><legend>What work do you want?</legend><div class="service-picker">${Object.entries(WORKER_TYPES).map(([k, w]) => `<label><input type="radio" name="workerType" value="${k}" ${type === k ? 'checked' : ''} data-worker-type><b>${w.icon} ${esc(w.label)}</b><small>${esc(w.summary)}</small></label>`).join('')}</div></fieldset>
     <div class="form-grid two">
       <label class="wide"><span>Full name (as on your ID)</span><input name="name" value="${esc(c.name)}" autocomplete="name"></label>
       <label><span>City or area</span><input name="location" value="${esc(c.locations?.[0] || '')}" placeholder="e.g. Patna"></label>
       <label><span>Available from</span><input name="availability" value="${esc(c.availability || 'Available now')}"></label>
-      ${type === 'helper' ? `<fieldset class="wide"><legend>Skills</legend><div class="check-grid">${['Truck Khalasi', 'Loading / unloading', 'Moving helper / packer', 'Warehouse / assembly'].map(s => `<label><input type="checkbox" name="skills" value="${s}" ${(c.skills || []).includes(s) ? 'checked' : ''}> ${s}</label>`).join('')}</div></fieldset>` : ''}
+      ${type === 'helper' ? `<fieldset class="wide"><legend>Skills</legend><div class="check-grid">${['Truck Khalasi', 'Loading / unloading', 'Moving helper / packer', 'Warehouse / assembly'].map(s => `<label><input type="checkbox" name="skills" value="${s}" ${(c.skills || []).includes(s) ? 'checked' : ''}> ${s}</label>`).join('')}</div><p id="skills-error" class="field-error" hidden></p></fieldset>` : ''}
       ${drives(c) ? `<label class="wide"><span>${drives(c) === 'commercial' ? 'Vehicles you can drive' : 'Cars you can drive'} (optional)</span><input name="vehicleTypes" value="${esc((c.vehicleTypes || []).join(', '))}" placeholder="${drives(c) === 'commercial' ? '14-wheel, 22-ft closed' : 'Hatchback, SUV'}"></label><label><span>Driving experience in years (optional)</span><input type="number" min="0" name="experienceYears" value="${esc(c.experienceYears ?? '')}"></label>` : ''}
       <label><span>Work preference</span><select name="workPreference">${['Per trip', 'Hourly', 'Daily', 'Monthly', 'Permanent job'].map(p => `<option ${c.workPreference === p ? 'selected' : ''}>${p}</option>`).join('')}</select></label>
       <label><span>Expected pay ₹ (optional)</span><input type="number" min="0" name="expectedPay" value="${esc(c.expectedPay ?? '')}"></label>
@@ -257,7 +259,7 @@ export function bindWorkerOnboarding(root, api) {
     form.onsubmit = e => {
       e.preventDefault(); const s = api.getState(); const f = new FormData(form);
       const v = {workerType: f.get('workerType'), name: String(f.get('name') || '').trim(), location: String(f.get('location') || '').trim(), availability: f.get('availability'), vehicleTypes: String(f.get('vehicleTypes') || '').split(',').map(x => x.trim()).filter(Boolean), experienceYears: f.get('experienceYears'), skills: f.getAll('skills'), workPreference: f.get('workPreference'), expectedPay: Number(f.get('expectedPay')) || 0};
-      const error = validateQuickStart(v); if (error) return showErr(root, 'candidate-profile-error', error);
+      const error = validateQuickStart(v); if (error) { const where = /skill/i.test(error) && root.querySelector('#skills-error') ? 'skills-error' : 'candidate-profile-error'; root.querySelector('#' + where)?.scrollIntoView?.({block: 'center'}); return showErr(root, where, error); }
       let c = currentCandidate(s);
       if (c && c.level >= 2 && c.workerType !== v.workerType) return showErr(root, 'candidate-profile-error', 'You are verified for this type of work. To change it, contact support so your checks can be redone.');
       if (!c) { const invite = pendingInvite(s); c = {id: `CAND-${Date.now().toString().slice(-5)}`, personId: s.person?.id, mobile: s.auth?.mobile, checks: {}, inviteId: invite?.id || null}; s.candidates.push(c); s.selectedCandidateId = c.id; }

@@ -26,12 +26,13 @@ assert.equal(E.giveAdvance(s,'transporter',ramesh,3000,500),'');assert.equal(s.p
 const m2=L.rows(s,'transporter').find(x=>x.p.name==='Mohan Yadav');if(m2.balance>0)assert.equal(E.pay(s,'transporter',m2,Math.min(200,m2.balance),'cash'),'');
 const asha=L.rows(s,'grocery').find(x=>x.p.name==='Asha Picker');assert.equal(E.markPresent(s,'grocery',asha),'');
 // add staff for a business and a store
-assert.match(E.addStaff(s,'transporter',{name:'Raju',mobile:'12'}),/10-digit/);
-assert.equal(E.addStaff(s,'transporter',{name:'Raju Kumar',mobile:'9811133344',role:'helper',payType:'per_trip',rate:1800,branchId:'BR-001'}),'');assert.ok(s.peopleByWorkspace.transporter.some(p=>p.mobile==='9811133344'&&p.status==='invited'));
-assert.equal(E.addStaff(s,'grocery',{name:'Kiran',mobile:'9811133355',role:'picker',payType:'per_shift',rate:450,branchId:'grocery-B1'}),'');
-assert.match(E.addStaff(s,'groceryManager',{name:'X',mobile:'9811133366',rate:1}),/owner/);
+assert.match(E.addStaff(s,'transporter',{name:'Raju',mobile:'12'}).error,/10-digit/);
+assert.equal(E.addStaff(s,'transporter',{name:'Raju Kumar',mobile:'9811133344',role:'helper',payType:'per_trip',rate:1800,branchId:'BR-001'}).error,'');assert.ok(s.peopleByWorkspace.transporter.some(p=>p.mobile==='9811133344'&&p.status==='invited'));
+assert.equal(E.addStaff(s,'grocery',{name:'Kiran',mobile:'9811133355',role:'picker',payType:'per_shift',rate:450,branchId:'grocery-B1'}).error,'');
+assert.match(E.addStaff(s,'groceryManager',{name:'X',mobile:'9811133366',rate:1}).error,/owner/);
 // screen renders with five actions; manager does not see Add/Pay
-s.easyAction='balances';let h=E.screen(s,'easyStaff','transporter');assert.match(h,/Staff \(easy\)/);assert.match(h,/Send on WhatsApp/);assert.doesNotMatch(h.replace(/<[^>]+>/g,' '),/\bundefined\b|NaN/);
-h=E.screen(s,'easyStaff','groceryManager');assert.doesNotMatch(h,/data-easy-act="add"/);assert.match(h,/data-easy-act="present"/);
+// The Staff hub replaced the old five-button easy screen: four tiles, one profile per worker, speak-or-type commands.
+let h=E.screen(s,'easyStaff','transporter');assert.match(h,/<h1>Staff<\/h1>/);assert.match(h,/Pay workers[\s\S]*People at this business[\s\S]*Speak or type/);assert.doesNotMatch(h.replace(/<[^>]+>/g,' '),/\bundefined\b|NaN/);
+h=E.screen(s,'easyStaff','groceryManager');assert.match(h,/data-easy-nav="storeHR" disabled/,'managers cannot add workers');assert.match(h,/Manager · your branch/);
 assert.ok(E.HI['I received it']&&E.HI['Mark present']);
 console.log(JSON.stringify({status:'PASS',suite:'Easy mode: voice/typed commands, five actions, business words, Hindi dictionary'},null,2));

@@ -57,6 +57,8 @@ export function recordPosition(s, o, lat, lng, src = 'gps') {
 }
 export function startDemoLocation(s,o) {
  ensureGeo(s);
+ // Orders created before the store's map position was loaded (e.g. an early counter delivery) take it now.
+ if(o&&!o.origin){const st=storeOf(s,o.fulfilmentPartner);if(st?.coords)o.origin=[...st.coords];}
  if(!o?.origin||o.deliveryAssignment?.status!=='accepted')return 'An accepted delivery with a store location is required.';
  o.geo={...(o.geo||{}),mode:'demo',live:true,everStarted:true,lastAt:Date.now()};
  return recordPosition(s,o,o.origin[0],o.origin[1],'demo');

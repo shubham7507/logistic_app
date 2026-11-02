@@ -338,7 +338,7 @@ export function moneyConfirm({action, amount, from, to, ref}) {
 }
 
 // Elements that exist only for testing; hidden with ?demo=off.
-export const DEMO_ONLY_SELECTORS = ['.demo-only', '[data-action="test-staff-invite"]', '[data-leave-tab]', '.tab-view', '[data-picker-account]', '[data-commerce="select-picker"]', '[data-manager-account]', '[data-commerce="select-manager"]', '[data-geo-start-demo]', '[data-easy-demo]', '[data-plus-demo-scan]', '[data-route="states"]'];
+export const DEMO_ONLY_SELECTORS = ['.demo-only', '[data-action="test-staff-invite"]', '[data-leave-tab]', '.tab-view', '[data-picker-account]', '[data-commerce="select-picker"]', '[data-manager-account]', '[data-commerce="select-manager"]', '[data-easy-demo]', '[data-plus-demo-scan]', '[data-route="states"]'];
 export const DEMO_ONLY_TEXT = /^(Demo|Prototype)\b|demo (manager|store staff) account|Use demo location/i;
 
 // ---------- demo-only tools ----------

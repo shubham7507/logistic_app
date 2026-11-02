@@ -9,7 +9,8 @@ for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:4177/ && break; s
 pass=0; fail=0; failed=()
 while read -r t; do
   [[ -z "$t" || "$t" == \#* ]] && continue
-  if node "$t" >/tmp/ci-out.txt 2>&1; then pass=$((pass+1)); echo "PASS $t"; else fail=$((fail+1)); failed+=("$t"); echo "FAIL $t"; tail -20 /tmp/ci-out.txt; fi
+  if [[ "$t" == *.py ]]; then runner=python3; else runner=node; fi
+  if $runner "$t" >/tmp/ci-out.txt 2>&1; then pass=$((pass+1)); echo "PASS $t"; else fail=$((fail+1)); failed+=("$t"); echo "FAIL $t"; tail -20 /tmp/ci-out.txt; fi
 done < tests/ci-list.txt
 echo "----"; echo "$pass passed, $fail failed"
 [[ $fail -eq 0 ]] || { printf 'Failed: %s\n' "${failed[@]}"; exit 1; }

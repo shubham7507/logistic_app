@@ -73,43 +73,43 @@
   },
   {
     "id": "role-goods-owner",
-    "steps": 15,
+    "steps": 16,
     "ok": true,
     "error": ""
   },
   {
     "id": "role-transporter",
-    "steps": 15,
+    "steps": 16,
     "ok": true,
     "error": ""
   },
   {
     "id": "role-truck-owner",
-    "steps": 15,
+    "steps": 16,
     "ok": true,
     "error": ""
   },
   {
     "id": "role-movers",
-    "steps": 13,
+    "steps": 14,
     "ok": true,
     "error": ""
   },
   {
     "id": "role-commercial-driver",
-    "steps": 9,
+    "steps": 12,
     "ok": true,
     "error": ""
   },
   {
     "id": "role-personal-driver",
-    "steps": 9,
+    "steps": 10,
     "ok": true,
     "error": ""
   },
   {
     "id": "role-helper",
-    "steps": 9,
+    "steps": 10,
     "ok": true,
     "error": ""
   },
@@ -170,6 +170,54 @@
   {
     "id": "task-delivery",
     "steps": 5,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-hire-worker",
+    "steps": 9,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-book-helpers",
+    "steps": 7,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-monthly-driver",
+    "steps": 5,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-picker-expiry",
+    "steps": 7,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-driver-safety",
+    "steps": 4,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-in-person-join",
+    "steps": 3,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-regular-crew",
+    "steps": 4,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-practice-delivery",
+    "steps": 4,
     "ok": true,
     "error": ""
   }
