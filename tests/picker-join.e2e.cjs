@@ -39,17 +39,23 @@ const text = async (p, sel = 'main') => (await p.textContent(sel)).replace(/\s+/
   // 2. Worker opens the link: wrong mobile refused, then OTP → staff app.
   await go(p, `business.html#/pickJoin/${pk.inviteToken}`); assert.match(await text(p), /Verma Electricals invited you Arjun Kumar · Order preparation \(fulfilment\)/);
   await p.fill('form[data-pick-join] input[name=mobile]', '9000000000'); await p.fill('form[data-pick-join] input[name=otp]', '123456'); await p.check('form[data-pick-join] input[name=consent]');
-  await p.click('form[data-pick-join] button'); await p.waitForTimeout(300); assert.match(await text(p, '.pick-join-error'), /ending 2345/);
+  await p.click('form[data-pick-join] button.primary'); await p.waitForTimeout(300); assert.match(await text(p, '.pick-join-error'), /ending 2345/);
   await p.fill('form[data-pick-join] input[name=mobile]', '9876512345'); await p.fill('form[data-pick-join] input[name=otp]', '123456'); await p.check('form[data-pick-join] input[name=consent]');
-  await p.click('form[data-pick-join] button'); await p.waitForTimeout(600);
+  await p.click('form[data-pick-join] button.primary'); await p.waitForTimeout(300); assert.match(await text(p, '.pick-join-error'), /Send OTP first/, 'OTP must be sent first');
+  await p.fill('form[data-pick-join] input[name=mobile]', '9876512345'); await p.click('form[data-pick-join] [data-idv-phone-send]'); assert.match(await text(p, 'form[data-pick-join] [data-idv-msg]'), /OTP sent to \+91 ••••••2345/);
+  await p.fill('form[data-pick-join] input[name=otp]', '123456'); await p.check('form[data-pick-join] input[name=consent]');
+  await p.click('form[data-pick-join] button.primary'); await p.waitForTimeout(600);
   assert.ok(p.url().endsWith('#/pickProfile')); assert.equal(await p.textContent('#workspace-name'), 'Verma Electricals staff');
   await go(p, 'business.html#/pickJoin/nope'); assert.match(await text(p), /not valid/);
 
   // 3. Accept → joining details (Aadhaar OTP, selfie, bank) → submitted.
   await go(p, `business.html#/pickProfile?ws=${worker}`); await p.click('[data-commerce="accept-picker"]'); await p.waitForTimeout(400);
   const F = '#picker-onboarding-form ';
-  await p.fill(F + 'input[name=aadhaar]', '234567890123'); await p.fill(F + 'input[name=dob]', '1998-05-10'); await p.fill(F + 'input[name=otp]', '123456');
-  await p.setInputFiles(F + 'input[name=selfie]', {name: 'selfie.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('x')}); await p.check(F + 'input[name=consent]');
+  assert.equal(await p.isChecked(F + 'input[name=consent]'), false, 'consent is never pre-ticked');
+  await p.check(F + 'input[name=consent]'); await p.fill(F + 'input[name=aadhaar]', '234567890123'); await p.click(F + '[data-idv="send"]');
+  assert.match(await text(p, F + '[data-idv-msg]'), /OTP sent to \+91 ••••••2345/);
+  await p.fill(F + 'input[name=dob]', '1998-05-10'); await p.fill(F + 'input[name=otp]', '123456');
+  await p.setInputFiles(F + 'input[name=selfie]', {name: 'selfie.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('x')});
   await p.fill(F + 'input[name=accountName]', 'Arjun Kumar'); await p.fill(F + 'input[name=accountNumber]', '123456789012'); await p.fill(F + 'input[name=ifsc]', 'SBIN0001234');
   await p.click(F + 'button.button.primary'); await p.waitForTimeout(500);
   st = await state(p); assert.equal(st.pickerStaff.find(x => x.id === pk.id).status, 'submitted', 'selfie file accepted (bug fixed)');

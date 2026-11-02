@@ -11,6 +11,8 @@ import {WORKER_BY_STORE} from './seller-roles.js';
 import {gateway, record, clock} from './pay.js';
 import {STORE_BY_MANAGER, STORE_BY_WORKER, SELLER_WORKSPACES} from './seller-roles.js';
 import {gstLookup, pennyDrop, aadhaarEkyc, upiVerify} from './verify-sim.js';
+import * as IDV from './id-verify.js';
+const staffIdKey = (s, pid) => ((s.pickerStaff || []).concat(s.storeManagers || []).find(x => x.id === pid)?.mobile) || pid;
 import * as Cred from './staff-credentials.js';
 import * as Payroll from './payroll-core.js';
 import * as PC from './people-core.js';
@@ -100,23 +102,26 @@ export function canDisableBranch(s, store, branchId) { const n = people(s, store
 export function verifyStaff(s, pid, v) {
   const h = s.staffHR[pid]; if (!h) return 'Not found.';
   const method=v.method||'legacy',idType=method==='other_document'?'other':'aadhaar';
-  if(!['legacy','otp','offline','aadhaar_document','other_document'].includes(method))return 'Choose an ID verification method.';
+  if(!['legacy','otp','offline','aadhaar_document','other_document','reuse'].includes(method))return 'Choose an ID verification method.';
+  if(method==='reuse'){const r=IDV.verify(s,staffIdKey(s,pid),{idReuse:'1'},{purpose:'Store staff'});if(!r.ok)return 'No verified Aadhaar on your profile yet.';
+    h.kyc={...(h.kyc||{}),status:'verified',reviewStatus:'pending',method:'otp',idType:'aadhaar',idLast4:String(r.data.masked).slice(-4),reused:true};delete h.otpChallenge;
+    Cred.log(s,pid,'id','pending','Worker','Used Aadhaar already verified in MoveAI; store joining confirmation pending');return '';}
   if(method!=='otp'){
     const dob=new Date(v.dob);if(isNaN(dob))return 'Enter your date of birth.';
     if((clock()-dob.getTime())/(365.25*DAY)<18)return 'You must be 18 or older to work at a store.';
   }
   if(!(v.consent==='1'||v.consent===true))return 'Give consent to the mock ID check.';
-  if(method==='otp'&&(!h.otpChallenge||h.otpChallenge.last4!==String(v.aadhaar||'').slice(-4)||clock()-h.otpChallenge.at>5*60*1000))return 'Tap Send demo OTP first; the test code expires after five minutes.';
   if(['aadhaar_document','other_document'].includes(method)&&(!v.front||!v.back))return 'Add both mock ID sides, or the same test PDF in both fields.';
   if(method==='legacy'&&!!v.front!==!!v.back)return 'Add both mock ID sides, or the same test PDF in both fields.';
   if(method==='offline'&&!v.offlineFile)return 'Add a mock QR image, PDF or offline XML file.';
-  const k=['legacy','otp'].includes(method)?aadhaarEkyc({aadhaar:v.aadhaar,otp:v.otp,consent:true}):{ok:true};
+  const k=method==='otp'?IDV.verify(s,staffIdKey(s,pid),{aadhaar:v.aadhaar,otp:v.otp,consent:true},{name:(s.pickerStaff||[]).concat(s.storeManagers||[]).find(x=>x.id===pid)?.name,purpose:'Store staff'}):method==='legacy'?aadhaarEkyc({aadhaar:v.aadhaar,otp:v.otp,consent:true}):{ok:true};
   if(!k.ok)return k.reason;
   if(!['otp','legacy'].includes(method)&&!/^[0-9]{4}$/.test(String(v.idLast4||'')))return 'Enter the last four digits of the test ID.';
   if(method!=='otp'&&!v.selfie)return 'Add a mock selfie for manual review.';
   if(method==='legacy'&&!/^[6-9]\d{9}$/.test(String(v.emergencyMobile||'')))return 'Add an emergency contact mobile.';
   h.kyc={status:['otp','legacy'].includes(method)?'verified':'submitted',reviewStatus:'pending',method,idType,idLast4:['otp','legacy'].includes(method)?String(v.aadhaar).slice(-4):String(v.idLast4),dob:v.dob||'',selfie:v.selfie||'',front:v.front||null,back:v.back||null,offlineFile:v.offlineFile||null,documentType:method==='other_document'?String(v.documentType||'Other ID'):null,emergency:method==='legacy'?{name:v.emergencyName,mobile:v.emergencyMobile}:h.kyc?.emergency,version:(h.kyc?.version||0)+1,at:stamp()};
   delete h.otpChallenge;
+  if(!['otp','legacy'].includes(method))IDV.markInReview(s,staffIdKey(s,pid),{last4:h.kyc.idLast4,method:method==='offline'?'Aadhaar QR / offline file':'ID document',purpose:'Store staff'});
   Cred.log(s,pid,'id','pending','Worker',method==='otp'?'Demo OTP completed; store joining confirmation pending':method==='offline'?'Mock offline file submitted; digital signature not checked':'Mock document submitted for manual review');
   const p=(s.pickerStaff||[]).concat(s.storeManagers||[]).find(x=>x.id===pid);
   (s.notifications||=[]).unshift({id:uid('NT'),to:p?.store,route:'storeHR',text:`${p?.name||'Worker'} submitted ${method==='otp'?'a mock OTP check':'mock ID documents'} · ID ending ${h.kyc.idLast4}`,ref:pid,at:stamp(),read:false});
@@ -126,6 +131,7 @@ export function issueMockOtp(s,pid,aadhaar){
   const h=s.staffHR?.[pid],a=String(aadhaar||'').replace(/\D/g,'');
   if(!h)return 'Staff account not found.';
   if(!/^[2-9]\d{11}$/.test(a))return 'Enter a 12-digit test Aadhaar number first.';
+  const r=IDV.sendOtp(s,staffIdKey(s,pid),{aadhaar:a,consent:true});if(!r.ok)return r.reason;
   h.otpChallenge={last4:a.slice(-4),at:clock()};return '';
 }
 export function saveEmergencyContact(s,pid,v){
@@ -476,8 +482,9 @@ function identityPanel(s,p,h){
  const start='<form class="form-grid two" data-hr-form="kyc">';
  const end='<button class="button primary wide">Submit for store review</button></form>';
  return `<section class="panel staff-id-panel"><h2>My ID</h2><p class="muted">${label}${k.idLast4?` · ID ending ${esc(k.idLast4)}`:''}</p>${Cred.preview(k.front,'my ID front')}${Cred.preview(k.back,'my ID back')}${k.offlineFile?`<p>Offline test file: ${esc(k.offlineFile.name)}</p>${Cred.preview(k.offlineFile,'offline QR or PDF')}`:''}
+ ${!['pending','platform_pending'].includes(k.reviewStatus)&&k.status!=='verified'&&IDV.isVerified(s,staffIdKey(s,p.id))?`<form data-hr-form="kyc" class="idv-done"><input type="hidden" name="method" value="reuse"><input type="hidden" name="consent" value="1"><b>✓ Already verified in MoveAI</b><span>Aadhaar ${esc(IDV.recordOf(s,staffIdKey(s,p.id)).masked)} · ${esc(IDV.recordOf(s,staffIdKey(s,p.id)).method)}. Use it here instead of verifying again.</span><button class="button primary compact">Use my verified Aadhaar</button></form>`:''}
  ${!['pending','platform_pending'].includes(k.reviewStatus)?`<details ${k.status!=='verified'?'open':''}><summary class="button secondary compact">${seeded?'Start my own verification':k.reviewStatus==='correction_required'?'Correct and resubmit ID':k.reviewStatus==='approved'?'Update my ID':'Verify my ID'}</summary><fieldset class="id-method-choices"><legend>Choose one verification method</legend><label><input type="radio" name="idMethodChoice" value="otp" checked> Aadhaar OTP <small>Demo code; no card upload</small></label><label><input type="radio" name="idMethodChoice" value="offline"> Aadhaar QR / offline file <small>Mock file; signature not checked</small></label><label><input type="radio" name="idMethodChoice" value="aadhaar_document"> Aadhaar document <small>Front and back; store review</small></label><label><input type="radio" name="idMethodChoice" value="other_document"> Another ID <small>Manual store review</small></label></fieldset>
- <div data-id-path="otp"><h3>Aadhaar OTP</h3><p>Enter a test Aadhaar number and code. No card images are needed. Your store confirms your joining separately.</p>${start}<input type="hidden" name="method" value="otp"><label>Test Aadhaar number<input name="aadhaar" inputmode="numeric" required></label><button type="button" class="button secondary" data-hr="send-id-otp">Send demo OTP</button><label data-otp-step hidden>Enter demo OTP<input name="otp" inputmode="numeric" placeholder="123456" disabled required></label>${consent}<button class="button primary wide">Complete demo OTP check</button></form></div>
+ <div data-id-path="otp"><h3>Aadhaar OTP</h3><p>Enter a test Aadhaar number and code. No card images are needed. Your store confirms your joining separately.</p>${start}<input type="hidden" name="method" value="otp"><label>Test Aadhaar number<input name="aadhaar" inputmode="numeric" required></label><button type="button" class="button secondary" data-hr="send-id-otp">Send OTP</button><label data-otp-step hidden>Enter demo OTP<input name="otp" inputmode="numeric" placeholder="123456" disabled required></label>${consent}<button class="button primary wide">Complete demo OTP check</button></form></div>
  <div data-id-path="offline"><h3>Aadhaar QR / offline e-KYC</h3><p>Upload a mock QR image, PDF or XML. This demo does not validate a UIDAI signature; the store reviews the submission.</p>${start}<input type="hidden" name="method" value="offline"><label>Last four test ID digits<input name="idLast4" inputmode="numeric" maxlength="4" required></label><label>Date of birth<input name="dob" type="date" required></label><label>Mock QR or offline file<input name="offlineFile" type="file" accept="image/png,image/jpeg,image/webp,application/pdf,application/xml,text/xml,.xml" required></label><label>Mock selfie<input name="selfie" type="file" accept="image/*" required></label>${consent}${end}</div>
  <div data-id-path="aadhaar_document"><h3>Manual Aadhaar document review</h3><p>Upload both sides or select the same two-sided PDF twice. No OTP is required.</p>${start}<input type="hidden" name="method" value="aadhaar_document"><label>Last four test ID digits<input name="idLast4" inputmode="numeric" maxlength="4" required></label><label>Date of birth<input name="dob" type="date" required></label><label>Front image or PDF<input name="front" type="file" accept="image/png,image/jpeg,image/webp,application/pdf" required></label><label>Back image or PDF<input name="back" type="file" accept="image/png,image/jpeg,image/webp,application/pdf" required></label><label>Mock selfie<input name="selfie" type="file" accept="image/*" required></label>${consent}${end}</div>
  <div data-id-path="other_document"><h3>Another accepted ID</h3><p>Choose another ID for manual store review. No Aadhaar number or OTP is requested.</p>${start}<input type="hidden" name="method" value="other_document"><label>ID type<select name="documentType"><option>Voter ID</option><option>Driving licence</option><option>Passport</option></select></label><label>Last four test ID digits<input name="idLast4" inputmode="numeric" maxlength="4" required></label><label>Date of birth<input name="dob" type="date" required></label><label>Front image or PDF<input name="front" type="file" accept="image/png,image/jpeg,image/webp,application/pdf" required></label><label>Back image or PDF<input name="back" type="file" accept="image/png,image/jpeg,image/webp,application/pdf" required></label><label>Mock selfie<input name="selfie" type="file" accept="image/*" required></label>${consent}${end}</div>${test}</details>`:''}

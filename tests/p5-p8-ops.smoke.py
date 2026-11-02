@@ -156,8 +156,14 @@ with sync_playwright() as p:
     check(page.locator('[data-worker-join]').count() == 1, 'join invite offered at level 2')
     for key, fields in [('aadhaar', {'aadhaar': '234567891234', 'otp': '123456'}), ('bank', {'account': '123456789012', 'confirm': '123456789012', 'ifsc': 'SBIN0001234'}), ('emergency', {'name': 'Geeta Yadav', 'phone': '9876500011'})]:
         page.locator(f'[data-worker-check="{key}"]').click(); page.wait_for_timeout(60)
+        if key == 'aadhaar':
+            check(not page.is_checked('form[data-worker-verify="aadhaar"] [name="consent"]'), 'consent not pre-ticked')
+            page.check('form[data-worker-verify="aadhaar"] [name="consent"]')
+            page.fill('form[data-worker-verify="aadhaar"] [name="aadhaar"]', fields['aadhaar'])
+            page.locator('form[data-worker-verify="aadhaar"] [data-idv="send"]').click(); page.wait_for_timeout(60)
+            check('OTP sent to' in page.inner_text('form[data-worker-verify="aadhaar"] [data-idv-msg]'), 'Send OTP shows where the OTP went')
+            fields = {'otp': fields['otp']}
         for n, v in fields.items(): page.fill(f'form[data-worker-verify="{key}"] [name="{n}"]', v)
-        if key == 'aadhaar': page.check('form[data-worker-verify="aadhaar"] [name="consent"]')
         page.locator(f'form[data-worker-verify="{key}"] button[type=submit]').click(); page.wait_for_timeout(80)
     check('Level 3' in main(), 'trip-ready'); shot('17-worker-level3')
     page.locator('[data-worker-join]').click(); page.wait_for_timeout(60)

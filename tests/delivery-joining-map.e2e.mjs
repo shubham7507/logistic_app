@@ -9,7 +9,7 @@ import * as Geo from '../js/geo.js';
 
 const img={name:'test.jpg'},pdf={name:'test.pdf'};
 const s=seedState(),ws='deliveryPartner2',p=s.deliveryPartners[ws];
-assert.match(deliveryOnboardingScreen(s,ws),/Verify Aadhaar/);
+assert.match(deliveryOnboardingScreen(s,ws),/Send OTP/);
 assert.match(requestAadhaarOtp(s,ws,'234567890123',false),/Consent/);
 assert.equal(requestAadhaarOtp(s,ws,'234567890123',true),'');
 assert.match(confirmAadhaarOtp(s,ws,'111111','1990-01-01',img),/incorrect/);

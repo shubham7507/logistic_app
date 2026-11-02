@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as IDV from '../js/id-verify.js';
 import {SEED} from '../js/mock-data.js';
 import {PRODUCTS} from '../js/products.js';
 import {canOpen} from '../js/permissions.js';
@@ -24,7 +25,7 @@ for(const [store,manager,worker,product] of [
  assert.match(Staff.selectPicker(s,worker==='pickerElectrical'?'pickerFashion':'pickerElectrical',p.id),/unavailable/);
  ok(Staff.selectPicker(s,worker,p.id));ok(Staff.acceptPickerInvite(s,worker));
  assert.equal(p.status,'profile_pending');
- ok(Staff.submitPickerOnboarding(s,worker,{aadhaar:'234567891234',otp:'123456',consent:'1',dob:'1995-01-01',selfie:'staff-selfie.jpg',accountName:p.name,accountNumber:'1234567891',ifsc:'SBIN0001234'}));
+ IDV.sendOtp(s,p.mobile,{aadhaar:'234567891234',consent:true});ok(Staff.submitPickerOnboarding(s,worker,{aadhaar:'234567891234',otp:'123456',consent:'1',dob:'1995-01-01',selfie:'staff-selfie.jpg',accountName:p.name,accountNumber:'1234567891',ifsc:'SBIN0001234'}));
  assert.equal(p.status,'submitted');
  ok(Staff.pickerReviewDecision(s,store,p.id,'approve'));
  assert.equal(p.status,'active');

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as IDV from '../js/id-verify.js';
 import * as J from '../js/staff-join.js';
 import * as W from '../js/worker-onboarding.js';
 import {SEED} from '../js/mock-data.js';
@@ -23,7 +24,7 @@ assert.equal(J.acceptInvite(s,sess,inv),'');const m=J.memberFor(s,inv);assert.eq
 assert.match(J.validateJoining({dob:'1990-01-01',address:'A',idLast4:'1234',documentName:'id.jpg',emergencyName:'B',emergencyMobile:'9876501177',accountName:'T',accountNumber:'123456789',ifsc:'SBIN0001234',ownMobile:'9876501177'}),/someone else/);
 // verified MoveAI Partner reuses Aadhaar + bank
 const c={id:'C9',name:'Test User',mobile:'9876501177',workerType:'helper',checks:{},skills:['Loading / unloading']};s.candidates.push(c);W.ensureOnboarding(c);
-const ws={candidates:[c],verificationQueue:[],audit:[],auth:{}};W.runCheck(ws,c,'aadhaar',{aadhaar:'234567891234',otp:'123456',consent:true});W.runCheck(ws,c,'selfie',{file:{name:'a.jpg'}});W.runCheck(ws,c,'bank',{account:'123456789',confirm:'123456789',ifsc:'SBIN0001234'});W.runCheck(ws,c,'emergency',{name:'Z',phone:'9811111111'});
+const ws={candidates:[c],verificationQueue:[],audit:[],auth:{}};IDV.sendOtp(ws,W.workerIdKey(ws,c),{aadhaar:'234567891234',consent:true});W.runCheck(ws,c,'aadhaar',{aadhaar:'234567891234',otp:'123456',consent:true});W.runCheck(ws,c,'selfie',{file:{name:'a.jpg'}});W.runCheck(ws,c,'bank',{account:'123456789',confirm:'123456789',ifsc:'SBIN0001234'});W.runCheck(ws,c,'emergency',{name:'Z',phone:'9811111111'});
 const partner=J.partnerProfile(s,'9876501177');assert.ok(partner,'partner profile found');
 assert.equal(J.validateJoining({dob:'1990-01-01',address:'A',idLast4:'1234',emergencyName:'B',emergencyMobile:'9811111112',reused:true,ownMobile:'9876501177'}),'','no ID upload or bank needed when reused');
 J.submitJoining(s,inv,m,{dob:'1990-01-01',address:'A',idLast4:'1234',emergencyName:'B',emergencyMobile:'9811111112',reused:true},partner);assert.equal(m.bank.source,'Reused from MoveAI Partner');assert.equal(inv.status,'submitted');

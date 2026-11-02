@@ -6,7 +6,9 @@ import {voiceBox} from './work-extras.js';
 // Instant checks fall back to manual upload → admin queue. Badges (police, medical, hazardous) are optional,
 // except police verification for Personal Driver monthly/live-in family jobs.
 import {esc, pill} from './ops.js';
-import {licenceLookup, aadhaarEkyc, pennyDrop, faceMatch, TEST_DATA, normaliseLicence} from './verify-sim.js';
+import {licenceLookup, pennyDrop, faceMatch, TEST_DATA, normaliseLicence} from './verify-sim.js';
+import * as IDV from './id-verify.js';
+export const workerIdKey = (state, c) => c?.mobile || state.auth?.mobile || c?.personId || c?.id || '';
 
 export const WORKER_TYPES = {
   commercialDriver: {label: 'Commercial Driver', icon: '🚚', drives: 'commercial', summary: 'Trucks, tempos and goods vehicles'},
@@ -122,7 +124,7 @@ export function runCheck(state, c, key, input) {
   const stamp = new Date().toLocaleString('en-IN', {day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit'});
   let r;
   if (key === 'licence') r = licenceLookup({number: input.number, dob: input.dob, name: c.name, type: c.workerType});
-  else if (key === 'aadhaar') r = aadhaarEkyc(input);
+  else if (key === 'aadhaar') r = IDV.verify(state, workerIdKey(state, c), input, {name: c.name, purpose: 'Work profile'});
   else if (key === 'bank') { if (String(input.account).replace(/\D/g, '') !== String(input.confirm).replace(/\D/g, '')) return {error: 'Account numbers do not match.'}; r = pennyDrop({account: input.account, ifsc: input.ifsc, name: c.name}); }
   else if (key === 'selfie') r = faceMatch(input.file, checkOk(c, 'licence') ? 'licence photo' : checkOk(c, 'aadhaar') ? 'Aadhaar photo' : null);
   else if (key === 'emergency') { const e = validateEmergency(input, c.mobile || state.auth?.mobile); if (e) return {error: e}; r = {ok: true, data: {name: input.name.trim(), phone: String(input.phone).replace(/\D/g, '')}}; }
@@ -146,6 +148,7 @@ export function submitManual(state, c, key, files, extra = {}) {
   }
   const stamp = new Date().toLocaleString('en-IN', {day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit'});
   c.checks[key] = {status: 'manual_pending', files: Object.fromEntries(need.map(([d]) => [d, files[d].name])), ...(key === 'licence' ? {number: normaliseLicence(extra.number), expiry: extra.expiry, classes: String(extra.classes).split(',').map(x => x.trim().toUpperCase()).filter(Boolean)} : {}), at: stamp};
+  if (key === 'aadhaar') IDV.markInReview(state, workerIdKey(state, c), {method: 'ID upload', name: c.name, purpose: 'Work profile'});
   const existing = state.verificationQueue.find(v => v.candidateId === c.id && v.check === key);
   const docs = need.map(([, l]) => l);
   if (existing) { existing.status = 'pending'; existing.version += 1; existing.documents = docs; }
@@ -165,6 +168,7 @@ export function applyWorkerDecision(state, item, status, reason) {
   else if (status === 'rejected') { x.status = 'rejected'; x.reason = reason; }
   else if (status === 'suspended') { c.suspended = true; c.suspendReason = reason; }
   if (status === 'approved' && c.suspended) { c.suspended = false; c.suspendReason = ''; }
+  if (item.check === 'aadhaar') { const k = workerIdKey(state, c); if (status === 'approved') IDV.markVerified(state, k, {method: 'ID upload', name: c.name, purpose: 'Work profile'}); else if (state.identityChecks?.[IDV.keyOf(k)]?.record?.status === 'in_review') IDV.review(state, k, 'correct', reason || 'Please upload again'); }
   refresh(c);
 }
 
@@ -181,7 +185,7 @@ function levelBar(c) {
   const lv = c ? c.level : 0;
   return `<ol class="onboard-steps" aria-label="Verification level">${LEVELS.map(l => `<li class="${lv >= l.n ? 'done' : lv + 1 === l.n ? 'current' : ''}"><i>${lv >= l.n ? '✓' : l.n}</i><span>${esc(l.name)}<small>${esc(l.unlocks)}</small></span></li>`).join('')}</ol>`;
 }
-const checkPill = (c, k) => { const s = c.checks?.[k]?.status; return pill(checkOk(c, k) ? 'verified' : s === 'manual_pending' ? 'under_review' : s === 'correction_required' ? 'correction_required' : s === 'rejected' ? 'rejected' : s === 'failed' ? 'needs_upload' : s === 'verified' ? 'expired' : 'to_do'); };
+const checkPill = (c, k) => { const s = c.checks?.[k]?.status; return IDV.statusChip(checkOk(c, k) ? 'verified' : s === 'manual_pending' ? 'in_review' : s === 'correction_required' || s === 'rejected' ? 'needs_correction' : s === 'failed' ? 'waiting' : s === 'verified' ? 'expired' : 'not_started'); };
 function checkRow(c, k) {
   const x = c.checks?.[k] || {};
   const detail = checkOk(c, k) ? (k === 'licence' ? `${(x.classes || []).join(', ')} · valid until ${x.expiry} · ${x.source}` : k === 'bank' ? `${x.masked} · ${x.ifsc || ''} · ${x.source || ''}` : k === 'aadhaar' ? `${x.masked} · ${x.source || ''}` : k === 'selfie' ? `Face match ${x.score}%` : k === 'emergency' ? `${x.name} · ${x.phone}` : x.source || 'Verified') : x.reason || CHECKS[k].via;
@@ -232,11 +236,11 @@ export function workerVerifyScreen(state) {
   const c = currentCandidate(state); if (!c) return workerDetailsScreen(state);
   const k = CHECKS[state.workerCheck] ? state.workerCheck : 'licence', x = c.checks?.[k] || {};
   const manual = x.status === 'failed' || x.status === 'correction_required' || x.status === 'rejected' || CHECKS[k].badge;
-  const test = TEST_DATA[k] ? `<p class="mock-hint">Prototype test data: ${esc(TEST_DATA[k])}</p>` : '';
+  const test = TEST_DATA[k] && k !== 'aadhaar' ? `<p class="mock-hint">Prototype test data: ${esc(TEST_DATA[k])}</p>` : '';
   const back = '<button type="button" class="button secondary" data-route="workerStatus">Back</button>';
   let form = '';
   if (k === 'licence') form = `<label><span>Licence number</span><input name="number" value="${esc(x.number || '')}" placeholder="RJ14 20220012345" autocapitalize="characters"></label><label><span>Date of birth (as on licence)</span><input type="date" name="dob" value="${esc(c.dob || '')}"></label>`;
-  if (k === 'aadhaar') form = `<label class="wide"><span>Aadhaar number</span><input name="aadhaar" inputmode="numeric" maxlength="14" autocomplete="off"></label><label><span>OTP sent to your Aadhaar-linked mobile</span><input name="otp" inputmode="numeric" maxlength="6"></label><label class="consent-row wide"><input type="checkbox" name="consent"> I allow MoveAI to fetch my Aadhaar details from DigiLocker for verification only. Only the last 4 digits are stored.</label>`;
+  if (k === 'aadhaar') form = IDV.idBlock(state, {key: workerIdKey(state, c)});
   if (k === 'bank') form = `<label class="wide"><span>Account holder</span><input value="${esc(c.name)}" disabled></label><label><span>Account number</span><input name="account" inputmode="numeric" autocomplete="off"></label><label><span>Confirm account number</span><input name="confirm" inputmode="numeric" autocomplete="off"></label><label><span>IFSC</span><input name="ifsc" placeholder="SBIN0001234" autocapitalize="characters"></label>`;
   if (k === 'selfie') form = `<label class="wide"><span>Take a live selfie</span><input type="file" name="file" accept="image/*" capture="user"></label><p class="muted wide">Face the camera in good light. We compare it with your ${drives(c) ? 'licence' : 'Aadhaar'} photo.</p>`;
   if (k === 'emergency') form = `<label><span>Name</span><input name="name" value="${esc(x.name || '')}"></label><label><span>Mobile</span><input name="phone" inputmode="tel" value="${esc(x.phone || '')}"></label>`;

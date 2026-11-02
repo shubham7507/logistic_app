@@ -7,6 +7,7 @@
 //  · owners can join a worker in person (no smartphone / Aadhaar not linked to mobile)
 //  · drivers: daily selfie check, short safety training, SOS during a trip
 // Pure state functions are exported for unit tests; screens return HTML; bindWorkExtras wires the buttons.
+import * as IDV from './id-verify.js';
 import {record} from './pay.js';
 
 const esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m]));
@@ -181,11 +182,12 @@ export function joinInPerson(s, ws, v, {storeOf} = {}) {
   const name = String(v.name || '').trim(), mobile = String(v.mobile || '').replace(/\D/g, '');
   if (name.length < 2) return {error: 'Enter the worker\'s name as on their ID.'};
   if (!/^[6-9]\d{9}$/.test(mobile)) return {error: 'Enter a valid 10-digit mobile number (theirs, or a family member\'s).'};
-  if (String(v.otp) !== '123456') return {error: 'Enter the OTP sent to that mobile (demo: 123456).'};
   if (!['aadhaar', 'voter', 'dl', 'pan'].includes(v.idType) || !/^\d{4}$|^[A-Z0-9]{4}$/i.test(String(v.idLast4 || ''))) return {error: 'Choose the ID you saw and enter its last 4 characters.'};
   if (!v.sawOriginal) return {error: 'Confirm you saw the original ID and the person matches the photo.'};
   if (!v.photo) return {error: 'Take a photo of the worker.'};
+  const otpErr = IDV.checkPhoneOtp(s, mobile, v.otp); if (otpErr) return {error: otpErr};
   const rec = {name, mobile, joinMethod: 'in_person', idCheck: {type: v.idType, last4: String(v.idLast4).toUpperCase(), checkedBy: businessName(s, ws), at: stamp(), photo: v.photo}, joinedAt: today()};
+  IDV.markInReview(s, mobile, {last4: v.idType === 'aadhaar' ? String(v.idLast4) : '', method: `ID seen in person (${v.idType})`, name, purpose: `Joined by ${businessName(s, ws)}`});
   const store = storeOf?.(ws);
   if (store) { const p = {id: uid('PICK'), store, ...rec, status: 'active', invitedBy: s.shopPartners?.[store]?.name || 'Store', payPlan: {type: 'monthly', rate: Number(v.pay) || 12000, effectiveFrom: today()}}; (s.pickerStaff ||= []).push(p); audit(s, `${p.invitedBy} joined ${name} in person`); return {member: p, kind: 'store'}; }
   const role = v.role === 'helper' ? 'helper' : v.role === 'driver' ? 'driver' : 'operations';
@@ -360,7 +362,7 @@ export function driverChoiceScreen(s) {
 export function inPersonJoinScreen(s) {
   const store = /^(grocery|groceryFresh|electrical|fashion)/.test(s.currentWorkspace);
   return `${head('Join a worker in person', 'For staff without a smartphone, or whose Aadhaar is not linked to their mobile. You check their ID face to face.')}
-  <form class="panel form-panel narrow" id="in-person-form"><div class="form-grid two"><label class="wide"><span>Worker's name (as on ID)</span><input name="name"></label><label><span>Mobile (theirs or family)</span><input name="mobile" inputmode="numeric" maxlength="10"></label><label><span>OTP sent to that mobile</span><input name="otp" inputmode="numeric" maxlength="6" placeholder="Demo: 123456"></label>${store ? '' : '<label><span>Role</span><select name="role"><option value="driver">Driver</option><option value="helper">Khalasi / helper</option><option value="operations">Office staff</option></select></label>'}<label><span>ID you checked</span><select name="idType"><option value="aadhaar">Aadhaar card</option><option value="voter">Voter ID</option><option value="dl">Driving licence</option><option value="pan">PAN card</option></select></label><label><span>Last 4 characters of the ID</span><input name="idLast4" maxlength="4"></label><label><span>Monthly pay ₹</span><input type="number" name="pay" value="${store ? 12000 : 15000}"></label><label class="wide"><span>Photo of the worker</span><input type="file" name="photo" accept="image/*" capture="user"></label><label class="wide check-inline"><input type="checkbox" name="sawOriginal"> I saw the original ID and the person matches its photo</label></div><p class="muted">Only the last 4 characters are stored. The worker can add bank details later in their own profile.</p><p class="field-error" id="in-person-error" hidden></p><button class="button primary full">Add worker</button></form>`;
+  <form class="panel form-panel narrow" id="in-person-form"><div class="form-grid two"><label class="wide"><span>Worker's name (as on ID)</span><input name="name"></label><label><span>Mobile (theirs or family)</span><input name="mobile" inputmode="numeric" maxlength="10"></label><div class="wide">${IDV.phoneOtpBlock({keyFrom: 'mobile'})}</div>${store ? '' : '<label><span>Role</span><select name="role"><option value="driver">Driver</option><option value="helper">Khalasi / helper</option><option value="operations">Office staff</option></select></label>'}<label><span>ID you checked</span><select name="idType"><option value="aadhaar">Aadhaar card</option><option value="voter">Voter ID</option><option value="dl">Driving licence</option><option value="pan">PAN card</option></select></label><label><span>Last 4 characters of the ID</span><input name="idLast4" maxlength="4"></label><label><span>Monthly pay ₹</span><input type="number" name="pay" value="${store ? 12000 : 15000}"></label><label class="wide"><span>Photo of the worker</span><input type="file" name="photo" accept="image/*" capture="user"></label><label class="wide check-inline"><input type="checkbox" name="sawOriginal"> I saw the original ID and the person matches its photo</label></div><p class="muted">Only the last 4 characters are stored. The worker can add bank details later in their own profile.</p><p class="field-error" id="in-person-error" hidden></p><button class="button primary full">Add worker</button></form>`;
 }
 export function dailySelfieScreen(s) {
   const st = s.workerStatus?.[s.currentWorkspace] || {};

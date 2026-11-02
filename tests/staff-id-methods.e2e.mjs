@@ -5,7 +5,7 @@ const s=structuredClone(SEED);HR.people(s,'grocery');const pid='PICK-001',mock={
 let ui=HR.screen(s,'myHR','picker');
 assert.match(ui,/Demo identity prefilled/);assert.match(ui,/data-id-path="otp"/);assert.match(ui,/data-id-path="offline"/);assert.match(ui,/data-id-path="aadhaar_document"/);assert.match(ui,/data-id-path="other_document"/);
 assert.match(ui,/Personal details · emergency contact/);const otp=ui.split('data-id-path="otp"')[1].split('data-id-path="offline"')[0];assert.doesNotMatch(otp,/name="front"|name="back"|name="emergencyMobile"/);
-assert.match(HR.verifyStaff(s,pid,{method:'otp',aadhaar:'234567890123',otp:'123456',consent:'1'}),/Send demo OTP/);
+assert.match(HR.verifyStaff(s,pid,{method:'otp',aadhaar:'234567890123',otp:'123456',consent:'1'}),/Send OTP first/);
 assert.equal(HR.issueMockOtp(s,pid,'234567890123'),'');
 assert.match(HR.verifyStaff(s,pid,{method:'otp',aadhaar:'234567890123',otp:'111111',consent:'1'}),/OTP/);
 assert.equal(HR.verifyStaff(s,pid,{method:'otp',aadhaar:'234567890123',otp:'123456',consent:'1'}),'');

@@ -4,6 +4,7 @@
 // applications reviewed by people) plus a "strict" policy per state — Bihar strict by default — where
 // sellers also prove who they are, that the shop exists and where the stock comes from.
 // Every check here is simulated; in production each calls a licensed provider (see the report).
+import * as IDV from './id-verify.js';
 import {gstLookup} from './verify-sim.js';
 
 const esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m]));
@@ -134,13 +135,21 @@ function aadhaarProfile(state, a, mobile, source) {
     district: m.endsWith('2222') ? 'Muzaffarpur' : city, state: sn(a.store?.stateCode) || 'India', pincode: m.endsWith('2222') ? '842001' : (a.store?.pincode || ''),
     masked: `XXXX-XXXX-${String(Math.abs([...m].reduce((h, c) => h * 31 + c.charCodeAt(0), 7)) % 9000 + 1000)}`, source, ref: `${source === 'DigiLocker' ? 'DL' : 'OFX'}-${Date.now().toString(36).toUpperCase()}`};
 }
-function verifyProfile(state, a, prof) {
+const idKey = (state, a) => a.mobile || state.auth?.mobile || state.person?.mobile || a.id;
+// Verified once anywhere in MoveAI (worker, staff, picker…) → reuse instead of DigiLocker again.
+export function dlReuse(state, a) {
+  const r = IDV.recordOf(state, idKey(state, a)); if (r?.status !== 'verified') return 'No verified Aadhaar on your profile yet.';
+  a.trust ||= {items: {}}; delete a.trust.dl;
+  return verifyProfile(state, a, {name: r.name || state.person?.name || a.ownerName || a.legalName, dob: '1990-06-15', district: a.store?.city || 'Patna', state: sn(a.store?.stateCode) || 'India', masked: r.masked, source: `MoveAI verified ID (${r.method})`, ref: `ID-${r.last4}`}, true);
+}
+function verifyProfile(state, a, prof, reused = false) {
   const owner = state.person?.name || a.ownerName, holder = a.kyc?.bank?.holder || a.legalName;
   const matches = {name: namesMatch(prof.name, owner) || namesMatch(prof.name, holder), age: ageOn(prof.dob) >= 18, address: !a.store?.city || nameKey(prof.district).join(' ') === nameKey(a.store.city).join(' ')};
   a.trust ||= {items: {}};
   a.trust.items.digilocker = {status: matches.age ? 'verified' : 'failed', at: now(), source: prof.source, ref: prof.ref,
     detail: `${prof.masked} · ${prof.name} · born ${prof.dob.slice(0, 4)} · ${prof.district}, ${prof.state} · via ${prof.source}`, profile: {name: prof.name, yob: prof.dob.slice(0, 4), district: prof.district, state: prof.state, masked: prof.masked}, matches};
   a.history.unshift({at: now(), text: `Aadhaar verified via ${prof.source}${matches.name ? '' : ' · name differs'}${matches.address ? '' : ' · district differs'}${matches.age ? '' : ' · under 18'}`});
+  if (matches.age && !reused) IDV.markVerified(state, idKey(state, a), {last4: String(prof.masked).slice(-4), method: prof.source, source: prof.source, name: prof.name, purpose: 'Seller'});
   return matches.age ? '' : 'Aadhaar shows the owner is under 18. Sellers must be 18 or older.';
 }
 export function dlStart(state, a) { a.trust ||= {items: {}}; a.trust.dl = {step: 'mobile', startedAt: Date.now()}; return ''; }
@@ -267,14 +276,14 @@ export function slaText(a, at = Date.now()) { const left = SLA_HOURS - ageHours(
 // ---------- markup ----------
 export function trustFormHtml(state, a) {
   const need = sellerItems(state, a), item = k => a.trust?.items?.[k], done = k => trustDone(a, k);
-  const st = k => done(k) ? `<span class="status-pill">${item(k).status === 'verified' ? 'Verified' : item(k).status === 'assisted' ? 'On video call' : 'Sent for review'}</span>` : '';
+  const st = k => done(k) ? `<span class="status-pill">${item(k).status === 'verified' ? 'Verified' : item(k).status === 'assisted' ? 'In review · video call' : 'In review'}</span>` : '';
   const strict = policyFor(state, a.store?.stateCode) === 'strict', ro = a.status !== 'draft' && a.sections?.trust && !['correction', 'not_provided'].includes(a.sections.trust.status);
   const verifyBtn = k => ro || done(k) ? '' : `<button type="button" class="button secondary compact" data-trust-verify="${k}">Verify</button>`;
   const dlItem = item('digilocker'), m = dlItem?.matches;
   const dlBlock = done('digilocker') ? (dlItem.status === 'assisted' ? `<p class="muted">${esc(dlItem.detail)}</p>` : `<div class="dl-result"><p><b>${esc(dlItem.profile.name)}</b> · born ${esc(dlItem.profile.yob)} · ${esc(dlItem.profile.district)}, ${esc(dlItem.profile.state)} · ${esc(dlItem.profile.masked)}</p><ul class="evidence-list"><li class="${m.name ? 'ok' : 'bad'}"><span>${m.name ? '✓' : '!'}</span><b>${m.name ? 'Name matches your PAN / bank name' : 'Name on Aadhaar differs from your PAN / bank name'}</b>${m.name ? '' : '<small>A reviewer will check this. Make sure the business is registered to you.</small>'}</li><li class="${m.age ? 'ok' : 'bad'}"><span>${m.age ? '✓' : '✗'}</span><b>${m.age ? 'Age 18 or over' : 'Under 18'}</b></li><li class="${m.address ? 'ok' : 'bad'}"><span>${m.address ? '✓' : '!'}</span><b>${m.address ? 'Address district matches the store' : 'Aadhaar address is in a different district from the store'}</b>${m.address ? '' : '<small>Fine if you live elsewhere; the reviewer may ask about it.</small>'}</li></ul><p class="muted">Verified via ${esc(dlItem.source)} · ref ${esc(dlItem.ref)}. MoveAI keeps only the masked number.</p></div>`)
     : `${dlItem?.status === 'failed' ? `<div class="info-banner warning"><b>Not accepted</b><span>Aadhaar shows the owner is under 18. Sellers must be 18 or older.</span></div>` : ''}${dlItem?.status === 'consent_denied' ? '<div class="info-banner warning"><b>You chose not to share from DigiLocker</b><span>Use another way below.</span></div>' : ''}
       <p class="muted">You'll sign in on DigiLocker with your Aadhaar-linked mobile and approve sharing. MoveAI never sees or stores your full Aadhaar number.</p>
-      ${ro ? '' : `<button type="button" class="button primary" data-dl="start">Verify with DigiLocker</button>
+      ${ro ? '' : `${IDV.isVerified(state, idKey(state, a)) ? `<div class="idv-done"><b>✓ Already verified in MoveAI</b><span>Aadhaar ${esc(IDV.recordOf(state, idKey(state, a)).masked)} · ${esc(IDV.recordOf(state, idKey(state, a)).method)}. Use it here, no need to verify again.</span><button type="button" class="button primary compact" data-dl="reuse">Use my verified Aadhaar</button></div>` : ''}<button type="button" class="button ${IDV.isVerified(state, idKey(state, a)) ? 'secondary' : 'primary'}" data-dl="start">Verify with DigiLocker</button>
       <details class="dl-fallback" ${a.trust?.dlNoAccount || dlItem?.status === 'consent_denied' ? 'open' : ''}><summary>Can't use DigiLocker?</summary>
         <div class="dl-option"><b>Aadhaar QR or offline XML</b><p class="muted">Take a photo of the QR code on your Aadhaar card or e-Aadhaar, or download the offline e-KYC ZIP from the myAadhaar website (choose a 4-digit share code).</p><div class="form-grid two"><label><span>QR photo or ZIP/XML file</span><input type="file" name="offlineFile" accept="image/*,.zip,.xml"></label><label><span>Share code (for ZIP/XML)</span><input name="shareCode" inputmode="numeric" maxlength="4"></label></div><button type="button" class="button secondary compact" data-dl="offline">Verify file</button></div>
         <div class="dl-option"><b>No smartphone, or Aadhaar mobile not linked?</b><p class="muted">The MoveAI reviewer will scan your Aadhaar QR on the video KYC call.</p><button type="button" class="button secondary compact" data-dl="assisted">Check my Aadhaar on the video call</button></div>

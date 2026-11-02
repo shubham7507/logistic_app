@@ -109,3 +109,5 @@ tests/staff-invite.smoke.py
 tests/store-hr.smoke.py
 tests/worker-hub.smoke.py
 tests/workforce.smoke.py
+tests/id-verify.unit.mjs
+tests/id-verify.e2e.cjs

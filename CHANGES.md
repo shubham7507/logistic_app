@@ -1,5 +1,16 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-02 — One "Verify my ID" step everywhere (Aadhaar OTP)
+- **Problem:** the worker Aadhaar e-KYC screen had an OTP box but no way to get an OTP. Store pickers, logistics staff and in-person joining had the same gap, the seller without GST typed an Aadhaar number with no check at all, and every flow had its own rules and wording.
+- **One shared step** (`js/id-verify.js`) used by worker profiles, store pickers, logistics staff, delivery partners, sellers without GST and store staff "My ID": consent (never pre-ticked) → 12-digit Aadhaar or 16-digit VID → **Send OTP** (shows the masked mobile it went to) → enter OTP.
+- Same rules everywhere: OTP valid 5 minutes; Resend after 30 seconds, at most 3 resends; 3 wrong OTPs lock the check for 30 minutes and offer the upload / QR / in-person route instead. Only the last 4 digits are kept.
+- **Verify once, use everywhere:** the result is saved on the person (by mobile). Any other role — store picker, business staff, delivery partner, seller, store staff — shows "Already verified ✓" and uses it without a new OTP. The seller DigiLocker check feeds the same record.
+- **Mobile OTP screens** that had no Send button (store invite link, in-person joining) now have Send / Resend OTP with the same limits; the staff invite OTP screen has Resend.
+- **One status list** on verification cards: Not started · Waiting for you · In review · Verified · Needs correction · Expired (worker checks, delivery joining, seller checks).
+- **Admin → ID checks:** one list of every Aadhaar check from every role; uploads and in-person checks wait there for Approve or Needs correction.
+- Prototype test data shown on screen: OTP 123456; Aadhaar ending 0000 → DigiLocker not responding, 9999 → no mobile linked, 2222 → name mismatch, 1717 → under 18.
+- New tour **Verify my ID** (English and Hindi); picker, delivery and in-person tours updated. New tests: `tests/id-verify.unit.mjs` (every scenario) and `tests/id-verify.e2e.cjs` (browser, phone width).
+
 ## 2026-11-02 — Fix: Find Work, "My applications" and the home "Open" button
 - **Wrong person in Find Work:** all worker roles shared one "selected worker" that business screens also changed, so Ramesh saw Iqbal Khan's profile (and Mohan saw Amit Singh's). Each demo worker role now has its own profile, and a person who signs up uses the profile linked to their account. Business review screens no longer change what a worker sees.
 - **"My applications" did nothing:** the tabs now switch. Each application shows its stage (new → reviewed → shortlisted → interview → offer → hired); a job offer can be accepted or declined in one tap.

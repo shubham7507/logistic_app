@@ -25,7 +25,7 @@ const nav={
   pickerFashion:[['home','Home'],['pickTasks','Tasks'],['pickSchedule','My schedule'],['myHR','My work & pay'],['pickProfile','Profile']],
   deliveryPartner:[['home','Home'],['deliveryJobs','Deliveries'],['deliveryEarnings','Money'],['deliveryCash','COD cash'],['deliveryProfile','Profile']],
   deliveryPartner2:[['home','Home'],['deliveryJobs','Deliveries'],['deliveryEarnings','Money'],['deliveryCash','COD cash'],['deliveryProfile','Profile']],
-  admin:[['home','Overview'],['commerceOrders','Orders'],['commercePartners','Partners'],['commercePayments','Payments'],['commerceIssues','Issues'],['plusApprovals','Listing approvals'],['plusClaims','Returns & claims'],['plusSettings','Commerce settings'],['plusReports','Commerce reports'],['verification','Verification'],['payOps','MoveAI Pay'],['approvals','Approvals'],['cases','Operations cases'],['documents','Documents'],['users','Users'],['audit','Audit']],
+  admin:[['home','Overview'],['commerceOrders','Orders'],['commercePartners','Partners'],['commercePayments','Payments'],['commerceIssues','Issues'],['plusApprovals','Listing approvals'],['plusClaims','Returns & claims'],['plusSettings','Commerce settings'],['plusReports','Commerce reports'],['verification','Verification'],['idChecks','ID checks'],['payOps','MoveAI Pay'],['approvals','Approvals'],['cases','Operations cases'],['documents','Documents'],['users','Users'],['audit','Audit']],
 };
 
 for(const items of Object.values(nav))items.push(['helpDesk',items===nav.admin?'Help Desk':'Help']);
@@ -69,6 +69,7 @@ export const WORK_EXTRA_ROUTES={
   hireOffers:{title:'Offers I sent',roles:['goods','transporter','vehicle','movers','staff']},
   bookHelpers:{title:'Book helpers',roles:['personal']},
   driverChoice:{title:'Choose your monthly driver',roles:['personal']},
+  idChecks:{title:'ID checks',roles:['admin']},
   inPersonJoin:{title:'Join a worker in person',roles:['grocery','groceryFresh','electrical','fashion','groceryManager','groceryFreshManager','electricalManager','fashionManager','transporter','goods','vehicle','movers']},
 };
 export const ROUTES={
@@ -122,7 +123,7 @@ export const HUB_OF_ROUTE={
   shopBranches:'business',plusAnalytics:'business',plusStore:'business',shopProfile:'business',branches:'business',business:'business',bank:'business',serviceExpansion:'business',managerProfile:'business',account:'business',pickProfile:'business',deliveryProfile:'business',
 };
 // MoveAI admin: group the console instead of hiding every function under "More".
-Object.assign(HUB_OF_ROUTE,{commerceOrders:'orders',commerceIssues:'orders',plusClaims:'orders',cases:'orders',commercePartners:'review',verification:'review',approvals:'review',documents:'review',plusApprovals:'review',users:'review',commercePayments:'money',payOps:'money',plusSettings:'settings',plusReports:'settings',audit:'settings',
+Object.assign(HUB_OF_ROUTE,{commerceOrders:'orders',commerceIssues:'orders',plusClaims:'orders',cases:'orders',commercePartners:'review',verification:'review',idChecks:'review',approvals:'review',documents:'review',plusApprovals:'review',users:'review',commercePayments:'money',payOps:'money',plusSettings:'settings',plusReports:'settings',audit:'settings',
   findTalent:'staff',talentProfile:'staff',hireOffers:'staff',inPersonJoin:'staff'});
 export const hubForRoute=route=>HUB_OF_ROUTE[route]||'other';
 export function groupNavByHub(nav){

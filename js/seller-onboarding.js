@@ -6,6 +6,7 @@
 //
 // PROTOTYPE LIMIT: GST, bank and licence checks use the simulated providers in verify-sim.js, and all
 // records live in browser storage. In production every check and decision runs on the server.
+import * as IDV from './id-verify.js';
 import {gstLookup, pennyDrop} from './verify-sim.js';
 import {ROLE_CONFIG} from './config.js';
 import {registerStoreKeys, MANAGER_BY_STORE, WORKER_BY_STORE, SELLER_WORKSPACES} from './seller-roles.js';
@@ -107,7 +108,9 @@ export function duplicateGstin(state, gstin, appId) {
   const other = apps(state).find(x => x.id !== appId && x.kyc?.gstin === gstin && !x.kyc?.reused && x.status !== 'rejected');
   return other ? (other.legalName || 'another seller') : '';
 }
-export function saveKyc(state, a, {pan, gstin, nonGst, aadhaar, account, ifsc, holder, chequeFile}) {
+export const sellerIdKey = (state, a) => a.mobile || state.auth?.mobile || state.person?.mobile || a.id;
+export function saveKyc(state, a, v = {}) {
+  const {pan, gstin, nonGst, account, ifsc, holder, chequeFile} = v; let idLast4 = '';
   if (!canEdit(a, 'kyc')) return 'This section is locked while it is reviewed.';
   if (a.kyc.reused) { touch(a, 'kyc'); return ''; }
   const P = String(pan || '').toUpperCase().trim(), G = String(gstin || '').toUpperCase().trim(), noGst = nonGst === true || nonGst === 'on' || nonGst === 'true';
@@ -116,7 +119,9 @@ export function saveKyc(state, a, {pan, gstin, nonGst, aadhaar, account, ifsc, h
     if (a.sellerType !== 'individual') return 'Shops and brands need a GSTIN. Only individual sellers can start without GST.';
     const taxable = a.categories.filter(c => !CATEGORIES[c].gstExempt);
     if (taxable.length) return `A GSTIN is needed to sell ${taxable.map(c => CATEGORIES[c].label).join(', ')}. Add a GSTIN or keep only fresh produce.`;
-    if (!/^[2-9]\d{11}$/.test(String(aadhaar || '').replace(/\D/g, ''))) return 'Individual sellers without GST verify Aadhaar: enter the 12-digit number.';
+    const id = IDV.verify(state, sellerIdKey(state, a), v, {name: a.legalName, purpose: 'Seller without GST'});
+    if (!id.ok) return `Aadhaar: ${id.reason}`;
+    idLast4 = id.data.last4 || String(id.data.masked).slice(-4);
   } else {
     const g = gstLookup(G, a.legalName);
     if (!g.ok) return g.reason;
@@ -127,7 +132,7 @@ export function saveKyc(state, a, {pan, gstin, nonGst, aadhaar, account, ifsc, h
   const bank = pennyDrop({account, ifsc, name: holder || a.legalName});
   if (!bank.ok && !bank.fallback) return bank.reason;
   if (!bank.ok && bank.fallback && !chequeFile) return `${bank.reason} Attach the cancelled cheque to continue; payouts stay off until it is checked.`;
-  a.kyc = {pan: P, gstin: noGst ? '' : G, gstState: noGst ? '' : G.slice(0, 2), nonGst: noGst, aadhaarLast4: noGst ? String(aadhaar).replace(/\D/g, '').slice(-4) : '',
+  a.kyc = {pan: P, gstin: noGst ? '' : G, gstState: noGst ? '' : G.slice(0, 2), nonGst: noGst, aadhaarLast4: noGst ? idLast4 : '',
     bank: bank.ok ? {masked: bank.data.masked, ifsc: bank.data.ifsc, verified: true} : {masked: `•••• ${String(account).replace(/\D/g, '').slice(-4)}`, ifsc: String(ifsc).toUpperCase(), verified: false, chequeFile: String(chequeFile)}};
   touch(a, 'kyc'); return '';
 }
@@ -362,7 +367,7 @@ export function startScreen(state, error = '') {
       <fieldset><legend>What will you sell?</legend><div class="service-grid">${Object.entries(CATEGORIES).map(([k, c]) => `<label class="service-choice ${a.categories.includes(k) ? 'selected' : ''}"><input type="checkbox" name="categories" value="${k}" ${a.categories.includes(k) ? 'checked' : ''}><span><b>${esc(c.label)}</b><small>${c.food ? 'Needs FSSAI licence' : k === 'electrical' ? 'Brand invoice or authorisation for branded items' : 'No extra licence'} · ${c.commission}% commission</small></span></label>`).join('')}</div></fieldset>${err(error)}${actions(a)}</form>`,
     2: () => a.kyc.reused ? `<form class="panel form-panel" data-sell-step="2"><div class="info-banner"><b>Using ${esc(a.legalName)}'s verified details</b><span>PAN ${esc(a.kyc.pan)} · GSTIN ${esc(a.kyc.gstin)} · bank ${esc(a.kyc.bank.masked)}. Nothing to upload again.</span></div>${err(error)}${actions(a)}</form>` : `<form class="panel form-panel" data-sell-step="2">${lockNote(a, 'kyc')}<div class="form-grid two"><label><span>PAN</span><input name="pan" maxlength="10" value="${esc(a.kyc.pan || '')}" placeholder="ABCDE1234F" autocapitalize="characters"></label><label><span>GSTIN</span><input name="gstin" maxlength="15" value="${esc(a.kyc.gstin || '')}" placeholder="09ABCDE1234F1Z5" autocapitalize="characters"></label></div>
       <label class="consent-row"><input type="checkbox" name="nonGst" ${a.kyc.nonGst ? 'checked' : ''}><span>I am an individual seller without GST and sell only GST-exempt items (fresh produce). Confirm GST rules with your CA.</span></label>
-      <label><span>Aadhaar (individual sellers without GST)</span><input name="aadhaar" inputmode="numeric" maxlength="12" placeholder="12 digits" class="text-field"></label>
+      ${IDV.idBlock(state, {key: sellerIdKey(state, a), title: 'Aadhaar check (only for individual sellers without GST)'})}
       <h3>Payout bank account</h3><div class="form-grid two"><label><span>Account holder name</span><input name="holder" value="${esc(a.legalName)}"></label><label><span>Account number</span><input name="account" inputmode="numeric" placeholder="9–18 digits"></label><label><span>IFSC</span><input name="ifsc" placeholder="SBIN0001234" autocapitalize="characters"></label><label><span>Cancelled cheque (only if the name check fails)</span><input name="chequeFile" type="file" accept="image/*,.pdf"></label></div>
       <p class="mock-hint"><b>Prototype checks</b><span>Any valid GSTIN works; one ending in 9 is cancelled. PAN must be characters 3–12 of the GSTIN. A bank account ending 000 fails the name check.</span></p>${err(error)}${actions(a)}</form>`,
     3: () => `<form class="panel form-panel" data-sell-step="3">${a.categories.some(c => CATEGORIES[c].food) ? `${lockNote(a, 'food')}<h3>FSSAI food licence</h3><div class="form-grid two"><label><span>Licence number (14 digits)</span><input name="fssai" inputmode="numeric" maxlength="14" value="${esc(a.licences.fssai?.number || '')}"></label><label><span>Valid until</span><input type="date" name="fssaiExpiry" value="${esc(a.licences.fssai?.expiry || '')}"></label></div><p class="muted">No licence yet? Leave it empty: your other categories can still go live, food stays locked until it is added.</p>` : ''}
@@ -425,6 +430,7 @@ export function bind(root, api) {
   const val = sel => root.querySelector(sel)?.value || '', fileName = n => root.querySelector(`input[name="${n}"]`)?.files?.[0]?.name || '';
   root.querySelectorAll('[data-dl]').forEach(b => b.onclick = () => {
     const s = S(), a = A(), k = b.dataset.dl; let e = '';
+    if (k === 'reuse') { e = T.dlReuse(s, a); refreshTrust(s, a); api.save(); api.render(); if (e) show(e); else api.toast('Used your verified Aadhaar'); return; }
     if (k === 'start') e = T.dlStart(s, a); else if (k === 'cancel') e = T.dlCancel(s, a);
     else if (k === 'send') { e = T.dlSendOtp(s, a, val('#dl-mobile') || a.trust?.dl?.mobile); if (a.trust?.dl?.noAccount) { a.trust.dlNoAccount = true; T.dlCancel(s, a); api.save(); api.render(); return show(e); } }
     else if (k === 'verify') e = T.dlVerifyOtp(s, a, val('#dl-otp'));

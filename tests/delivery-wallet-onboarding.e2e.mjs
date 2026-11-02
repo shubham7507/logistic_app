@@ -63,8 +63,8 @@ assert.match(screen(upi,'deliveryProfile','deliveryPartner'),/View earnings and 
 
 const joining=fresh(),newWs='deliveryPartner2';
 assert.equal(joining.deliveryPartners[newWs].status,'profile_pending');
-assert.match(screen(joining,'deliveryProfile',newWs),/Aadhaar with demo OTP/);
-assert.match(deliveryOnboardingScreen(joining,newWs),/Verify Aadhaar/);
+assert.match(screen(joining,'deliveryProfile',newWs),/Aadhaar with OTP/);
+assert.match(deliveryOnboardingScreen(joining,newWs),/Send OTP/);
 assert.equal(requestAadhaarOtp(joining,newWs,'234567890123',true),'');
 assert.match(screen(joining,'deliveryProfile',newWs),/123456/);
 assert.equal(confirmAadhaarOtp(joining,newWs,'123456','1990-01-01',{name:'selfie.jpg'}),'');

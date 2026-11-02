@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {SEED} from '../js/mock-data.js';
 import * as WX from '../js/work-extras.js';
 import * as WH from '../js/work-home.js';
+import * as IDV from '../js/id-verify.js';
 import {pickBatch, MIN_SHELF_DAYS} from '../js/commerce-plus.js';
 
 const fresh = () => ({...JSON.parse(JSON.stringify(SEED)), person: {id: 'PER-1001', name: 'Shubham Kumar'}});
@@ -101,13 +102,16 @@ const day = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 // ---------- item 12 in-person joining ----------
 {
   const s = fresh(), base = {name: 'Sunita Devi', mobile: '9876500011', otp: '123456', idType: 'voter', idLast4: '4321', sawOriginal: true, photo: 'sunita.jpg'};
+  assert.match(WX.joinInPerson(s, 'grocery', base, {storeOf: w => w}).error, /Send OTP first/);
+  IDV.sendPhoneOtp(s, base.mobile);
   assert.match(WX.joinInPerson(s, 'grocery', {...base, otp: '000000'}, {storeOf: w => w}).error, /OTP/);
   assert.match(WX.joinInPerson(s, 'grocery', {...base, sawOriginal: false}, {storeOf: w => w}).error, /original ID/);
   assert.match(WX.joinInPerson(s, 'grocery', {...base, photo: ''}, {storeOf: w => w}).error, /photo/);
   const r = WX.joinInPerson(s, 'grocery', base, {storeOf: w => w});
   assert.equal(r.kind, 'store'); assert.equal(r.member.status, 'active'); assert.equal(r.member.idCheck.last4, '4321'); assert.equal(r.member.joinMethod, 'in_person');
   assert.ok(!JSON.stringify(r.member).includes('Aadhaar number'), 'only the last 4 are stored');
-  const t = WX.joinInPerson(s, 'transporter', {...base, name: 'Bablu Yadav', role: 'helper'}, {storeOf: () => null});
+  IDV.sendPhoneOtp(s, '9876500012');
+  const t = WX.joinInPerson(s, 'transporter', {...base, mobile: '9876500012', name: 'Bablu Yadav', role: 'helper'}, {storeOf: () => null});
   assert.equal(t.kind, 'staff'); assert.equal(t.member.role, 'helper'); assert.ok(s.peopleByWorkspace.transporter.some(p => p.name === 'Bablu Yadav'));
 }
 // ---------- D1–D3 driver safety ----------

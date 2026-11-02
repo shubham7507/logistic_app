@@ -30,7 +30,7 @@ Rules that must move to the server (they exist in the app's JavaScript today and
 
 | Check | Provider | Prototype today |
 |---|---|---|
-| Aadhaar e-KYC with consent | DigiLocker (via an authorised partner) or UIDAI-licensed KUA | `aadhaarEkyc` accepts test numbers |
+| Aadhaar e-KYC with consent | DigiLocker (via an authorised partner) or UIDAI-licensed KUA | `js/id-verify.js` `sendOtp` / `verify` (test OTP 123456). Keep its rules server-side: OTP 5 min, resend after 30 s (max 3), lock 30 min after 3 wrong OTPs, one result per person reused across roles |
 | Driving licence and vehicle RC | Sarathi / Vahan (via partner APIs) | `licenceLookup` returns demo results |
 | PAN and GSTIN | NSDL/Protean PAN, GST portal | Pattern checks only |
 | Bank account name match (₹1 penny drop) | Razorpay/Cashfree/Decentro | `pennyDrop` simulated |

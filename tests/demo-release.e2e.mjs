@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as IDV from '../js/id-verify.js';
 import {SEED} from '../js/mock-data.js';
 import * as Shop from '../js/product-orders.js';
 import * as Commerce from '../js/commerce.js';
@@ -44,7 +45,7 @@ const invited=s.pickerStaff.at(-1);
 ok(Staff.selectPicker(s,'pickerFashion',invited.id));
 ok(Staff.acceptPickerInvite(s,'pickerFashion'));
 assert.equal(invited.status,'profile_pending');
-ok(Staff.submitPickerOnboarding(s,'pickerFashion',{aadhaar:'234567891234',otp:'123456',consent:'1',dob:'1995-01-01',selfie:'worker.jpg',accountName:invited.name,accountNumber:'1234567891',ifsc:'SBIN0001234',upi:'worker@okaxis'}));
+IDV.sendOtp(s,invited.mobile,{aadhaar:'234567891234',consent:true});ok(Staff.submitPickerOnboarding(s,'pickerFashion',{aadhaar:'234567891234',otp:'123456',consent:'1',dob:'1995-01-01',selfie:'worker.jpg',accountName:invited.name,accountNumber:'1234567891',ifsc:'SBIN0001234',upi:'worker@okaxis'}));
 ok(Staff.pickerReviewDecision(s,'fashion',invited.id,'approve'));
 assert.equal(invited.status,'active');
 invited.bankStatus='verified';

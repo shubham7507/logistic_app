@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as IDV from '../js/id-verify.js';
 import * as W from '../js/worker-onboarding.js';
 import * as V from '../js/verify-sim.js';
 import {SEED} from '../js/mock-data.js';
@@ -31,7 +32,7 @@ assert.equal(W.runCheck(s,c,'licence',{number:'BR01 20190054321',dob:'1990-01-01
 assert.equal(c.level,1,'licence alone is not enough');
 W.runCheck(s,c,'selfie',{file:file('me.jpg')});assert.equal(c.level,2);assert.equal(W.canTakeWork(c),'');assert.equal(c.status,'available');
 assert.match(W.canStartPaidWork(c),/trip-ready/,'cannot accept paid work at level 2');
-W.runCheck(s,c,'aadhaar',{aadhaar:'234567891234',otp:'123456',consent:true});
+IDV.sendOtp(s,W.workerIdKey(s,c),{aadhaar:'234567891234',consent:true});W.runCheck(s,c,'aadhaar',{aadhaar:'234567891234',otp:'123456',consent:true});
 assert.match(W.runCheck(s,c,'bank',{account:'123456789',confirm:'123456788',ifsc:'SBIN0001234'}).error,/do not match/);
 W.runCheck(s,c,'bank',{account:'123456789',confirm:'123456789',ifsc:'SBIN0001234'});
 assert.match(W.runCheck(s,c,'emergency',{name:'Geeta',phone:'9876543210'}).error,/someone else/);
@@ -52,11 +53,11 @@ W.applyWorkerDecision(s2,s2.verificationQueue[0],'approved','');assert.ok(W.chec
 // helper: Aadhaar + selfie, no licence
 const h={id:'H',name:'Ramu',workerType:'helper',skills:['Loading / unloading'],checks:{}};const s3=newState();s3.candidates.push(h);W.ensureOnboarding(h);
 assert.ok(!W.levelChecks(h).l2.includes('licence'));
-W.runCheck(s3,h,'aadhaar',{aadhaar:'234567891234',otp:'123456',consent:true});W.runCheck(s3,h,'selfie',{file:file('x.png')});assert.equal(h.level,2);
+IDV.sendOtp(s3,W.workerIdKey(s3,h),{aadhaar:'234567891234',consent:true});W.runCheck(s3,h,'aadhaar',{aadhaar:'234567891234',otp:'123456',consent:true});W.runCheck(s3,h,'selfie',{file:file('x.png')});assert.equal(h.level,2);
 
 // personal driver monthly family job needs police badge
 const p={id:'P',name:'Anil',workerType:'personalDriver',checks:{}};const s4=newState();s4.candidates.push(p);W.ensureOnboarding(p);
-W.runCheck(s4,p,'licence',{number:'UP16 20190054321',dob:'1990-01-01'});W.runCheck(s4,p,'selfie',{file:file('x.jpg')});W.runCheck(s4,p,'aadhaar',{aadhaar:'234567891234',otp:'123456',consent:true});W.runCheck(s4,p,'bank',{account:'123456789',confirm:'123456789',ifsc:'HDFC0001842'});W.runCheck(s4,p,'emergency',{name:'A',phone:'9811111111'});
+W.runCheck(s4,p,'licence',{number:'UP16 20190054321',dob:'1990-01-01'});W.runCheck(s4,p,'selfie',{file:file('x.jpg')});IDV.sendOtp(s4,W.workerIdKey(s4,p),{aadhaar:'234567891234',consent:true});W.runCheck(s4,p,'aadhaar',{aadhaar:'234567891234',otp:'123456',consent:true});W.runCheck(s4,p,'bank',{account:'123456789',confirm:'123456789',ifsc:'HDFC0001842'});W.runCheck(s4,p,'emergency',{name:'A',phone:'9811111111'});
 assert.equal(W.canStartPaidWork(p,{payType:'daily'}),'');assert.match(W.canStartPaidWork(p,{payType:'monthly'}),/police/);
 
 // quick start validation, seeded workers stay fully verified

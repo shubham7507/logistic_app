@@ -1,7 +1,8 @@
 // Shared mock commerce workflow. Role checks live in mutations, not just screens.
+import * as IDV from './id-verify.js';
 import {esc, pill, inr} from './ops.js';
 import * as PC from './people-core.js';
-import {deliveryOnboardingScreen,deliverySubmittedScreen,deliveryReviewScreen,deliveryProfileDetails,submitDeliveryOnboarding,deliveryReviewDecision,currentDeliveryPartner,deliveryEligibility,requestAadhaarOtp,confirmAadhaarOtp,submitManualIdentity,saveDeliveryDriving,saveDeliveryVehicle,saveDeliveryPayout} from './delivery-onboarding.js';
+import {deliveryOnboardingScreen,deliverySubmittedScreen,resendAadhaarOtp,useVerifiedIdentity,deliveryReviewScreen,deliveryProfileDetails,submitDeliveryOnboarding,deliveryReviewDecision,currentDeliveryPartner,deliveryEligibility,requestAadhaarOtp,confirmAadhaarOtp,submitManualIdentity,saveDeliveryDriving,saveDeliveryVehicle,saveDeliveryPayout} from './delivery-onboarding.js';
 import * as Payroll from './payroll-core.js';
 import * as HR from './store-hr.js';
 import * as CatalogCSV from './catalog-csv.js';
@@ -672,13 +673,14 @@ export function bind(root,api){
  root.querySelectorAll('[data-delivery-form]').forEach(f=>f.onsubmit=e=>{e.preventDefault();const s=api.getState(),ws=s.currentWorkspace;if(!driverRole(ws))return;const v=Object.fromEntries(new FormData(f)),action=f.dataset.deliveryForm;let err='Unknown step.';
   if(action==='request')err=requestAadhaarOtp(s,ws,v.aadhaar,!!v.consent);
   if(action==='otp')err=confirmAadhaarOtp(s,ws,v.otp,v.dob,v.selfie);
+  if(action==='reuse')err=useVerifiedIdentity(s,ws,v.dob,v.selfie);
   if(action==='manual')err=submitManualIdentity(s,ws,{...v,consent:!!v.consent});
   if(action==='driving')err=saveDeliveryDriving(s,ws,v);
   if(action==='vehicle')err=saveDeliveryVehicle(s,ws,v);
   if(action==='payout')err=saveDeliveryPayout(s,ws,v);
   if(err){const el=root.querySelector('[data-delivery-error]');if(el){el.hidden=false;el.textContent=err}return}api.save();api.render()});
- root.querySelector('[data-delivery-resend]')?.addEventListener('click',()=>{const s=api.getState(),p=currentDeliveryPartner(s,s.currentWorkspace);if(!p?.otpRequest)return;p.otpRequest={...p.otpRequest,issuedAt:Date.now(),attempts:0};api.save();api.render()});
- root.querySelector('[data-delivery-change-number]')?.addEventListener('click',()=>{const s=api.getState(),p=currentDeliveryPartner(s,s.currentWorkspace);if(!p)return;delete p.otpRequest;api.save();api.render()});
+ root.querySelector('[data-delivery-resend]')?.addEventListener('click',()=>{const s=api.getState(),p=currentDeliveryPartner(s,s.currentWorkspace);if(!p?.otpRequest)return;const err=resendAadhaarOtp(s,s.currentWorkspace);api.save();if(err){const el=root.querySelector('[data-delivery-error]');if(el){el.hidden=false;el.textContent=err}return api.toast(err)}api.render();api.toast('New OTP sent')});
+ root.querySelector('[data-delivery-change-number]')?.addEventListener('click',()=>{const s=api.getState(),p=currentDeliveryPartner(s,s.currentWorkspace);if(!p)return;delete p.otpRequest;IDV.clearChallenge(s,p.mobile||p.id);api.save();api.render()});
  root.querySelector('[data-delivery-submit]')?.addEventListener('click',()=>{const s=api.getState(),err=submitDeliveryOnboarding(s,s.currentWorkspace);if(err){const el=root.querySelector('[data-delivery-error]');if(el){el.hidden=false;el.textContent=err}return}api.save();api.render();api.toast('Sent to platform review')});
  const deliveryMethod=root.querySelector('[data-counter-delivery-method]'),deliveryRef=root.querySelector('[data-counter-delivery-ref-field]');
  if(deliveryMethod&&deliveryRef){const update=()=>{deliveryRef.hidden=!['upi','card'].includes(deliveryMethod.value)};deliveryMethod.addEventListener('change',update);update();}

@@ -5,7 +5,8 @@ import {defaultBranch,selectedBranch,staffAt,staffBranches} from './seller-branc
 import {esc} from './ops.js';
 import * as PC from './people-core.js';
 import {ROLES} from './store-hr.js';
-import {aadhaarEkyc, pennyDrop, faceMatch} from './verify-sim.js';
+import {pennyDrop, faceMatch} from './verify-sim.js';
+import * as IDV from './id-verify.js';
 import {issueInvite} from './picker-join.js';
 const storeRole=ws=>SELLER_WORKSPACES.includes(ws);
 const managerStore=ws=>STORE_BY_MANAGER[ws]||null;
@@ -53,7 +54,7 @@ export function submitPickerOnboarding(s,ws,v){
  // Real Aadhaar OTP verification (DigiLocker-simulated), not a typed digit count. consent is required
  // either way — from the worker themself normally, or an explicit "I confirm they were present and
  // consented" from whoever is assisting, which is a materially different, more serious claim.
- const kyc=aadhaarEkyc({aadhaar:v.aadhaar,otp:v.otp,consent:v.consent==='1'});
+ const kyc=IDV.verify(s,p.mobile,v,{name:p.name,purpose:`Picker at ${s.shopPartners?.[p.store]?.name||'store'}`});
  if(!kyc.ok)return `Aadhaar: ${kyc.reason}`;
  if(!v.dob)return 'Enter the date of birth.';
  if(!v.selfie)return assisted?'Upload a photo of the worker or their Aadhaar card.':'Take a live selfie.';
@@ -176,10 +177,8 @@ export function pickerOnboardingScreen(s,ws,assisted=false){
  ${!assisted?`<p class="muted">No smartphone? <button type="button" class="button-link" data-commerce="toggle-assisted-onboarding">Have the owner/manager verify this on your behalf instead</button></p>`:`<div class="action-warning"><b>Assisted verification</b><span>The owner/manager is entering this on ${esc(p.name)}'s behalf, with their consent, because they don't have a smartphone to do this themselves. This gets recorded differently from self-verification.</span></div><button type="button" class="button-link" data-commerce="toggle-assisted-onboarding">Switch back to self-verification</button>`}
  <form id="picker-onboarding-form"><input type="hidden" name="assisted" value="${assisted?'1':''}"><div class="onboarding-status"><div><span>1</span><b>Aadhaar verification</b></div><div><span>2</span><b>Bank verification</b></div><div><span>3</span><b>Emergency (optional)</b></div></div>
  <h3>Aadhaar verification <small class="muted">(via OTP — no need to upload a photo of the card)</small></h3>
- <div class="form-grid two"><label><span>Aadhaar number</span><input name="aadhaar" inputmode="numeric" maxlength="12" placeholder="12-digit number"></label><label><span>Date of birth</span><input type="date" name="dob" value="${esc(p.identity?.dob||'')}"></label></div>
- <div class="form-grid two"><label><span>OTP ${assisted?'(read aloud by the worker from their SMS)':'(sent to the Aadhaar-linked mobile)'}</span><input name="otp" inputmode="numeric" maxlength="6" placeholder="6-digit OTP"></label><label><span>${assisted?'Photo of the worker or their Aadhaar card':'Live selfie'}</span><input name="selfie" type="file" accept="image/*" ${assisted?'':'capture="user"'}></label></div>
- <label class="check-row"><input type="checkbox" name="consent" value="1"> ${assisted?`I confirm ${esc(p.name)} was present and gave consent for this verification.`:'I consent to fetching my Aadhaar details for verification.'}</label>
- <p class="mock-hint">Test: any 12-digit Aadhaar starting 2–9, OTP 123456.</p>
+ ${IDV.idBlock(s,{key:p.mobile,assisted})}
+ <div class="form-grid two"><label><span>Date of birth</span><input type="date" name="dob" value="${esc(p.identity?.dob||'')}"></label><label><span>${assisted?'Photo of the worker or their Aadhaar card':'Live selfie'}</span><input name="selfie" type="file" accept="image/*" ${assisted?'':'capture="user"'}></label></div>
  <h3>Payment destination <small class="muted">(verified with a ₹1 penny-drop check)</small></h3><div class="form-grid two"><label><span>Account holder</span><input name="accountName" value="${esc(p.bank?.accountName||p.name)}"></label><label><span>Account number</span><input name="accountNumber" value="${esc(p.bank?.accountNumber||'')}"></label></div>
  <div class="form-grid two"><label><span>IFSC</span><input name="ifsc" value="${esc(p.bank?.ifsc||'')}"></label><label><span>UPI (optional)</span><input name="upi" value="${esc(p.bank?.upi||'')}"></label></div>
  <h3>Emergency contact <small class="muted">(optional — leave blank to skip, add it later)</small></h3><div class="form-grid two"><label><span>Name</span><input name="emergencyName" value="${esc(p.emergency?.name||'')}" placeholder="Optional"></label><label><span>Relationship</span><input name="relationship" value="${esc(p.emergency?.relationship||'')}" placeholder="Optional"></label></div>

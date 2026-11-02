@@ -1,4 +1,5 @@
 // Seller onboarding ("Add a business → Sell products"): every scenario from the onboarding design.
+import * as IDV from '../js/id-verify.js';
 import assert from 'node:assert/strict';
 import * as SO from '../js/seller-onboarding.js';
 import {SEED} from '../js/mock-data.js';
@@ -47,8 +48,10 @@ const approveAll = (s, a) => { for (const k of Object.keys(a.sections)) if (a.se
   SO.saveType(s, a, {sellerType: 'individual', categories: ['fresh', 'food'], legalName: 'Asha Home Foods'});
   assert.match(SO.saveKyc(s, a, {pan: 'ABCDE1234F', nonGst: true, aadhaar: '234567890123', account: '123456789012', ifsc: 'SBIN0001234'}), /GSTIN is needed to sell Packaged food/);
   SO.saveType(s, a, {sellerType: 'individual', categories: ['fresh'], legalName: 'Asha Home Foods'});
-  assert.match(SO.saveKyc(s, a, {pan: 'ABCDE1234F', nonGst: true, aadhaar: '12', account: '123456789012', ifsc: 'SBIN0001234'}), /Aadhaar/);
-  assert.equal(SO.saveKyc(s, a, {pan: 'ABCDE1234F', nonGst: true, aadhaar: '234567890123', account: '123456789012', ifsc: 'SBIN0001234'}), '');
+  assert.match(SO.saveKyc(s, a, {pan: 'ABCDE1234F', nonGst: true, aadhaar: '12', consent: '1', account: '123456789012', ifsc: 'SBIN0001234'}), /Aadhaar/);
+  assert.match(SO.saveKyc(s, a, {pan: 'ABCDE1234F', nonGst: true, aadhaar: '234567890123', consent: '1', otp: '123456', account: '123456789012', ifsc: 'SBIN0001234'}), /Send OTP first/, 'Aadhaar needs an OTP');
+  assert.ok(IDV.sendOtp(s, SO.sellerIdKey(s, a), {aadhaar: '234567890123', consent: true}).ok);
+  assert.equal(SO.saveKyc(s, a, {pan: 'ABCDE1234F', nonGst: true, aadhaar: '234567890123', consent: '1', otp: '123456', account: '123456789012', ifsc: 'SBIN0001234'}), '');
   assert.equal(a.kyc.aadhaarLast4, '0123'); assert.equal(a.kyc.gstState, '');
   const shop = SO.startApplication(fresh({id: 'P-2', name: 'X'}));
   SO.saveType(s, shop, {sellerType: 'shop', categories: ['fresh'], legalName: 'Shop Co'});

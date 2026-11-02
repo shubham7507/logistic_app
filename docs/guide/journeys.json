@@ -222,6 +222,12 @@
     "error": ""
   },
   {
+    "id": "task-verify-id",
+    "steps": 12,
+    "ok": true,
+    "error": ""
+  },
+  {
     "id": "task-find-work",
     "steps": 10,
     "ok": true,

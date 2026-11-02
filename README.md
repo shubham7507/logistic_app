@@ -21,6 +21,9 @@ New stores list products from **Products and stock** (approved categories, MRP a
 
 Seller review is risk-tiered, with a strict policy per state (Bihar on by default) that adds identity, shop and stock checks; new stores start on probation; food listings carry batch and expiry dates. UPI orders are confirmed only by the bank (demo button in the prototype) and expire after 15 minutes. See `SELLER-TRUST-AND-PAYMENT-REPORT.md`.
 
+## Verify my ID (November 2026)
+Every joining flow uses one step (`js/id-verify.js`): consent → Aadhaar or VID → **Send OTP** → enter OTP. Verified once, it shows "Already verified" in every other role. Test data: OTP `123456`; Aadhaar ending `0000` DigiLocker down, `9999` no mobile linked, `2222` name mismatch, `1717` under 18. Admin → **ID checks** lists every check. Tour: `index.html?demo=on&tour=task-verify-id#/home`.
+
 ## Workspace switching (November 2026)
 
 People now see four apps: customer (`index.html`), Partner (`partner.html`, incl. store delivery partners), Business (`business.html`, incl. store owners, managers and pickers) and Admin. The switcher groups workspaces by business with unread badges, search, invitations and a colour per business; tap the page title on mobile to open it. Delivery partners and pickers cannot switch away mid-job. Links like `business.html#/shopOrders?ws=groceryManager` open the right workspace. Checkout offers **Buying for: Personal / your business** with GSTIN. Store owners can hand a shared device to staff with a PIN (demo `1234`). Round 2 adds branches and real roles on every row, one staff row per employer, a block during live trips and moves, money confirmations naming payer and payee, branch-aware alerts and per-profile payment defaults. Add `?demo=off` to hide demo-only tools. See `WORKSPACE-SWITCHING-REPORT.md`; run `npm run test:workspace` with the folder served on port 4177.
