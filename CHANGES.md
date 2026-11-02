@@ -1,5 +1,20 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-02 — Tours for every role and function (batch 1: logistics and delivery)
+- **"Show me around" tours** for nine roles:
+  - goods owner, transporter and truck owner (14 screens each), packers & movers (12);
+  - commercial driver, personal driver, khalasi/helper and business staff (8 each); delivery partner (6).
+- **New task tours:**
+  - **Ship goods:** goods owner creates the goods and transport need → picks a transporter → the transporter publishes the load → truck owners see it with a match score.
+  - **Run a trip:** assign truck and driver → the driver accepts → weighbridge milestone with slip photo → approve and pay.
+  - **Receive goods:** confirm receipt → pay the seller with a UTR → close the order.
+  - **Run a move:** slot → vehicle and crew → packing list → loading proof → transit → unloading → customer OTP.
+  - **Sign up as a driver/helper**, and **business staff check-in**.
+  - **Become a delivery partner:** ID, licence, vehicle, payout → submit → MoveAI admin approves.
+  - **Deliver with codes:** a real store order offered → accept → live location → store code → customer code.
+- **Guide:** separate role cards for each logistics role, with their tours. All 13 roles now have a tour.
+- **Recording** keeps earlier results when re-recording only some journeys.
+
 ## 2026-11-02 — Tours for every role and function (batch 2: commerce and admin)
 - **"Show me around" tours** visit every function of a role with plain-language captions:
   - shop owner (22 screens), store manager (18), store staff (6), customer (8), MoveAI admin (18).
@@ -10,7 +25,6 @@
   - "▶ Guided tours" on the clean `?demo=off` link (testing tools stay hidden there).
 - **Safety check:** a tour stops with a message if a screen is not available for the role.
 - **Guide:** role cards gain "Show me around" buttons, and journeys are grouped into role tours and task tours.
-- **Coming next (batch 1):** goods owner, transporter, truck owner, movers, drivers, helper, business staff and delivery partner.
 
 ## 2026-11-02 — Product guide, guided tours, testing panel, CI
 - **`guide.html`:** a plain-language guide covering every role, how the rules work, features by role, test data, and 6 journey videos with step screenshots.

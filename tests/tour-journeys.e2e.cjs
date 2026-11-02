@@ -43,7 +43,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     if (vdir) fs.rmSync(vdir, {recursive: true, force: true});
   }
   await b.close();
-  if (RECORD) fs.writeFileSync(path.join(RECORD, 'journeys.json'), JSON.stringify(results, null, 2));
+  if (RECORD) { // merge, so recording a few journeys keeps the others' results
+    const file = path.join(RECORD, 'journeys.json'); let prev = []; try { prev = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+    const ids = new Set(results.map(r => r.id)), order = Object.keys(JOURNEYS);
+    const merged = [...prev.filter(r => !ids.has(r.id) && order.includes(r.id)), ...results].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    fs.writeFileSync(file, JSON.stringify(merged, null, 2));
+  }
   if (results.some(r => !r.ok)) process.exit(1);
   console.log(`PASS tour journeys: ${results.map(r => r.id).join(', ')}`);
 })().catch(e => { console.error(e); process.exit(1); });

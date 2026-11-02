@@ -7,6 +7,7 @@
 **Open [`guide.html`](guide.html)** on the live site for a plain-language guide to every role, with a video of each journey and buttons that play the same journey inside the real app.
 
 - **▶ Tours & testing** (bottom-left of every app in demo mode): play any journey ("Show me" or "Step by step"), start fresh as a new user, open the admin console for testing, switch roles, see all test values.
+- **Every role has a tour (13 roles):** customer, shop owner, store manager, store staff, goods owner, transporter, truck owner, packers & movers, commercial driver, personal driver, khalasi/helper, business staff, delivery partner and MoveAI admin. Each has a "Show me around" tour of every function plus task tours from start to finish (29 journeys in all).
 - `?demo=off` hides every testing control for a clean demo (for example `index.html?demo=off`).
 - Journeys live in `js/tour-journeys.js`; the engine is `js/tour.js`. After changing a flow, run `npm run guide:record` (folder served on port 4177) to re-record the videos and screenshots in `docs/guide/`.
 - Every push runs the passing tests in a real browser (`.github/workflows/ci.yml`, list in `tests/ci-list.txt`).
