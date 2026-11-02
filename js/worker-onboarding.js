@@ -170,7 +170,12 @@ export function applyWorkerDecision(state, item, status, reason) {
 
 // ---------- screens ----------
 const head = (title, text, action = '') => `<div class="page-header"><div><h1>${esc(title)}</h1><p>${esc(text)}</p></div>${action}</div>`;
-export const currentCandidate = state => { const c = state.candidates.find(x => x.id === state.selectedCandidateId); return c ? ensureOnboarding(c) : null; };
+// The worker's own profile: each demo worker role has its own (persona), and a person signed in as themselves
+// uses the profile linked to their account. Business screens use selectedCandidateId separately, so reviewing
+// an applicant never changes which profile a worker sees.
+const PERSONA_WS = ['commercialDriver', 'personalDriver', 'helper'];
+export const workerCandidate = state => { const ws = state.currentWorkspace; const c = PERSONA_WS.includes(ws) ? (state.candidates || []).find(x => x.persona === ws) : ((state.candidates || []).find(x => x.id === state.workerCandidateId && !x.persona) || (state.candidates || []).find(x => x.personId && x.personId === state.person?.id && !x.persona)); return c ? ensureOnboarding(c) : null; };
+export const currentCandidate = workerCandidate;
 export const pendingInvite = state => (state.workerInvites || []).find(i => i.mobile === state.auth?.mobile && i.status === 'pending' && state.currentWorkspace === 'personal');
 function levelBar(c) {
   const lv = c ? c.level : 0;
@@ -262,7 +267,7 @@ export function bindWorkerOnboarding(root, api) {
       const error = validateQuickStart(v); if (error) { const where = /skill/i.test(error) && root.querySelector('#skills-error') ? 'skills-error' : 'candidate-profile-error'; root.querySelector('#' + where)?.scrollIntoView?.({block: 'center'}); return showErr(root, where, error); }
       let c = currentCandidate(s);
       if (c && c.level >= 2 && c.workerType !== v.workerType) return showErr(root, 'candidate-profile-error', 'You are verified for this type of work. To change it, contact support so your checks can be redone.');
-      if (!c) { const invite = pendingInvite(s); c = {id: `CAND-${Date.now().toString().slice(-5)}`, personId: s.person?.id, mobile: s.auth?.mobile, checks: {}, inviteId: invite?.id || null}; s.candidates.push(c); s.selectedCandidateId = c.id; }
+      if (!c) { const invite = pendingInvite(s); c = {id: `CAND-${Date.now().toString().slice(-5)}`, personId: s.person?.id, mobile: s.auth?.mobile, checks: {}, inviteId: invite?.id || null}; s.candidates.push(c); s.selectedCandidateId = c.id; s.workerCandidateId = c.id; }
       Object.assign(c, v, {locations: [v.location], capabilities: v.workerType === 'officeStaff' ? ['operations'] : [...new Set([...(WORKER_TYPES[v.workerType].drives ? ['driver'] : []), ...(v.workerType === 'helper' ? ['helper'] : [])])], licences: WORKER_TYPES[v.workerType].drives === 'commercial' ? ['Heavy vehicle'] : WORKER_TYPES[v.workerType].drives ? ['Personal car'] : []});
       refresh(c); api.save();
       if (c.level >= 2) { api.toast('Profile saved'); return api.navigate('work'); }

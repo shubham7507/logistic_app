@@ -165,3 +165,27 @@ console.log(JSON.stringify({status: 'PASS', suite: 'Work and hiring: availabilit
   }
 }
 console.log(JSON.stringify({status: 'PASS', suite: 'Store picker attendance: shift and payroll attendance stay in step'}));
+// ---------- each worker sees their own profile; open work; applications ----------
+{
+  const WO = await import('../js/worker-onboarding.js');
+  const s = fresh();
+  s.selectedCandidateId = 'CAND-002'; // a business reviewed Iqbal — must not change what workers see
+  for (const [ws, name] of [['helper', 'Ramesh Yadav'], ['commercialDriver', 'Mohan Yadav'], ['personalDriver', 'Anil Kumar']]) { s.currentWorkspace = ws; assert.equal(WO.workerCandidate(s)?.name, name, `${ws} sees their own profile`); assert.equal(WO.workerCandidate(s).level, 3); }
+  s.currentWorkspace = 'personal'; assert.equal(WO.workerCandidate(s), null, 'a customer with no work profile has none');
+  s.candidates.push({id: 'CAND-NEW', personId: s.person.id, name: 'Raju', capabilities: ['helper'], locations: ['Patna'], workerType: 'helper'}); assert.equal(WO.workerCandidate(s).id, 'CAND-NEW');
+  // open work near the worker
+  const ramesh = s.candidates.find(c => c.id === 'CAND-RAMESH');
+  WX.bookHelpers(s, {count: 1, hours: 2, location: 'Boring Road, Patna', date: day(0)}); WX.bookHelpers(s, {count: 1, hours: 2, location: 'Bandra, Mumbai', date: day(0)});
+  const open = WX.openWorkFor(s, WO.ensureOnboarding(ramesh)); assert.equal(open.length, 1, 'only jobs in his areas'); assert.match(open[0].where, /Patna/);
+  assert.equal(WX.takeOpenWork(s, ramesh, 'offer', open[0].id), ''); assert.match(WX.takeOpenWork(s, ramesh, 'offer', open[0].id), /already took/);
+  assert.equal(s.serviceRequests.find(r => r.location === 'Boring Road, Patna').status, 'accepted');
+  const raju = WO.ensureOnboarding(s.candidates.find(c => c.id === 'CAND-NEW')); assert.match(WX.takeOpenWork(s, raju, 'offer', 'x'), /trip-ready/, 'unverified workers must verify first');
+  // applications: worker told at each step, accepts the offer
+  const a = {id: 'APP-X', openingId: 'JOB-311', candidateId: 'CAND-RAMESH', status: 'shortlisted', history: []}; s.jobApplications.push(a);
+  WX.notifyApplicant(s, a); assert.ok(s.notifications.some(n => n.to === 'helper' && /Sharma Foods shortlisted you for Warehouse loader/.test(n.text)));
+  assert.match(WX.replyToOffer(s, 'APP-X', 'accepted'), /no longer open/); a.status = 'offer'; WX.notifyApplicant(s, a);
+  assert.ok(s.notifications.some(n => n.to === 'helper' && /offered you the job/.test(n.text)));
+  assert.equal(WX.replyToOffer(s, 'APP-X', 'accepted'), ''); assert.equal(a.workerResponse, 'accepted'); assert.ok(s.notifications.some(n => n.to === 'goods' && /accepted your offer/.test(n.text)));
+  const ids = s.vacancies.map(v => v.id); assert.equal(new Set(ids).size, ids.length, 'opening ids are unique');
+}
+console.log(JSON.stringify({status: 'PASS', suite: 'Own worker profile per role, open work near the worker, application updates and offer reply'}));

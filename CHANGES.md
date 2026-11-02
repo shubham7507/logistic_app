@@ -1,5 +1,15 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-02 — Fix: Find Work, "My applications" and the home "Open" button
+- **Wrong person in Find Work:** all worker roles shared one "selected worker" that business screens also changed, so Ramesh saw Iqbal Khan's profile (and Mohan saw Amit Singh's). Each demo worker role now has its own profile, and a person who signs up uses the profile linked to their account. Business review screens no longer change what a worker sees.
+- **"My applications" did nothing:** the tabs now switch. Each application shows its stage (new → reviewed → shortlisted → interview → offer → hired); a job offer can be accepted or declined in one tap.
+- **"Open" on a home alert did nothing:** it reopened the same page. An alert about an offer now scrolls to that offer and highlights it; other alerts open the right screen.
+- **No jobs for helpers:** Find Work now shows openings in the worker's areas while they are still browsing (applying needs verification), plus "Jobs near you today" from customers and businesses (helper bookings, driver bookings) with Accept for trip-ready workers. Added openings for helpers in Patna and Noida and a company car driver in Noida.
+- **New worker tapping a job saw "Access denied":** fixed; job pages also opened the wrong job because two openings shared one ID.
+- **Workers were never told about their application:** they now get a message when shortlisted, called for interview, offered the job, hired or not selected; the business is told when the worker accepts or declines; applicants have a "Call via MoveAI" button.
+- Clearer profile banner: "Your profile is visible to businesses" only once verified; "pay not set" instead of ₹0.
+- New tour: **Find work, apply and get hired** (38 tours, all in Hindi too).
+
 ## 2026-11-02 — Work, hiring and helpers; live home screens; Hindi tours; old tests fixed
 **Worker home screens (live numbers, no developer text).** Every logistics role, worker, picker and rider now opens on the same simple layout: status switch (Go online / Check in) → "Now" card with one big next-step button → new offers with Accept → money → alerts. Goods owner, transporter, truck owner, movers and admin homes show live figures and real alerts.
 

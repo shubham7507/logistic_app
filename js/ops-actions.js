@@ -10,7 +10,7 @@ import {
   validatePayment, applyMoneyAction, parseVoiceCommand, validateAdminDecision, adminResultStatus, EXCEPTION_TYPES, validateException,
   affectedParties, recalcDues, gpsAllowed, buildMilestones, validateLeave, assignMoverBranch, DOC_TYPES, currentMilestone,
 } from './ops-rules.js';
-import {canStartPaidWork, applyWorkerDecision} from './worker-onboarding.js';
+import {canStartPaidWork, workerCandidate, applyWorkerDecision} from './worker-onboarding.js';
 import {opsCtx, can, allVehicles, bookingQuote, approvalLimit, summarize, partyName, visibleTrips, inr, orderCloseBlock, adminStepUpValid, inventoryList, todayKey} from './ops.js';
 
 const now = () => new Date().toLocaleString('en-IN', {day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit'});
@@ -274,7 +274,7 @@ export function bindOps(root, api) {
     'offer-accept': id => {
       const s = S(); const o = s.workOffers.find(x => x.id === id && x.to === s.currentWorkspace); if (!o || o.status !== 'pending') return;
       const worker = s.platformWorkers.find(w => w.persona === o.to);
-      { const why = canStartPaidWork(s.candidates.find(c => c.id === s.selectedCandidateId), o); if (why) return api.toast(why); }
+      { const why = canStartPaidWork(workerCandidate(s), o); if (why) return api.toast(why); }
       if (o.kind === 'trip' && o.ref) {
         const t = s.trips.find(x => x.id === o.ref);
         if (t) {

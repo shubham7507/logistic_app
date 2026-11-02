@@ -255,6 +255,53 @@ export function parseWorkWords(text) {
 }
 export const voiceBox = () => `<section class="panel voice-box"><h2>🎤 Tell us your work</h2><p>Say or type it in your own words, for example “I drive trucks in Patna, ₹3,500 per trip” or “मैं पटना में लोडिंग का काम करता हूँ”. We fill the form for you.</p><div class="row-actions"><button type="button" class="button primary" data-wx="voice">🎤 Speak</button><input class="form-control" data-voice-text placeholder="Or type here"><button type="button" class="button secondary" data-wx="voice-fill">Fill the form</button></div><small class="muted" data-voice-status></small></section>`;
 
+
+// ---------- open work for a worker (Find Work → Jobs near you today) ----------
+const near = (c, where) => (c.locations || []).some(x => x && String(where || '').toLowerCase().includes(String(x).toLowerCase()));
+export function openWorkFor(s, c) {
+  if (!c) return [];
+  const helper = (c.capabilities || []).includes('helper') || c.workerType === 'helper', carDriver = c.workerType === 'personalDriver' || (c.licences || []).some(l => /personal|car/i.test(l));
+  const out = [];
+  if (helper) for (const o of s.workOffers || []) if (o.kind === 'helpers' && o.status === 'pending' && (o.to === 'helper' || o.to === c.persona)) {
+    const r = (s.serviceRequests || []).find(x => x.id === o.ref) || (s.transportRequirements || []).find(x => x.id === o.ref);
+    const where = r?.location || r?.pickup || o.title.split('·').pop().trim();
+    if (near(c, where) || near(c, o.title)) out.push({kind: 'offer', id: o.id, icon: '💪', title: o.title, where, when: o.date, pay: o.pay, payType: o.payType});
+  }
+  if (carDriver) for (const r of s.serviceRequests || []) if (r.type === 'driver' && r.status === 'searching' && near(c, r.location)) out.push({kind: 'driver', id: r.id, icon: '🧑‍✈️', title: r.title, where: r.location, when: r.date, pay: r.quote?.driverEarning || 0, payType: r.hireType || ''});
+  return out;
+}
+export function takeOpenWork(s, c, kind, id) {
+  if (!c) return 'Create your work profile first.';
+  if ((c.level || 0) < 3) return 'Become trip-ready first: add Aadhaar, bank account and an emergency contact.';
+  if (kind === 'offer') {
+    const o = (s.workOffers || []).find(x => x.id === id && x.status === 'pending'); if (!o) return 'Someone else already took this job.';
+    o.status = 'accepted'; o.talentKey = c.id; o.talentName = c.name; if (!o.to || o.to === 'helper') o.acceptedBy = c.persona || `candidate:${c.id}`;
+    onOfferAccepted(s, o); notify(s, o.from, `${c.name} accepted: ${o.title}.`, o.ref || o.id); return '';
+  }
+  if (kind === 'driver') {
+    const r = (s.serviceRequests || []).find(x => x.id === id && x.status === 'searching'); if (!r) return 'Someone else already took this booking.';
+    r.status = 'accepted'; r.provider = c.persona || `candidate:${c.id}`; r.providerName = c.name; notify(s, 'personal', `${c.name} accepted your driver booking ${r.id}.`, r.id, 'serviceDetail'); return '';
+  }
+  return 'Unknown job.';
+}
+
+
+// ---------- job applications: tell the worker at each step; worker accepts or declines an offer ----------
+const APP_TEXT = {reviewed: 'viewed your application for', shortlisted: 'shortlisted you for', interview: 'wants to interview you for', offer: 'offered you the job', hired: 'confirmed your joining as', rejected: 'did not select you this time for'};
+export function notifyApplicant(s, a) {
+  const c = (s.candidates || []).find(x => x.id === a.candidateId), j = (s.vacancies || []).find(x => x.id === a.openingId); if (!c || !j || !APP_TEXT[a.status]) return;
+  const to = c.persona || (c.personId ? 'personal' : null); if (!to) return;
+  notify(s, to, `${businessName(s, j.workspace)} ${APP_TEXT[a.status]}${a.status === 'offer' ? ':' : ''} ${j.title}.${a.status === 'offer' ? ' Open My applications to accept.' : ''}`, a.id, 'work');
+}
+export function replyToOffer(s, id, reply) {
+  const a = (s.jobApplications || []).find(x => x.id === id); if (!a || a.status !== 'offer') return 'This offer is no longer open.';
+  a.workerResponse = reply === 'accepted' ? 'accepted' : 'declined'; a.history.push({status: `offer ${a.workerResponse} by worker`, at: stamp()});
+  if (a.workerResponse === 'declined') a.status = 'withdrawn';
+  const c = (s.candidates || []).find(x => x.id === a.candidateId), j = (s.vacancies || []).find(x => x.id === a.openingId);
+  notify(s, j?.workspace, `${c?.name || 'The worker'} ${a.workerResponse} your offer for ${j?.title || 'the job'}.${a.workerResponse === 'accepted' ? ' Mark them hired to start joining.' : ''}`, a.id, 'applications');
+  return '';
+}
+
 // ---------- screens ----------
 const stars = n => n ? `★ ${n}` : 'New';
 const talentCard = (s, ws, t, short) => `<article class="panel candidate-card talent-card"><div class="profile-summary"><span class="avatar">${esc(t.name.split(' ').map(n => n[0]).join(''))}</span><span><h2>${esc(t.name)}</h2><p>${t.verified ? '✓ Verified' : 'Not verified'} · ${stars(t.rating)}${t.ratingCount ? ` (${t.ratingCount})` : ''}${t.strikes ? ` · ${t.strikes} strike(s)` : ''}</p></span></div>
@@ -336,6 +383,7 @@ export function bindWorkExtras(root, api, {storeOf} = {}) {
   const done = (msg, route) => { api.save(); if (route) api.navigate(route); else api.render(); if (msg) api.toast(msg); };
   const form = sel => { const f = root.querySelector(sel); return f ? Object.fromEntries(new FormData(f)) : null; };
   const fileName = (sel, name) => root.querySelector(`${sel} [name="${name}"]`)?.files?.[0]?.name || '';
+  root.querySelectorAll('[data-work-tab]').forEach(b => b.addEventListener('click', () => { S().workTab = b.dataset.workTab; done(); }));
   root.querySelectorAll('[data-talent-role]').forEach(b => b.addEventListener('click', () => { const r = b.dataset.talentRole; S().talentFilter = {...DEFAULT_FILTER, role: ['driver', 'helper'].includes(r) ? r : 'any'}; api.save(); }));
   root.querySelector('[data-talent-filter]')?.addEventListener('change', e => { const f = e.currentTarget, v = Object.fromEntries(new FormData(f)); S().talentFilter = {...DEFAULT_FILTER, ...v, verifiedOnly: f.verifiedOnly.checked, postedOnly: f.postedOnly.checked}; done(); });
   root.querySelector('[data-talent-filter] [name="area"]')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.dispatchEvent(new Event('change', {bubbles: true})); } });
@@ -354,6 +402,8 @@ export function bindWorkExtras(root, api, {storeOf} = {}) {
     if (a === 'call') return api.toast(`Calling ${b.dataset.name} through MoveAI… both numbers stay hidden (demo).`);
     if (a === 'close-post') { const p = (s.availabilityPosts || []).find(x => x.id === id); if (p) p.status = 'closed'; return done('Post closed'); }
     if (a === 'save-crew') { m = saveRegularCrew(s, b.dataset.owner, id, root.querySelector('[data-crew-driver]')?.value, root.querySelector('[data-crew-helper]')?.value); if (!m) return done('Regular crew saved. They are picked when you assign this truck.'); }
+    if (a === 'take-work') { m = takeOpenWork(s, globalThis.__moveaiWorkerCandidate?.(s), b.dataset.kind, id); if (!m) return done('Accepted. The details are in My jobs.'); }
+    if (a === 'offer-reply') { m = replyToOffer(s, id, b.dataset.reply); if (!m) return done(b.dataset.reply === 'accepted' ? 'Offer accepted. The business will confirm your joining.' : 'Offer declined.'); }
     if (a === 'sim-accept') m = simulateAnswer(s, ws(), id, true);
     if (a === 'done') m = markDone(s, ws(), id);
     if (a === 'no-show') m = reportNoShow(s, ws(), id);

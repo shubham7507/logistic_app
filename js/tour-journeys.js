@@ -559,6 +559,26 @@ rolesAdd('transporter', ['task-hire-worker', 'task-regular-crew']); rolesAdd('go
 rolesAdd('commercial-driver', ['task-hire-worker', 'task-driver-safety']); rolesAdd('personal-driver', ['task-monthly-driver']); rolesAdd('helper', ['task-book-helpers']);
 rolesAdd('customer', ['task-book-helpers', 'task-monthly-driver']); rolesAdd('store-staff', ['task-picker-expiry']); rolesAdd('shop-owner', ['task-in-person-join']); rolesAdd('delivery-partner', ['task-practice-delivery']);
 
+// ---------- find work → apply → offer → hired ----------
+Object.assign(JOURNEYS, {
+  'task-find-work': {title: 'Find work, apply and get hired', who: 'Khalasi / helper · Goods owner', minutes: 2,
+    verify: s => { const a = (s.jobApplications || []).find(x => x.openingId === 'JOB-311' && x.candidateId === 'CAND-RAMESH'); return a?.status === 'hired' && a.workerResponse === 'accepted' ? '' : `Application is ${a?.status || 'missing'}`; },
+    done: 'Ramesh saw jobs near him, applied with one tap, followed each step in My applications, accepted the job offer, and Sharma Foods confirmed his joining. He was told at every step.',
+    steps: [enterAs('Khalasi / helper', 'helper', 'a khalasi / helper (Ramesh)'),
+      {role: 'Khalasi / helper', title: 'Find Work', say: 'Openings near his areas (Patna, Noida) and jobs customers need today. His profile is visible to businesses because he is verified.', at: 'partner.html#/work', do: [{see: '[data-action="open-opening"][data-opening="JOB-311"]'}]},
+      {role: 'Khalasi / helper', title: 'Open a job and apply', say: 'Pay, start date and requirements; share the work profile with the business.', do: [{click: '[data-action="open-opening"][data-opening="JOB-311"]'}, {click: '[data-action="apply-opening"][data-opening="JOB-311"]'}, {check: '#apply-opening-form [name=consent]'}, {submit: '#apply-opening-form'}]},
+      {role: 'Khalasi / helper', title: 'My applications', say: 'Each application shows its stage: new → reviewed → shortlisted → interview → offer → hired.', at: 'partner.html#/work', do: [{click: '[data-work-tab="applications"]'}]},
+      {role: 'Goods owner', title: 'The business reviews applicants', say: 'Sharma Foods moves Ramesh to shortlisted, then sends an offer. Ramesh is told at each step.', at: 'index.html#/home', do: [{run: () => window.MoveAIVNextTest?.switchWorkspace('goods'), reload: true}]},
+      {role: 'Goods owner', title: 'Shortlist and offer', say: 'One applicant list for every opening; call through MoveAI without sharing numbers.', at: 'business.html#/applications',
+        do: [{run: c => c.set('app', (c.state().jobApplications || []).find(a => a.openingId === 'JOB-311' && a.candidateId === 'CAND-RAMESH')?.id || '')}, {select: c => `[data-action="change-application-status"][data-application="${c.vars().app}"]`, value: 'shortlisted'}, {select: c => `[data-action="change-application-status"][data-application="${c.vars().app}"]`, value: 'offer'}]},
+      {role: 'Khalasi / helper', title: 'Accept the job offer', say: 'The offer shows pay and start date; he accepts (or declines) in one tap.', at: 'index.html#/home', do: [{run: () => window.MoveAIVNextTest?.switchWorkspace('helper'), reload: true}]},
+      {role: 'Khalasi / helper', title: 'Offer in My applications', say: 'Accepting tells the business at once.', at: 'partner.html#/work', do: [{click: '[data-work-tab="applications"]'}, {click: '[data-wx="offer-reply"][data-reply="accepted"]'}]},
+      {role: 'Goods owner', title: 'Confirm joining', say: 'The business sees "accepted your offer" and marks him hired; joining steps start.', at: 'index.html#/home', do: [{run: () => window.MoveAIVNextTest?.switchWorkspace('goods'), reload: true}]},
+      {role: 'Goods owner', title: 'Hired', say: 'A temporary job creates a staff record with joining steps; a one-trip job creates only an assignment.', at: 'business.html#/applications', do: [{select: c => `[data-action="change-application-status"][data-application="${c.vars().app}"]`, value: 'hired'}]},
+    ]},
+});
+rolesAdd('helper', ['task-find-work']); rolesAdd('goods-owner', ['task-find-work']);
+
 export const TEST_DATA = [
   ['OTP (sign-up, DigiLocker, staff join)', '123456'],
   ['GSTIN (Uttar Pradesh)', '09ABCDE1234F1Z5 · ending 9 = cancelled'],

@@ -218,3 +218,16 @@ HOME_CONTENT.admin.quick=[['verification','✓','Verification','People, vehicles
  SEED.talentShortlist={};SEED.workRatings=[];SEED.workerStatus={};}
 
 for(const k of ['goods','transporter','vehicle','movers'])HOME_CONTENT[k].quick.push(['findTalent','🔎','Find drivers & helpers','Who is free, when and where']);
+
+// Each demo worker role has its own work profile, so Find Work, applications and offers always show the right person
+// (before, all worker roles shared one "selected candidate" that business screens also changed).
+SEED.candidates.push(
+  {id:'CAND-MOHAN',persona:'commercialDriver',workerType:'commercialDriver',name:'Mohan Yadav',mobile:'9876520101',capabilities:['driver'],licences:['Heavy vehicle (HMV) · commercial'],locations:['Jaipur','Patna'],availability:'Available now',workPreference:'Per trip',expectedPay:3500,status:'available',verified:true,experienceYears:9,languages:['Hindi','Bhojpuri'],tripsDone:212,rating:4.8,ratingCount:20,strikes:0},
+  {id:'CAND-RAMESH',persona:'helper',workerType:'helper',name:'Ramesh Yadav',mobile:'9876520102',capabilities:['helper'],skills:['Truck Khalasi','Loading / unloading','Moving helper / packer'],licences:[],locations:['Noida','Patna'],availability:'Available now',workPreference:'Daily',expectedPay:700,status:'available',verified:true,experienceYears:4,languages:['Hindi','Maithili'],tripsDone:96,rating:4.6,ratingCount:20,strikes:0},
+  {id:'CAND-ANIL',persona:'personalDriver',workerType:'personalDriver',name:'Anil Kumar',mobile:'9876520103',capabilities:['driver'],licences:['Personal car (LMV-NT)'],locations:['Noida','Delhi'],availability:'Today until 8 PM',workPreference:'Daily',expectedPay:1200,status:'available',verified:true,experienceYears:7,languages:['Hindi','English'],tripsDone:340,rating:4.9,ratingCount:20,strikes:0});
+// More openings so every kind of worker finds jobs near them.
+SEED.vacancies.push(
+  {id:'JOB-311',workspace:'goods',title:'Warehouse loader (khalasi)',role:'helper',branchId:'BR-010',branch:'Patna Warehouse',location:'Patna, Bihar',count:4,payMin:600,payMax:750,payType:'daily',employmentType:'temporary',startDate:'Tomorrow',endDate:'',requirements:['Can lift 40 kg bags','Morning shift 7 AM–3 PM'],approvalPolicy:'Owner approves',status:'open'},
+  {id:'JOB-312',workspace:'movers',title:'Packer / moving helper',role:'helper',branchId:'BR-030',branch:'Noida Branch',location:'Noida, Uttar Pradesh',count:3,payMin:650,payMax:800,payType:'per_job',employmentType:'trip_only',startDate:'This week',endDate:'',requirements:['Packing experience preferred','Weekend availability'],approvalPolicy:'Manager can hire',status:'open'},
+  {id:'JOB-313',workspace:'transporter',title:'Car driver for company staff',role:'driver',branchId:'BR-001',branch:'Noida HQ',location:'Noida, Uttar Pradesh',count:1,payMin:18000,payMax:22000,payType:'monthly',employmentType:'permanent',startDate:'15 Nov 2026',endDate:'',requirements:['Car licence (LMV)','Police verification'],approvalPolicy:'Owner approves',status:'open'});
+SEED.workerCandidateId=null;
