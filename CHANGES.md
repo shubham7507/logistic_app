@@ -1,5 +1,15 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-02 — Fix: tours breaking after another tour ("Access denied")
+- **Cause 1 (tour engine):** after a tour finished, opening a different tour link resumed the old finished tour. It showed "Journey complete" at once and did nothing. A `?tour=` link now always starts the tour you chose.
+- **Cause 2 (app, also affected real use):** each browser tab remembers the last role used in each app.
+  - "Reset demo" only cleared that memory for the app you were in.
+  - Switching to a role in another app didn't update that app's memory.
+  - So opening the business app could land on the previous business (for example Sharma Foods) instead of the one just chosen.
+  - Now a reset clears every app's memory, and switching updates the right app.
+- **Cause 3 (app):** opening "Add your business" while a business role was active showed "Access denied". It now switches to your personal account first, as the "Sell on MoveAI" screens already did.
+- **New test:** `tests/tour-sequence.e2e.cjs` plays all 29 tours one after another in one browser, as a visitor using the guide would. It's in the CI list.
+
 ## 2026-11-02 — Tours for every role and function (batch 1: logistics and delivery)
 - **"Show me around" tours** for nine roles:
   - goods owner, transporter and truck owner (14 screens each), packers & movers (12);

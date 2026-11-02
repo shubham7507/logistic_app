@@ -77,3 +77,4 @@ tests/picker-join.e2e.cjs
 tests/seller-trust.e2e.cjs
 tests/workspace-switch.e2e.cjs
 tests/tour-journeys.e2e.cjs
+tests/tour-sequence.e2e.cjs

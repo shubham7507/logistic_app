@@ -177,7 +177,9 @@ export function init({demo = true} = {}) {
   }
   const side = document.getElementById('sidebar');
   if (side && !side.querySelector('.nav-guide-link')) { const a = document.createElement('a'); a.className = 'nav-guide-link'; a.href = 'guide.html'; a.textContent = '📘 Product guide & tours'; (document.getElementById('reset-demo') || side.lastElementChild)?.insertAdjacentElement('beforebegin', a); }
-  if (q.get('tour') && JOURNEYS[q.get('tour')] && !read()) {
+  // The ?tour= link is removed as soon as a tour starts, so seeing it means the person just chose this tour:
+  // always start it, even if an earlier (finished) tour is still remembered in this tab.
+  if (q.get('tour') && JOURNEYS[q.get('tour')]) {
     const speed = SPEED[q.get('speed')] ? q.get('speed') : 'normal';
     history.replaceState(null, '', location.pathname + location.hash);
     start(q.get('tour'), {auto: q.get('mode') !== 'step', speed}); return;
