@@ -6,7 +6,8 @@ import {SEED} from '../js/mock-data.js';
 import * as LOC from '../js/location.js';
 import * as HS from '../js/home-services.js';
 
-const fresh = () => ({...JSON.parse(JSON.stringify(SEED)), person: {id: 'PER-1001', name: 'Shubham Kumar'}, currentWorkspace: 'personal'});
+// Suresh is the only pro here and has no fixed work area, so he is offered every booking (dispatch is tested in hs-dispatch.unit.mjs).
+const fresh = () => { const s = {...JSON.parse(JSON.stringify(SEED)), person: {id: 'PER-1001', name: 'Shubham Kumar'}, currentWorkspace: 'personal'}; s.homePros = s.homePros.filter(p => p.id === 'HP-SURESH'); delete s.homePros[0].base; delete s.homePros[0].coords; return s; };
 const day = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 const book = (s, address) => HS.createBooking(s, {category: 'electrician', items: [{id: 'fan', qty: 1}], date: day(1), slot: '10', address}).request;
 const drive = (s, r, n = 60) => { for (let i = 0; i < n && !r.arrivedAt; i++) HS.demoDrive(s, 'homePro', r.id, 1); };

@@ -1,5 +1,61 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-03 — Home services: choosing the pro, spare parts, pro sign-up
+**Choosing the pro (`js/hs-dispatch.js`).** A booking is no longer "first tap wins".
+- **Who is asked:** only pros who are online, inside their own work area and hours, have the skill, are free in that slot, and are rated 4.0+ (or new).
+- **Score out of 100:**
+
+  | Part | Points |
+  |---|---|
+  | Distance | 35 |
+  | Rating | 20 (new pros get the average) |
+  | Reliability (cancels, no-shows, late) | 20 |
+  | Skill fit (Trained badge, same job before) | 10 |
+  | Fair share (fewer jobs today) | 10 |
+  | Favourite pro | 5 |
+
+  Urgent jobs (today, within 3 hours) weigh distance more.
+- **Top 3 for 60 seconds.** If several accept, the highest score wins and the others are told at once, with no penalty. Nobody accepts → the next 3 and a wider area (5 → 10 → 15 km). After that the admin is told and the customer sees "no pro free within 15 km".
+- **Book my pro again:** your last pro is asked first for 2 minutes.
+- **A pro who cancels** ("Can't make it?") hands the job to the next-best pro who accepted. Their reliability drops and the customer is told.
+- **Painting:** up to 3 painters send a written price; the customer chooses one.
+- The customer sees **"Why Suresh?"** (distance, rating, no cancellations, trained, match score).
+- Demo buttons: "60 seconds pass" and "(pro) does the next step" for pros without the app.
+
+**Spare parts (`js/hs-parts.js`).**
+- **Add part:** the pro searches MoveAI shops within 15 km and sees price, MRP and distance, closest first. The price comes from the shop and can't be raised. He chooses from my kit, order for delivery, or I'll pick it up, and adds a photo of the old part.
+- **The customer sees one card per request** (no price list): Approve / I'll buy it myself / Reject, plus "See it in the shop". Several parts get "Approve all".
+- **Delivery orders** go to the shop, then "Part on the way · about 35 min". The job can't be marked done while a part is undecided or on the way.
+- **No shop nearby (e.g. Motihari):** the pro uploads the market bill and a photo of the MRP on the box. The price is never above MRP, a price more than 25% above the usual MoveAI price is flagged, and a visible ₹40 pickup charge applies here only.
+- **Waiting for part:** pauses the job; the return visit is free.
+- **Money:** labour keeps MoveAI's 15%; the part passes through. After payment the part money goes to the shop (ledger type `part_settlement`), and the shop's warranty covers a failed part.
+- **Report price:** the customer reports a price → admin compares it with the bill, MRP and shop price → refunds the overcharge and adds a strike to the pro.
+
+**Pro sign-up and set-up.**
+- "Find work" mentions electrician, plumber, carpenter, cleaner and painter.
+- Home-service wording throughout: Job-ready, accept paid jobs, selfie matched to the Aadhaar photo, emergency contact "during a job".
+- "Open my home-service jobs" is at the top as soon as ID and selfie are done.
+- The pro home shows **Finish your set-up**:
+  - Trained badge: a 5-minute video plus a short per-trade quiz that includes the parts rule;
+  - work area through the location picker, with a 3 / 5 / 10 / 15 km radius;
+  - days and hours;
+  - bank or UPI. Jobs can be accepted before this; payouts wait.
+- The next sign-in opens the last work app.
+
+**Shops.**
+- New seller categories **Hardware & sanitary** and **Paint & hardware**, with one-tap starter items. They use the same seller onboarding.
+- Demo part shops: Sharma Electricals (Noida branch, with a part-order panel on its home), Gupta Hardware & Sanitary and Rang Mahal Paints (Noida), and Shiv Sanitary & Hardware (Patna). Motihari has none, on purpose.
+
+**Admin → Home services** now has three tabs:
+- **Bookings**, with the round, radius and score, plus an "Area widened" list;
+- **Pros**: trades, area, Trained, rating, reliability, strikes, Pause / Resume;
+- **Part prices**: flagged market bills and customer reports, with Refund or "Price is fair".
+
+**Tests and tours.**
+- New tests: `hs-dispatch.unit`, `hs-parts.unit`, `hs-pro-setup.unit`, `hs-parts.e2e`.
+- New tours, with Hindi: **Sign up as a home service pro**, **Plumber needs a part**. Book a home service now explains how the pro is chosen.
+- `demoRevision` is 11, so browsers reset the demo once.
+
 ## 2026-11-03 — Booking screens split into short steps
 - **Moving** is now five short steps, one question per screen:
   1. **Where?** Pickup and drop, with floor and lift as quick chips.

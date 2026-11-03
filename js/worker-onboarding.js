@@ -33,6 +33,10 @@ export const LEVELS = [
   {n: 3, name: 'Trip-ready', unlocks: 'Accept paid trips and jobs, receive payouts'},
 ];
 const drives = c => WORKER_TYPES[c.workerType]?.drives;
+// Home-service pros see job wording instead of trip wording.
+const HOME_LEVEL3 = {n: 3, name: 'Job-ready', unlocks: 'Accept paid jobs and receive payouts'};
+export const levelsOf = c => c?.workerType === 'homePro' ? [LEVELS[0], LEVELS[1], HOME_LEVEL3] : LEVELS;
+export const viaOf = (c, k) => (c?.workerType === 'homePro' ? {selfie: 'Face match with your Aadhaar photo', emergency: 'Someone we can call during a job'}[k] : drives(c || {}) ? null : {selfie: 'Face match with your Aadhaar photo'}[k]) || CHECKS[k].via;
 export function levelChecks(c) {
   const type = c.workerType;
   const l2 = drives(c) ? ['licence', 'selfie'] : ['aadhaar', 'selfie'];
@@ -95,7 +99,7 @@ export function canTakeWork(c) { // apply, receive offers, appear in search
 }
 export function canStartPaidWork(c, job = {}) { // accept a paid trip, job or joining offer
   const e = canTakeWork(c); if (e) return e;
-  if (c.level < 3) return 'Become trip-ready first: add Aadhaar, bank account and an emergency contact before accepting paid work.';
+  if (c.level < 3) return c.workerType === 'homePro' ? 'Become job-ready first: add your bank account and an emergency contact before accepting paid work.' : 'Become trip-ready first: add Aadhaar, bank account and an emergency contact before accepting paid work.';
   if (c.workerType === 'personalDriver' && ['monthly', 'live-in'].includes(String(job.payType || '').toLowerCase()) && !checkOk(c, 'police')) return 'Monthly and live-in family jobs need police verification. Add it under Work profile → Badges.';
   return '';
 }
@@ -184,12 +188,12 @@ export const currentCandidate = workerCandidate;
 export const pendingInvite = state => (state.workerInvites || []).find(i => i.mobile === state.auth?.mobile && i.status === 'pending' && state.currentWorkspace === 'personal');
 function levelBar(c) {
   const lv = c ? c.level : 0;
-  return `<ol class="onboard-steps" aria-label="Verification level">${LEVELS.map(l => `<li class="${lv >= l.n ? 'done' : lv + 1 === l.n ? 'current' : ''}"><i>${lv >= l.n ? '✓' : l.n}</i><span>${esc(l.name)}<small>${esc(l.unlocks)}</small></span></li>`).join('')}</ol>`;
+  return `<ol class="onboard-steps" aria-label="Verification level">${levelsOf(c).map(l => `<li class="${lv >= l.n ? 'done' : lv + 1 === l.n ? 'current' : ''}"><i>${lv >= l.n ? '✓' : l.n}</i><span>${esc(l.name)}<small>${esc(l.unlocks)}</small></span></li>`).join('')}</ol>`;
 }
 const checkPill = (c, k) => { const s = c.checks?.[k]?.status; return IDV.statusChip(checkOk(c, k) ? 'verified' : s === 'manual_pending' ? 'in_review' : s === 'correction_required' || s === 'rejected' ? 'needs_correction' : s === 'failed' ? 'waiting' : s === 'verified' ? 'expired' : 'not_started'); };
 function checkRow(c, k) {
   const x = c.checks?.[k] || {};
-  const detail = checkOk(c, k) ? (k === 'licence' ? `${(x.classes || []).join(', ')} · valid until ${x.expiry} · ${x.source}` : k === 'bank' ? `${x.masked} · ${x.ifsc || ''} · ${x.source || ''}` : k === 'aadhaar' ? `${x.masked} · ${x.source || ''}` : k === 'selfie' ? `Face match ${x.score}%` : k === 'emergency' ? `${x.name} · ${x.phone}` : x.source || 'Verified') : x.reason || CHECKS[k].via;
+  const detail = checkOk(c, k) ? (k === 'licence' ? `${(x.classes || []).join(', ')} · valid until ${x.expiry} · ${x.source}` : k === 'bank' ? `${x.masked} · ${x.ifsc || ''} · ${x.source || ''}` : k === 'aadhaar' ? `${x.masked} · ${x.source || ''}` : k === 'selfie' ? `Face match ${x.score}%` : k === 'emergency' ? `${x.name} · ${x.phone}` : x.source || 'Verified') : x.reason || viaOf(c, k);
   const action = checkOk(c, k) ? '' : x.status === 'manual_pending' ? '<span class="muted">Waiting for review</span>' : `<button class="button ${x.status ? 'secondary' : 'primary'} compact" data-worker-check="${k}">${x.status === 'failed' || x.status === 'correction_required' || x.status === 'rejected' ? 'Fix' : CHECKS[k].badge ? 'Add' : 'Verify'}</button>`;
   return `<div class="document-row"><span class="document-icon">${checkOk(c, k) ? '✓' : '○'}</span><span class="document-copy"><b>${esc(CHECKS[k].label)}</b><small>${esc(detail)}</small></span>${checkPill(c, k)}${action}</div>`;
 }
@@ -223,14 +227,14 @@ export function workerStatusScreen(state) {
   if (!c) return workerDetailsScreen(state);
   const {l2, l3, badges} = levelChecks(c);
   const invite = pendingInvite(state);
-  const next = c.level < 2 ? `Next: ${l2.filter(k => !checkOk(c, k)).map(k => CHECKS[k].label.toLowerCase()).join(' and ')} to apply for work.` : c.level < 3 ? 'Next: become trip-ready to accept paid work.' : 'You can apply, accept paid work and receive payouts.';
+  const next = c.level < 2 ? `Next: ${l2.filter(k => !checkOk(c, k)).map(k => CHECKS[k].label.toLowerCase()).join(' and ')} to apply for work.` : c.level < 3 ? `Next: become ${c.workerType === 'homePro' ? 'job' : 'trip'}-ready to accept paid work.` : 'You can apply, accept paid work and receive payouts.';
   return `${head('Work profile', `${c.name} · ${WORKER_TYPES[c.workerType].label} · ${c.locations?.[0] || ''}`, '<button class="button secondary" data-route="candidateProfile">Edit profile</button>')}${levelBar(c)}
-  ${c.suspended ? `<div class="action-warning"><b>Suspended</b><span>${esc(c.suspendReason || 'Contact support to appeal.')}</span></div>` : `<div class="info-banner"><b>Level ${c.level} · ${esc(LEVELS[c.level - 1]?.name || 'Browse')}</b><span>${esc(next)}</span></div>`}
+  ${c.suspended ? `<div class="action-warning"><b>Suspended</b><span>${esc(c.suspendReason || 'Contact support to appeal.')}</span></div>` : `<div class="info-banner"><b>Level ${c.level} · ${esc(levelsOf(c)[c.level - 1]?.name || 'Browse')}</b><span>${esc(next)}</span></div>`}
+  ${c.workerType === 'homePro' && c.level >= 2 && !c.suspended ? `<section class="panel attention" data-hs-start-jobs><h2>Start taking home-service jobs</h2><p>You are verified. Your jobs app opens with bookings near you. ${c.level < 3 ? 'Add your bank account before your first payout — you can accept jobs now.' : 'You are job-ready.'}</p><button class="button primary" data-hs-activate="${c.id}">Open my home-service jobs</button></section>` : ''}
   ${invite && c.level >= 2 ? `<section class="panel attention"><h2>Join ${esc(invite.business)}</h2><p>${esc(invite.role)} · ₹${Number(invite.pay).toLocaleString('en-IN')} ${esc(invite.payType)}. Your employer vouches for you and pays your salary directly.</p><button class="button primary" data-worker-join="${invite.id}">Accept and join</button></section>` : ''}
   <div class="grid two"><section class="panel"><h2>Level 2 · Verified</h2><p class="muted">${esc(LEVELS[1].unlocks)}.</p><div class="document-list">${l2.map(k => checkRow(c, k)).join('')}</div></section>
-  <section class="panel"><h2>Level 3 · Trip-ready</h2><p class="muted">${esc(LEVELS[2].unlocks)}.</p><div class="document-list">${l3.map(k => checkRow(c, k)).join('')}</div></section></div>
+  <section class="panel"><h2>Level 3 · ${esc(levelsOf(c)[2].name)}</h2><p class="muted">${esc(levelsOf(c)[2].unlocks)}.</p><div class="document-list">${l3.map(k => checkRow(c, k)).join('')}</div></section></div>
   <section class="panel"><h2>Badges (optional)</h2><p class="muted">Businesses prefer workers with badges.${c.workerType === 'personalDriver' ? ' Police verification is required for monthly and live-in family jobs.' : ''}</p><div class="document-list">${badges.map(k => checkRow(c, k)).join('')}</div></section>
-  ${c.workerType === 'homePro' && c.level >= 2 ? `<section class="panel attention"><h2>Start taking home-service jobs</h2><p>You are verified. Open your jobs app to see bookings near you, accept them and get paid through MoveAI.</p><button class="button primary" data-hs-activate="${c.id}">Open my home-service jobs</button></section>` : ''}
   <div class="row-actions"><button class="button ${c.level >= 2 ? 'primary' : 'secondary'}" data-worker-find-work>${c.level >= 2 ? 'Find work' : 'Browse jobs'}</button></div>`;
 }
 
@@ -246,7 +250,7 @@ export function workerVerifyScreen(state) {
   if (k === 'bank') form = `<label class="wide"><span>Account holder</span><input value="${esc(c.name)}" disabled></label><label><span>Account number</span><input name="account" inputmode="numeric" autocomplete="off"></label><label><span>Confirm account number</span><input name="confirm" inputmode="numeric" autocomplete="off"></label><label><span>IFSC</span><input name="ifsc" placeholder="SBIN0001234" autocapitalize="characters"></label>`;
   if (k === 'selfie') form = `<label class="wide"><span>Take a live selfie</span><input type="file" name="file" accept="image/*" capture="user"></label><p class="muted wide">Face the camera in good light. We compare it with your ${drives(c) ? 'licence' : 'Aadhaar'} photo.</p>`;
   if (k === 'emergency') form = `<label><span>Name</span><input name="name" value="${esc(x.name || '')}"></label><label><span>Mobile</span><input name="phone" inputmode="tel" value="${esc(x.phone || '')}"></label>`;
-  const instant = !CHECKS[k].badge ? `<form class="panel form-panel narrow" data-worker-verify="${k}"><h2>${esc(CHECKS[k].label)}</h2><p class="muted">${esc(CHECKS[k].via)}.</p><div class="form-grid two">${form}</div>${test}<p id="worker-verify-error" class="field-error" hidden></p><div class="form-actions">${back}<button class="button primary" type="submit">${k === 'emergency' ? 'Save' : k === 'selfie' ? 'Match my face' : 'Verify now'}</button></div></form>` : '';
+  const instant = !CHECKS[k].badge ? `<form class="panel form-panel narrow" data-worker-verify="${k}"><h2>${esc(CHECKS[k].label)}</h2><p class="muted">${esc(viaOf(c, k))}.</p><div class="form-grid two">${form}</div>${test}<p id="worker-verify-error" class="field-error" hidden></p><div class="form-actions">${back}<button class="button primary" type="submit">${k === 'emergency' ? 'Save' : k === 'selfie' ? 'Match my face' : 'Verify now'}</button></div></form>` : '';
   const upload = manual && CHECKS[k].manualDocs.length ? `<form class="panel form-panel narrow" data-worker-manual="${k}"><h2>${CHECKS[k].badge ? `Add ${esc(CHECKS[k].label)}` : 'Upload for manual review'}</h2>${x.reason ? `<div class="action-warning"><b>Why</b><span>${esc(x.reason)}</span></div>` : ''}<p class="muted">Clear photo or PDF, up to 5 MB each. A reviewer checks it, usually within 24 hours.</p><div class="form-grid two">${k === 'licence' ? `<label><span>Licence number</span><input name="number" value="${esc(x.number || '')}"></label><label><span>Valid until</span><input type="date" name="expiry"></label><label class="wide"><span>Vehicle classes printed on the licence</span><input name="classes" placeholder="${drives(c) === 'commercial' ? 'HMV, TRANS' : 'LMV'}"></label>` : ''}${CHECKS[k].manualDocs.map(([d, l]) => `<label class="wide"><span>${esc(l)}</span><input type="file" name="${d}" accept="image/*,application/pdf" capture="environment"></label>`).join('')}</div><p id="worker-manual-error" class="field-error" hidden></p><div class="form-actions">${CHECKS[k].badge ? back : ''}<button class="button ${CHECKS[k].badge ? 'primary' : 'secondary'}" type="submit">Submit for review</button></div></form>` : '';
   return `${head(CHECKS[k].label, `${c.name} · ${WORKER_TYPES[c.workerType].label}`)}${levelBar(c)}${instant}${upload}`;
 }
@@ -287,7 +291,7 @@ export function bindWorkerOnboarding(root, api) {
     const r = runCheck(s, c, key, input);
     if (r.error) { api.save(); if (r.fallback) { api.render(); api.toast('Automatic check failed — you can upload for manual review below.'); return; } return showErr(root, 'worker-verify-error', r.error); }
     const before = c.level; api.save(); api.navigate('workerStatus');
-    api.toast(`${CHECKS[key].label} verified${c.level > before ? ` · Level ${c.level} unlocked: ${LEVELS[c.level - 1].name}` : ''}`);
+    api.toast(`${CHECKS[key].label} verified${c.level > before ? ` · Level ${c.level} unlocked: ${levelsOf(c)[c.level - 1].name}` : ''}`);
   });
   root.querySelectorAll('form[data-worker-manual]').forEach(fm => fm.onsubmit = e => {
     e.preventDefault(); const s = api.getState(); const c = currentCandidate(s); const f = new FormData(fm); const key = fm.dataset.workerManual;

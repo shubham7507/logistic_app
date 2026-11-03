@@ -26,6 +26,7 @@ Moving: Home → **Packers & movers** → what you are moving → pickup / drop 
 
 ## Home services (November 2026)
 Customer: Home → **Home services** → fixed-price jobs → address → date and 2-hour slot → book (pay after). Pro: switch to **Home Service Pro** (MoveAI Partner) → accept → On the way → start with the customer's code → extras → done with a photo. Customer confirms, pays, rates; 30-day re-work. Tour: `index.html?demo=on&tour=task-home-service#/home`.
+Choosing the pro: only eligible pros (online, inside their area and hours, skill, free, rated 4.0+ or new) are asked. The top 3 by score get 60 seconds and the best match wins. Nobody accepts → a wider area, then the admin. "Book my pro again" asks your pro first. Parts: **Add part** from nearby MoveAI shops (price fixed by the shop) → the customer approves one card → delivery in about 35 min; with no shop nearby, a market bill and an MRP photo instead. Pro sign-up: Find work → Home service pro → Aadhaar OTP + selfie → Open my home-service jobs → training quiz, work area, hours, bank. Tours: `task-home-pro-signup`, `task-plumber-part`.
 
 ## Verify my ID (November 2026)
 Every joining flow uses one step (`js/id-verify.js`): consent → Aadhaar or VID → **Send OTP** → enter OTP. Verified once, it shows "Already verified" in every other role. Test data: OTP `123456`; Aadhaar ending `0000` DigiLocker down, `9999` no mobile linked, `2222` name mismatch, `1717` under 18. Admin → **ID checks** lists every check. Tour: `index.html?demo=on&tour=task-verify-id#/home`.

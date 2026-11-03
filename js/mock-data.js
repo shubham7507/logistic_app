@@ -1,7 +1,7 @@
 import {OPS_SEED} from './ops-data.js';
 import {seedBranches} from './seller-branches.js';
 export const SEED={
-  currentWorkspace:'personal', currentRoute:'home', demoRevision:10,
+  currentWorkspace:'personal', currentRoute:'home', demoRevision:11,
   auth:{status:'authenticated',mobile:'9876543210',mobileVerified:true,consentVersion:'2026-09-27',consentedAt:'2026-09-27T08:30:00.000Z',otpAttempts:0,otpSentAt:null,pendingMobile:null,isExistingIdentity:true},
   person:{id:'PER-1001',name:'Shubham Kumar'},
   purposeSelection:null,

@@ -91,3 +91,17 @@ The guided tours and the 111 automated tests in `tests/ci-list.txt` describe the
 | Live location | `navigator.geolocation.watchPosition` or demo drive, stored on the job | Native background location every 10–15 s while "On the way" only; store on the server; stop at job start |
 | Location link | Demo token in state | SMS / WhatsApp link to a page that reads GPS once and posts it |
 | DIGIPIN | Encoded in the browser (`js/location.js`, India Post algorithm) | Same, or India Post API |
+
+
+## Home services: choosing the pro and spare parts
+| Need | Server work |
+|---|---|
+| Choosing the pro | Run the eligibility check and score on the server. It needs live online status and the last GPS fix, each pro's area and hours, and stats (cancels, no-shows, late, strikes). Offer to 3 pros by push. A 60-second timer per round (a queue or scheduled job) settles the round: the highest score among those who accepted wins. Widen the area 5 → 10 → 15 km, then raise an ops alert. Lock the job row so two accepts can't both win. |
+| Favourite / cancel | 2-minute favourite window; when a pro cancels, reassign to the next backup and lower their reliability. |
+| Quotes | Collect up to 3 quotes per painting job and close the others when one is chosen. |
+| Part catalogue | Search shop products near the job: the shop's location index plus a category→trade map. The price and MRP always come from the catalogue, never from the pro's app. |
+| Part orders | A part order is a normal seller order with a pro as the buyer: notify the shop, pick up by a delivery partner, track to delivery, ETA from the courier. |
+| Market bills | Store bill and MRP photos (OCR optional). Enforce price ≤ MRP; flag prices more than 25% above the median catalogue price; ₹30–50 pickup charge only when no shop is within 15 km. |
+| Settlement | Customer pays one bill. Labour goes to the pro minus the commission; the part amount goes to the shop's settlement (seller commission applies there) with a GST invoice from the shop; reverse it from the pro's wallet when the pro was paid it. |
+| Report price | Ops queue with the bill, MRP and shop price side by side; refund the difference to the customer, recover it from the pro, record a strike, and pause the pro automatically after 3 strikes. |
+| Pro set-up | Training content (video + question bank per trade) with results stored. Work area as a point and radius. Working hours. Bank or UPI checked by penny drop. Remember the last workspace for each person. |

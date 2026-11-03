@@ -26,6 +26,7 @@ export const GROCERY_CATEGORIES = {
  'Cleaning tools':['Brushes','Mops'], 'Pest control':['Repellents'],
  'Kitchen supplies':['Kitchen essentials'], 'Food storage':['Containers','Wraps'],
  'Electrical & lighting':['Bulbs','Batteries'], 'Hardware & repair':['Tools'],
+ 'Hardware & sanitary':['Plumbing','Locks & hinges','Fittings'], 'Paint & hardware':['Paint','Putty & primer','Tools'],
  'Bathroom supplies':['Bathroom accessories'], 'Bedroom & bedding':['Bedding'],
  'Baby care':['Baby supplies'], 'Pet care':['Pet accessories & supplies'],
  'Garden & outdoor':['Garden supplies'], 'Clothing & shoe care':['Shoe care'],

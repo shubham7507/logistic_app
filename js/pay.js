@@ -186,7 +186,7 @@ export function cancel(state, r, by = 'customer', reason = '') {
 export function wallet(state, party) {
   const L = state.ledger;
   const credits = L.filter(x => x.type === 'wallet_credit' && x.payee === party && x.status === 'confirmed').reduce((s, x) => s + x.amount, 0);
-  const debts = L.filter(x => ['cash_commission', 'penalty'].includes(x.type) && x.payer === party && x.status === 'confirmed').reduce((s, x) => s + x.amount, 0);
+  const debts = L.filter(x => ['cash_commission', 'penalty', 'part_settlement'].includes(x.type) && x.payer === party && x.status === 'confirmed').reduce((s, x) => s + x.amount, 0);
   const payouts = L.filter(x => x.type === 'payout' && x.payee === party && ['paid', 'processing'].includes(x.status)).reduce((s, x) => s + x.amount + (x.fee || 0), 0);
   const held = L.filter(x => x.type === 'customer_payment' && x.payee === party && x.status === 'held').reduce((s, x) => s + x.amount, 0);
   const balance = credits - debts - payouts;
@@ -271,7 +271,7 @@ export function balanceFormHtml(state, r) {
 export function walletPanel(state, party) {
   ensurePay(state);
   const w = wallet(state, party), acc = (state.payoutAccounts || {})[party];
-  const rows = state.ledger.filter(x => (['wallet_credit', 'payout'].includes(x.type) && x.payee === party) || (['cash_commission', 'penalty'].includes(x.type) && x.payer === party)).slice(0, 8);
+  const rows = state.ledger.filter(x => (['wallet_credit', 'payout'].includes(x.type) && x.payee === party) || (['cash_commission', 'penalty', 'part_settlement'].includes(x.type) && x.payer === party)).slice(0, 8);
   return `<section class="panel wallet-panel"><div class="panel-header"><div><h2>MoveAI Pay wallet</h2><p>Customer payments are held until the job is done, then released here minus commission. Weekly payout every Monday.</p></div>${w.blocked ? pill('blocked') : ''}</div>
   <div class="metrics"><div class="metric"><span>Available</span><b class="${w.balance < 0 ? 'amount out' : 'amount in'}">${w.balance < 0 ? '−' : ''}${inr(Math.abs(w.balance))}</b><small>${w.balance < 0 ? 'Cash-job commission owed' : `Next payout ${nextPayoutDate()}`}</small></div><div class="metric"><span>Held for jobs in progress</span><b>${inr(w.held)}</b><small>Released on completion</small></div><div class="metric"><span>Paid out</span><b>${inr(w.payouts)}</b><small>All time</small></div><div class="metric"><span>Commission on cash jobs</span><b>${inr(w.debts)}</b><small>Recovered from wallet</small></div></div>
   ${w.blocked ? `<div class="action-warning"><b>New jobs paused</b><span>${esc(partnerBlocked(state, party))}</span><button class="button primary" data-pay-debt="${party}">Pay ${inr(-w.balance)} by UPI</button></div>` : ''}

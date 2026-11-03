@@ -78,6 +78,7 @@ export const WORK_EXTRA_ROUTES={
   proJob:{title:'Job',roles:['homePro']},
   proProfile:{title:'My profile',roles:['homePro']},
   homeServicesAdmin:{title:'Home services',roles:['admin']},
+  partItem:{title:'Part',roles:['personal']},
   inPersonJoin:{title:'Join a worker in person',roles:['grocery','groceryFresh','electrical','fashion','groceryManager','groceryFreshManager','electricalManager','fashionManager','transporter','goods','vehicle','movers']},
 };
 export const ROUTES={

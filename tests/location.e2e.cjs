@@ -19,6 +19,8 @@ const finish = async (p, slot) => { await next(p); await p.check(`#home-book-for
   await ctx.route(/cdn\.jsdelivr/, r => r.fulfill({body: '', contentType: 'text/javascript'})); await ctx.route(/cdnjs/, r => r.abort());
   const p = await ctx.newPage(); const errors = []; p.on('pageerror', e => errors.push(e.message));
   await go(p, 'index.html?demo=on#/home'); await p.evaluate(() => { window.MoveAIVNextTest.reset(); window.MoveAIVNextTest.switchWorkspace('personal'); });
+  // Suresh works in Bihar for this test (he is the only pro and has no fixed work area), so Motihari jobs reach him.
+  await p.evaluate(() => { const k = 'moveai-vnext-p1', st = JSON.parse(localStorage.getItem(k)); st.homePros = st.homePros.filter(x => x.id === 'HP-SURESH'); delete st.homePros[0].base; delete st.homePros[0].coords; localStorage.setItem(k, JSON.stringify(st)); });
   await toAddressStep(p, 'fan');
   assert.ok(await p.isVisible(K + '[data-loc="gps"]'), 'Use my location button shown'); assert.equal(await p.isVisible(K + '[name="hs-addr-landmark"]'), false, 'landmark tucked away');
 

@@ -115,5 +115,10 @@ tests/home-services.unit.mjs
 tests/home-services.e2e.cjs
 tests/location-scenarios.unit.mjs
 tests/location.e2e.cjs
+tests/hs-dispatch.unit.mjs
+tests/hs-parts.unit.mjs
+tests/hs-pro-setup.unit.mjs
+tests/hs-parts.e2e.cjs
+tests/hs-relogin.e2e.cjs
 tests/move-booking.unit.mjs
 tests/move-booking.e2e.cjs

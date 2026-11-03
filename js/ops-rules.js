@@ -226,6 +226,7 @@ export const MONEY_TYPES = {
   refund: {label: 'Refund', earning: false},
   cancellation_fee: {label: 'Cancellation fee', earning: false},
   penalty: {label: 'No-show penalty', earning: false},
+  part_settlement: {label: 'Spare part paid to the shop', earning: false},
 };
 export const MONEY_STATUSES = ['pending_approval', 'approved', 'paid', 'confirmed', 'closed', 'reversed', 'on_hold'];
 

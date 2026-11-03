@@ -234,6 +234,18 @@
     "error": ""
   },
   {
+    "id": "task-home-pro-signup",
+    "steps": 14,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-plumber-part",
+    "steps": 13,
+    "ok": true,
+    "error": ""
+  },
+  {
     "id": "role-home-pro",
     "steps": 6,
     "ok": true,

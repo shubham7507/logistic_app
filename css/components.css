@@ -259,3 +259,13 @@ body.demo-off .mock-hint,body.demo-off #reset-demo,body.demo-off [data-action="r
 @media (min-width:821px){body:has(.wiz-bar) .tour-fab{display:none}}
 .loc-picker{grid-template-columns:minmax(0,1fr)}.loc-picker>*,.wiz-step>*{min-width:0}.wiz-step{grid-template-columns:minmax(0,1fr)}
 .loc-ways{grid-template-columns:minmax(0,1fr)}.loc-ways>.button{white-space:normal}.loc-search .button{flex:0 0 auto}
+
+/* home services: parts, quotes, set-up */
+.part-pick{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--line,#e5e7eb)}
+.part-pick span{display:flex;flex-direction:column;min-width:0}.part-pick small{color:var(--muted,#64748b)}
+.part-form,.part-add form{display:grid;gap:10px;margin-top:10px}.part-add>summary,.part-market>summary{cursor:pointer}
+.part-card{display:grid;gap:4px;padding:10px 0;border-bottom:1px solid var(--line,#e5e7eb)}
+.hs-quote{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line,#e5e7eb)}.hs-quote span{min-width:0}
+.hs-why{margin:6px 0}.hs-why summary{cursor:pointer;color:var(--accent,#0b6655);font-weight:600}
+.hs-video{display:grid;gap:6px;padding:12px;border-radius:12px;background:var(--soft,#f1f5f9)}
+details.panel>summary{cursor:pointer;display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}

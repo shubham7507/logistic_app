@@ -73,19 +73,25 @@ const base = (o = {}) => ({category: 'electrician', items: [{id: 'fan', qty: 1}]
   assert.match(HS.markDone(s, 'homePro', r.id, {noWork: true}), /why/);
   assert.equal(HS.markDone(s, 'homePro', r.id, {noWork: true, reason: 'Fan motor burnt, needs a new fan'}), ''); assert.equal(r.quote.total, HS.NO_WORK_CHARGE); assert.ok(!HS.inWarranty({...r, status: 'paid'})); }
 
-// painting: free inspection → quote → approve or decline
+// painting: up to 3 painters quote, the customer chooses; the chosen painter visits and works at that price
 { const s = fresh(); HS.proOf(s).skills.push('painting');
   const {request: r} = HS.createBooking(s, base({category: 'painting', items: [], description: '2 bedrooms and hall'}));
-  assert.equal(r.inspection, true); assert.equal(r.quote.total, 0);
-  HS.acceptJob(s, 'homePro', r.id); HS.onTheWay(s, 'homePro', r.id); arrive(s, r); HS.startJob(s, 'homePro', r.id, r.startOtp);
+  assert.equal(r.inspection, true); assert.equal(r.quote.total, 0); assert.equal(r.status, 'searching');
+  assert.equal(r.quotes.length, 2, 'two demo painters quoted at once'); assert.ok(HS.offersFor(s).some(x => x.id === r.id), 'Suresh is asked for a price');
+  assert.match(HS.acceptJob(s, 'homePro', r.id), /Send your price/);
+  assert.match(HS.sendProQuote(s, 'homePro', r.id, {amount: 100, note: 'x'}), /full price/);
+  assert.equal(HS.sendProQuote(s, 'homePro', r.id, {amount: 11900, note: '2 rooms + hall, 2 coats, 3 days'}), ''); assert.equal(r.quotes.length, 3);
+  assert.equal(HS.chooseQuote(s, r.id, 'HP-SURESH'), ''); assert.equal(r.status, 'accepted'); assert.equal(r.provider, 'homePro'); assert.equal(r.quote.total, 11900);
+  assert.ok(s.notifications.some(n => n.to === 'personal' && /Suresh Kumar/.test(n.text)));
+  HS.onTheWay(s, 'homePro', r.id); arrive(s, r); HS.startJob(s, 'homePro', r.id, r.startOtp);
   assert.match(HS.proposeExtra(s, 'homePro', r.id, {kind: 'extra_labour'}), /quote/);
-  assert.match(HS.markDone(s, 'homePro', r.id, {afterPhoto: 'x.jpg'}), /quote/);
-  assert.match(HS.sendQuote(s, 'homePro', r.id, {amount: 100, note: 'x'}), /full price/);
-  assert.equal(HS.sendQuote(s, 'homePro', r.id, {amount: 18500, note: '2 rooms + hall, 2 coats, 3 days'}), '');
-  assert.equal(HS.decideQuote(s, r.id, 'approve'), ''); assert.equal(r.quote.total, 18500);
   assert.equal(HS.markDone(s, 'homePro', r.id, {afterPhoto: 'walls.jpg'}), '');
-  const s2 = fresh(); HS.proOf(s2).skills.push('painting'); const {request: d} = HS.createBooking(s2, base({category: 'painting', items: [], description: 'Hall walls'}));
-  HS.acceptJob(s2, 'homePro', d.id); HS.onTheWay(s2, 'homePro', d.id); arrive(s2, d); HS.startJob(s2, 'homePro', d.id, d.startOtp); HS.sendQuote(s2, 'homePro', d.id, {amount: 9000, note: 'Hall, 2 coats, 1 day'});
+  // given by admin without quotes: inspection, quote on site, customer declines → nothing to pay
+  const s2 = fresh(); for (const id of ['HP-VINOD', 'HP-KAMAL']) HS.setPaused(s2, id, true); HS.proOf(s2).skills.push('painting');
+  const {request: d} = HS.createBooking(s2, base({category: 'painting', items: [], description: 'Hall walls'}));
+  assert.equal(HS.adminAssign(s2, d.id, 'HP-SURESH'), ''); HS.onTheWay(s2, 'homePro', d.id); arrive(s2, d); HS.startJob(s2, 'homePro', d.id, d.startOtp);
+  assert.match(HS.markDone(s2, 'homePro', d.id, {afterPhoto: 'x.jpg'}), /quote/);
+  assert.equal(HS.sendQuote(s2, 'homePro', d.id, {amount: 9000, note: 'Hall, 2 coats, 1 day'}), '');
   assert.equal(HS.decideQuote(s2, d.id, 'decline'), ''); assert.equal(d.status, 'closed'); assert.equal(Pay.paySummary(s2, d).due, 0, 'nothing to pay after a declined quote'); }
 
 // cancel before the pro is on the way is free; seeded booking uses the pro as payee
@@ -94,7 +100,7 @@ const base = (o = {}) => ({category: 'electrician', items: [{id: 'fan', qty: 1}]
   assert.equal(Pay.payeeOf(s, s.serviceRequests.find(x => x.id === 'SR-703')), 'homePro'); }
 
 // admin: flagged when no pro after 30 minutes; give to a pro
-{ const s = fresh(); const {request: r} = HS.createBooking(s, base({category: 'cleaning', items: [{id: '2bhk', qty: 1}]}));
+{ const s = fresh(); HS.setPaused(s, 'HP-MEENA', true); const {request: r} = HS.createBooking(s, base({category: 'cleaning', items: [{id: '2bhk', qty: 1}]}));
   r.createdAtMs -= 31 * 60000; assert.ok(HS.adminRows(s).find(x => x.r.id === r.id).flag.includes('30 min'));
   assert.equal(HS.adminAssign(s, r.id, 'HP-SURESH'), ''); assert.equal(r.provider, 'homePro'); }
 
