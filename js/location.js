@@ -129,25 +129,29 @@ export function pickerHtml(s, key, {title = 'Address', demo = true} = {}) {
   const preview = d.line || d.pincode || pt || d.landmark ? makeLocation({...d}) : null, loc = preview && !preview.error ? preview : null;
   const far = loc ? pinMismatch(loc) : 0, link = d.link && s.locationLinks?.[d.link];
   const sourceText = {gps: 'Your phone location', pin: 'Pin moved on the map', search: 'Found on the map', link: 'Shared from the phone at the place', learned: 'Saved from an earlier visit'}[d.source] || '';
+  const moreOpen = d.moreOpen || d.notOnMap || !!link || !!d.landmark || !!d.village;
+  const prec = loc ? loc.precision : pt ? labelFor(d.source, d.accuracy) : null, dp = pt ? digipin(pt[0], pt[1]) : loc?.digipin;
   return `<fieldset class="wide loc-picker" data-loc-picker="${esc(key)}"><legend>${esc(title)}</legend>
-  <div class="loc-ways"><button type="button" class="button primary" data-loc="gps" data-key="${esc(key)}">📍 I'm at the place now — use my location</button>
+  <div class="loc-ways"><button type="button" class="button primary" data-loc="gps" data-key="${esc(key)}">📍 Use my location</button>
     <div class="loc-search"><input name="${esc(key)}-q" placeholder="Search area, e.g. Boring Road Patna" value="${esc(d.q || '')}" aria-label="Search the address"><button type="button" class="button secondary" data-loc="search" data-key="${esc(key)}">Search</button></div></div>
   <p class="loc-msg ${d.msgBad ? 'field-error' : 'muted'}" data-loc-msg="${esc(key)}" ${d.msg ? '' : 'hidden'}>${esc(d.msg || '')}</p>
-  ${pt ? `<div class="loc-map" data-loc-map="${esc(key)}"><div class="geo-map-wrap" data-geo-map="${esc(JSON.stringify({pts: [{at: pt, icon: '🏠', label: 'Work here'}], path: [], plan: null, drag: true, dragKey: key, satellite: true}))}">${pinSketch(pt)}</div><small class="muted">${esc(sourceText)}${d.accuracy ? ` · accurate to about ${Math.round(d.accuracy)} m` : ''}. Drag 🏠 to the exact gate; switch to Satellite to find your roof.</small></div>` : ''}
-  <details class="loc-link" ${link ? 'open' : ''}><summary>Not at the place? Send a location link to someone there</summary>
-    <div class="inline-form"><input name="${esc(key)}-phone" inputmode="numeric" maxlength="10" placeholder="Their mobile, e.g. father's phone"><button type="button" class="button secondary compact" data-loc="link" data-key="${esc(key)}">Send link by SMS / WhatsApp</button></div>
-    ${link ? `<p class="${link.status === 'done' ? 'avail-chip' : 'muted'}">${link.status === 'done' ? '✓ Location received from their phone' : `Link sent to ••••••${esc(link.phone.slice(-4))}. Waiting for them to tap it.`}</p>${link.status !== 'done' && demo ? `<button type="button" class="button text compact" data-loc="link-demo" data-key="${esc(key)}">Demo: open the link as the person at the place</button>` : ''}` : ''}</details>
-  <div class="form-grid two">
+  ${pt ? `<div class="loc-map" data-loc-map="${esc(key)}"><div class="geo-map-wrap" data-geo-map="${esc(JSON.stringify({pts: [{at: pt, icon: '🏠', label: 'Here'}], path: [], plan: null, drag: true, dragKey: key, satellite: true}))}">${pinSketch(pt)}</div><small class="muted">${esc(sourceText)}${d.accuracy ? ` · about ${Math.round(d.accuracy)} m` : ''}. Drag 🏠 to the exact gate.</small></div>` : ''}
+  <div class="form-grid two loc-basic">
     <label class="wide"><span>House / flat number or owner's name</span><input name="${esc(key)}-line" value="${esc(d.line || '')}" placeholder="Flat 12, Shanti Apartments / Ram Prasad ji ka ghar"></label>
-    <label><span>Mohalla / tola / village</span><input name="${esc(key)}-village" value="${esc(d.village || '')}" placeholder="Pipra tola"></label>
-    <label><span>Landmark</span><input name="${esc(key)}-landmark" value="${esc(d.landmark || '')}" placeholder="Hanuman mandir ke peeche"></label>
-    <label><span>Post office</span><input name="${esc(key)}-postOffice" value="${esc(d.postOffice || '')}"></label>
     <label><span>PIN code</span><input name="${esc(key)}-pincode" inputmode="numeric" maxlength="6" value="${esc(d.pincode || '')}"></label>
-    <label><span>City / town</span><input name="${esc(key)}-city" value="${esc(d.city || '')}"></label>
-    <label><span>Voice note of directions (optional)</span><input type="file" name="${esc(key)}-voice" accept="audio/*" capture></label>
   </div>
-  ${(() => { const prec = loc ? loc.precision : pt ? labelFor(d.source, d.accuracy) : null, dp = pt ? digipin(pt[0], pt[1]) : loc?.digipin; return prec ? `<div class="loc-summary">${labelChip({precision: prec})} <small class="muted">${esc(LABELS[prec].hint)}${dp ? ` · DIGIPIN <b>${esc(dp)}</b>` : ''}</small></div>` : ''; })()}
+  ${prec ? `<div class="loc-summary">${labelChip({precision: prec})} <small class="muted">${esc(LABELS[prec].hint)}${dp ? ` · DIGIPIN <b>${esc(dp)}</b>` : ''}</small></div>` : ''}
   ${far ? `<div class="action-warning" data-loc-far="${esc(key)}"><b>Is this the place where the work is?</b><span>The pin is about ${far} km from PIN code ${esc(loc.pincode)}.</span><label class="check-inline"><input type="checkbox" name="${esc(key)}-farOk" ${d.farOk ? 'checked' : ''}> Yes, the pin is right</label></div>` : ''}
+  <details class="loc-more" data-loc-more="${esc(key)}" ${moreOpen ? 'open' : ''}><summary>Can't find the address? Add a landmark or send a link</summary>
+    <div class="loc-link"><p class="muted">Not at the place? Send a location link to someone there.</p><div class="inline-form"><input name="${esc(key)}-phone" inputmode="numeric" maxlength="10" placeholder="Their mobile, e.g. father's phone"><button type="button" class="button secondary compact" data-loc="link" data-key="${esc(key)}">Send link by SMS / WhatsApp</button></div>
+      ${link ? `<p class="${link.status === 'done' ? 'avail-chip' : 'muted'}">${link.status === 'done' ? '✓ Location received from their phone' : `Link sent to ••••••${esc(link.phone.slice(-4))}. Waiting for them to tap it.`}</p>${link.status !== 'done' && demo ? `<button type="button" class="button text compact" data-loc="link-demo" data-key="${esc(key)}">Demo: open the link as the person at the place</button>` : ''}` : ''}</div>
+    <div class="form-grid two">
+      <label><span>Mohalla / tola / village</span><input name="${esc(key)}-village" value="${esc(d.village || '')}" placeholder="Pipra tola"></label>
+      <label><span>Landmark</span><input name="${esc(key)}-landmark" value="${esc(d.landmark || '')}" placeholder="Hanuman mandir ke peeche"></label>
+      <label><span>Post office</span><input name="${esc(key)}-postOffice" value="${esc(d.postOffice || '')}"></label>
+      <label><span>City / town</span><input name="${esc(key)}-city" value="${esc(d.city || '')}"></label>
+      <label class="wide"><span>Voice note of directions (optional)</span><input type="file" name="${esc(key)}-voice" accept="audio/*" capture></label>
+    </div></details>
   ${demo ? `<p class="mock-hint">Demo location: <button type="button" class="button text compact" data-loc="demo" data-spot="patna" data-key="${esc(key)}">Patna flat</button> · <button type="button" class="button text compact" data-loc="demo" data-spot="motihari" data-key="${esc(key)}">Motihari village house</button> · <button type="button" class="button text compact" data-loc="demo" data-spot="noida" data-key="${esc(key)}">Noida flat</button>. Search knows Patna, Noida, Gurugram and Delhi areas; Motihari addresses are "not on the map".</p>` : ''}
   </fieldset>`;
 }
@@ -168,12 +172,13 @@ export function finalLocation(s, key) {
 }
 export function bind(root, api, {onChange} = {}) {
   const S = () => api.getState();
+  root.querySelectorAll('[data-loc-more]').forEach(det => det.addEventListener('toggle', () => { draftOf(S(), det.dataset.locMore).moreOpen = det.open; }));
   const msg = (key, text, bad) => { const d = draftOf(S(), key); d.msg = text; d.msgBad = !!bad; };
   const rerender = () => { api.save(); onChange ? onChange() : api.render(); };
   root.querySelectorAll('[data-loc]').forEach(b => b.onclick = () => {
     const s = S(), key = b.dataset.key, k = b.dataset.loc; root.querySelectorAll('[data-loc-picker]').forEach(el => readPicker(root, s, el.dataset.locPicker)); const d = draftOf(s, key);
     if (k === 'demo') { const sp = DEMO_SPOTS[b.dataset.spot]; Object.assign(d, {source: 'gps', lat: sp.at[0], lng: sp.at[1], accuracy: sp.accuracy, pincode: d.pincode || sp.pincode, city: d.city || sp.city}); msg(key, `Location found: ${sp.name} (demo).`); return rerender(); }
-    if (k === 'search') { const r = search(d.q); if (!r.ok) { msg(key, r.reason, true); return rerender(); } Object.assign(d, {source: 'search', lat: r.at[0], lng: r.at[1], accuracy: null, pincode: d.pincode || r.pincode, city: d.city || r.city}); msg(key, `Found: ${r.name}. Drag the pin to the exact gate if you can.`); return rerender(); }
+    if (k === 'search') { const r = search(d.q); if (!r.ok) { if (r.notOnMap) d.notOnMap = true; msg(key, r.reason, true); return rerender(); } Object.assign(d, {source: 'search', lat: r.at[0], lng: r.at[1], accuracy: null, pincode: d.pincode || r.pincode, city: d.city || r.city}); msg(key, `Found: ${r.name}. Drag the pin to the exact gate if you can.`); return rerender(); }
     if (k === 'link') { const r = sendLink(s, key, root.querySelector(`[name="${key}-phone"]`)?.value); if (r.error) { msg(key, r.error, true); return rerender(); } msg(key, 'Location link sent by SMS and WhatsApp.'); return rerender(); }
     if (k === 'link-demo') { const sp = /^845/.test(d.pincode || '') ? DEMO_SPOTS.motihari : d.pincode && /^80/.test(d.pincode) ? DEMO_SPOTS.patna : DEMO_SPOTS.motihari; fulfilLink(s, d.link, {lat: sp.at[0], lng: sp.at[1], accuracy: sp.accuracy}); d.pincode ||= sp.pincode; d.city ||= sp.city; msg(key, 'Location received from their phone.'); return rerender(); }
     if (k === 'gps') {

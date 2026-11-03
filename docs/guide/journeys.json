@@ -223,13 +223,13 @@
   },
   {
     "id": "task-move-vehicle",
-    "steps": 13,
+    "steps": 12,
     "ok": true,
     "error": ""
   },
   {
     "id": "task-home-service",
-    "steps": 22,
+    "steps": 24,
     "ok": true,
     "error": ""
   },

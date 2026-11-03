@@ -1,5 +1,27 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-03 — Booking screens split into short steps
+- **Moving** is now five short steps, one question per screen:
+  1. **Where?** Pickup and drop, with floor and lift as quick chips.
+  2. **What?** Home size, with a summary and "Edit items".
+  3. **Vehicle** The recommended vehicle is already selected; ones that are too small are hidden under "Too small".
+  4. **Help** The suggested helpers are already selected; extras are under one optional row.
+  5. **When?** Today / Tomorrow / Day after / Pick date, then only the open slots.
+
+  Then the existing review and pay page.
+- **Home services** is now four steps: **Job → Address → Time → Check and book**. The saved address is already selected and the note or photo is optional.
+- On every step:
+  - a progress bar ("Step 2 of 5");
+  - one-line summaries of finished steps that you can tap to change;
+  - a bar fixed at the bottom with the running total, Back and Next;
+  - each step checks only its own fields;
+  - Back keeps every choice.
+
+  On a laptop the price and buttons sit in a card on the right.
+- **Simpler address step:** "Use my location", search, house / flat and PIN only. Landmark, village, post office, voice note and "send a link" sit under **"Can't find the address?"**, which opens by itself when an address isn't on the map (for example Motihari).
+- No sideways scrolling on phones. The floating Tours and Ask MoveAI buttons step aside on booking screens so they don't cover Next.
+- Tours updated (Book a home service, Choose vehicle and helpers, Book packers & movers) with Hindi captions. Tests updated for the steps.
+
 ## 2026-11-03 — Maps and live tracking for home services; choose vehicle and helpers for moving
 **Location that works in Patna and in Motihari (`js/location.js`).** One address picker for home services and moving:
 1. "I'm at the place now" (phone GPS, works in villages too);

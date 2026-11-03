@@ -4,6 +4,7 @@
 // are a vehicle booking (driver + chosen helpers); bigger homes use the packers & movers flow; 3 BHK, office
 // or another city get a survey first. The booking then runs through the existing mover branch steps.
 import * as LOC from './location.js';
+import * as WIZ from './wizard.js';
 import {SLOTS, slotError, slotLabel, todayIso, freeSlots} from './home-services.js';
 
 const esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m]));
@@ -97,48 +98,83 @@ export function validate(s, d) {
 }
 
 // ---------- screen ----------
-export const draftOf = s => (s.moveDraft ||= {what: '', items: {}, help: '', vehicle: '', extras: {}, fromFloor: 0, fromLift: true, toFloor: 0, toLift: true, date: '', slot: ''});
+export const draftOf = s => (s.moveDraft ||= {step: 1, what: '', items: {}, help: '', vehicle: '', extras: {}, fromFloor: 0, fromLift: true, toFloor: 0, toLift: true, date: '', slot: ''});
+export const STEPS = ['Where?', 'What?', 'Vehicle', 'Help', 'When?'];
+const FLOORS = [[0, 'Ground'], [1, '1'], [2, '2'], [3, '3'], [4, '4+']];
+const locs = s => ({from: LOC.makeLocation(LOC.draftOf(s, 'move-from')), to: LOC.makeLocation(LOC.draftOf(s, 'move-to'))});
+const kmOf = (s, d) => { const {from, to} = locs(s); return Number(d.distanceKm) || (!from.error && !to.error ? LOC.distanceKm(from, to) : null) || 10; };
+const pickedVehicle = (d, l) => (vehicleById(d.vehicle) && fits(vehicleById(d.vehicle), l) ? d.vehicle : (l.count ? recommended(l).id : ''));
+function floorChips(side, floor, lift) {
+  return `<div class="floor-row"><span class="muted">${side === 'from' ? 'Pickup' : 'Drop'} floor</span><div class="chip-choices small">${FLOORS.map(([v, l]) => `<label class="choice-chip"><input type="radio" name="${side}Floor" value="${v}" ${Math.min(4, Number(floor) || 0) === v ? 'checked' : ''} data-wiz-field><span><b>${l}</b></span></label>`).join('')}</div>
+    <span class="muted">Lift</span><div class="chip-choices small">${[['yes', 'Yes'], ['no', 'No']].map(([v, l]) => `<label class="choice-chip"><input type="radio" name="${side}Lift" value="${v}" ${(lift ? 'yes' : 'no') === v ? 'checked' : ''} data-wiz-field><span><b>${l}</b></span></label>`).join('')}</div></div>`;
+}
+function summaries(s, d) {
+  const {from, to} = locs(s), l = load(d.items), v = vehicleById(pickedVehicle(d, l)), help = d.help || suggestHelp(l, d.what);
+  const place = x => x.error ? '' : (x.village || x.city || x.line);
+  return {1: !from.error && !to.error ? `📍 ${place(from)} → ${place(to)} · ${kmOf(s, d)} km` : '', 2: l.count ? `${WHAT[d.what]?.label || 'Items'} · ${Object.entries(d.items).filter(([, n]) => n > 0).slice(0, 3).map(([k, n]) => `${ITEMS[k][0]} ${n}`).join(' · ')}${Object.values(d.items).filter(n => n > 0).length > 3 ? ' …' : ''}` : '',
+    3: v ? `${v.icon} ${v.label}` : '', 4: HELP_OPTIONS.find(([k]) => k === help)?.[1] || ''};
+}
 export function screen(s) {
-  const d = draftOf(s), l = load(d.items), rec = recommended(l);
-  const fromLoc = LOC.makeLocation(LOC.draftOf(s, 'move-from')), toLoc = LOC.makeLocation(LOC.draftOf(s, 'move-to'));
-  const autoKm = !fromLoc.error && !toLoc.error ? LOC.distanceKm(fromLoc, toLoc) : null, km = Number(d.distanceKm) || autoKm || 10;
-  const vehicle = vehicleById(d.vehicle) && fits(vehicleById(d.vehicle), l) ? d.vehicle : (l.count ? rec.id : '');
-  const help = d.help || suggestHelp(l, d.what), q = l.count ? quote({...d, vehicle, help, distanceKm: km}) : null;
-  const minDate = todayIso(), date = d.date && d.date >= minDate ? d.date : (freeSlots(minDate).length ? minDate : addDays(minDate, 1));
+  const d = draftOf(s), step = Math.min(5, Math.max(1, d.step || 1)), l = load(d.items), rec = recommended(l), km = kmOf(s, d);
+  const vehicle = pickedVehicle(d, l), help = d.help || suggestHelp(l, d.what), q = l.count ? quote({...d, vehicle, help, distanceKm: km}) : null;
   const floors = {fromFloor: d.fromFloor, fromLift: d.fromLift, toFloor: d.toFloor, toLift: d.toLift};
+  const {from, to} = locs(s), autoKm = !from.error && !to.error ? LOC.distanceKm(from, to) : null;
+  let body = '';
+  if (step === 1) body = `${LOC.pickerHtml(s, 'move-from', {title: 'Pickup'})}${floorChips('from', d.fromFloor, d.fromLift)}
+    ${LOC.pickerHtml(s, 'move-to', {title: 'Drop'})}${floorChips('to', d.toFloor, d.toLift)}
+    ${autoKm ? `<p class="wiz-note">About <b>${autoKm} km</b> by road. <button type="button" class="button text compact" data-mv-editkm>Change</button></p>` : ''}${d.editKm || !autoKm ? `<label class="wiz-km"><span>Distance (km)${autoKm ? '' : ' — estimated once both addresses have a map point'}</span><input type="number" min="1" name="distanceKm" value="${esc(d.distanceKm || autoKm || '')}" placeholder="${autoKm || 'e.g. 12'}" data-wiz-field></label>` : ''}`;
+  if (step === 2) {
+    const list = d.editItems || d.what === 'few' && !l.count;
+    body = `<fieldset><legend>What are you moving?</legend><div class="hs-cats">${Object.entries(WHAT).map(([k, w]) => `<label class="hs-cat ${d.what === k ? 'selected' : ''}"><input type="radio" name="what" value="${k}" ${d.what === k ? 'checked' : ''} data-mv-what><b>${esc(w.label)}</b>${w.hint ? `<small>${esc(w.hint)}</small>` : ''}</label>`).join('')}</div></fieldset>
+    ${d.what ? (list ? `<fieldset><legend>Items <small class="muted">${l.count} items · about ${l.cft} cu ft · ${l.kg} kg</small></legend><div class="hs-items">${Object.entries(ITEMS).filter(([k]) => (d.items[k] || 0) > 0 || d.showAll || COMMON.includes(k)).map(([k, it]) => `<div class="hs-item"><span><b>${esc(it[0])}</b><small>${it[2] > DRIVER_MAX_KG ? 'Heavy' : 'Light'}</small></span><span class="qty"><button type="button" class="button secondary compact" data-mv-qty="${k}" data-d="-1" aria-label="Fewer ${esc(it[0])}">−</button><output data-mv-count="${k}">${d.items[k] || 0}</output><button type="button" class="button secondary compact" data-mv-qty="${k}" data-d="1" aria-label="More ${esc(it[0])}">+</button></span></div>`).join('')}</div>${!d.showAll ? '<button type="button" class="button text compact" data-mv-all>+ More items (bike, AC, desk…)</button>' : ''}${d.what !== 'few' ? ' <button type="button" class="button text compact" data-mv-items="close">Done</button>' : ''}</fieldset>`
+      : `<div class="wiz-items-sum"><div><b>${l.count} items</b><small class="muted">${Object.entries(d.items).filter(([, n]) => n > 0).map(([k, n]) => `${ITEMS[k][0]} ${n}`).join(' · ')}</small></div><button type="button" class="button secondary compact" data-mv-items="open">Edit items</button></div>`) : ''}`;
+  }
+  if (step === 3) {
+    const ok = VEHICLES.filter(v => fits(v, l)), bad = VEHICLES.filter(v => !fits(v, l));
+    const card = (v, fit) => `<label class="mv-vehicle ${vehicle === v.id ? 'selected' : ''} ${fit ? '' : 'disabled'}" data-mv-vehicle-card="${v.id}"><input type="radio" name="vehicle" value="${v.id}" ${vehicle === v.id ? 'checked' : ''} ${fit ? '' : 'disabled'} data-mv-pick><span class="mv-icon" aria-hidden="true">${v.icon}</span><span><b>${esc(v.label)}</b>${v.id === rec.id ? ' <span class="status-pill success">Recommended</span>' : ''}<small>${v.kg >= 1000 ? `${v.kg / 1000} t` : `${v.kg} kg`} · ${esc(v.good)}</small>${fit ? '' : '<small class="field-error">Won\'t fit</small>'}</span><b class="mv-price">${inr(vehicleFare(v, km))}</b></label>`;
+    body = `<p class="muted">Prices for ${km} km. The recommended one is already selected.</p><div class="mv-vehicles">${ok.map(v => card(v, true)).join('')}</div>${bad.length ? `<details class="mv-too-small"><summary>Too small for your items (${bad.length})</summary><div class="mv-vehicles">${bad.map(v => card(v, false)).join('')}</div></details>` : ''}`;
+  }
+  if (step === 4) {
+    const v = vehicleById(vehicle) || rec, x = d.extras || {}, anyExtra = Object.entries(x).some(([k, val]) => val && k !== 'packing') || d.extrasOpen || x.packing;
+    body = `<div class="mv-help">${HELP_OPTIONS.map(([k, t]) => { const no = helpError(k, l); return `<label class="mv-help-opt ${help === k ? 'selected' : ''} ${no ? 'disabled' : ''}"><input type="radio" name="help" value="${k}" ${help === k ? 'checked' : ''} ${no ? 'disabled' : ''} data-mv-pick><span><b>${esc(t)}</b>${k === suggestHelp(l, d.what) ? ' <span class="status-pill info">Suggested</span>' : ''}${no ? `<small class="field-error">Not for heavy items</small>` : ''}</span><b class="mv-price">${inr(helperCost(k, floors))}</b></label>`; }).join('')}</div><small class="muted">₹${HELPER_RATE} per helper, plus ₹${FLOOR_RATE} per helper per floor without a lift.</small>
+    <details class="mv-extras" data-mv-extras ${anyExtra ? 'open' : ''}><summary>Add extras (optional)</summary><div class="check-grid">
+      <label><input type="checkbox" name="x-packing" ${x.packing ? 'checked' : ''} data-wiz-field> Packing: ${l.boxes} cartons + wrap ${l.big} items · ${inr(l.boxes * EXTRA_RATES.carton + l.big * EXTRA_RATES.wrap)}</label>
+      ${l.dismantle ? `<label><input type="checkbox" name="x-dismantle" ${x.dismantle ? 'checked' : ''} data-wiz-field> Dismantle & reassemble ${l.dismantle} items · ${inr(l.dismantle * EXTRA_RATES.dismantle)}</label>` : ''}
+      ${l.ac ? `<label><input type="checkbox" name="x-ac" ${x.ac ? 'checked' : ''} data-wiz-field> AC uninstall & install × ${l.ac} · ${inr(l.ac * EXTRA_RATES.ac)}</label>` : ''}
+      <label><input type="checkbox" name="x-stop" ${x.stop ? 'checked' : ''} data-wiz-field> Extra stop on the way · ${inr(small(v) ? EXTRA_RATES.stopSmall : EXTRA_RATES.stopTruck)}</label>
+      <label><input type="checkbox" name="x-return" ${x.returnTrip ? 'checked' : ''} data-wiz-field> Return trip · ${inr(Math.round(vehicleFare(v, km) * EXTRA_RATES.returnPct))}</label>
+      <label class="wide"><span>Insure goods — declared value ₹ (1%)</span><input type="number" min="0" name="x-value" value="${esc(x.declaredValue || '')}" data-wiz-field></label></div></details>`;
+  }
+  if (step === 5) body = `${WIZ.whenHtml(d.date, d.slot, {days: 30})}${q ? `<section class="hs-summary" data-mv-summary><h3>Price</h3>${q.partnerLines.map(([a, b]) => `<p class="price-line"><span>${esc(a)}</span><b>${inr(b)}</b></p>`).join('')}${q.feeLines.map(([a, b]) => `<p class="price-line"><span>${esc(a)}</span><b>${inr(b)}</b></p>`).join('')}<p class="price-line total"><span>Total</span><b data-mv-total>${inr(q.total)}</b></p>
+      <small class="muted">${q.bookingKind === 'vehicle' ? 'Vehicle booking: a driver with the help you chose. No packing team or survey.' : q.survey ? 'Packers & movers. For this size or distance a free survey comes first, then a fixed quote.' : 'Packers & movers: the nearest approved mover branch does the job.'}</small></section>` : ''}`;
   return `<div class="page-header"><div><h1>Move house or items</h1><p>Choose the vehicle and help you need. Every price is shown before you book.</p></div></div>
-  <form id="move-book-form" class="panel form-panel narrow">
-    <fieldset><legend>1. What are you moving?</legend><div class="hs-cats">${Object.entries(WHAT).map(([k, w]) => `<label class="hs-cat ${d.what === k ? 'selected' : ''}"><input type="radio" name="what" value="${k}" ${d.what === k ? 'checked' : ''} data-mv-what><b>${esc(w.label)}</b>${w.hint ? `<small>${esc(w.hint)}</small>` : ''}</label>`).join('')}</div></fieldset>
-    ${d.what ? `<fieldset><legend>2. Items <small class="muted">${l.count} items · about ${l.cft} cu ft · ${l.kg} kg</small></legend><div class="hs-items">${Object.entries(ITEMS).filter(([k]) => (d.items[k] || 0) > 0 || d.showAll || (d.what === 'few' && COMMON.includes(k))).map(([k, it]) => `<div class="hs-item"><span><b>${esc(it[0])}</b><small>${it[2] > DRIVER_MAX_KG ? 'Heavy' : 'Light'}</small></span><span class="qty"><button type="button" class="button secondary compact" data-mv-qty="${k}" data-d="-1" aria-label="Fewer ${esc(it[0])}">−</button><output data-mv-count="${k}">${d.items[k] || 0}</output><button type="button" class="button secondary compact" data-mv-qty="${k}" data-d="1" aria-label="More ${esc(it[0])}">+</button></span></div>`).join('')}</div>${!d.showAll ? '<button type="button" class="button text compact" data-mv-all>+ Add other items</button>' : ''}</fieldset>` : ''}
-    ${d.what ? `<fieldset><legend>3. From and to</legend>${LOC.pickerHtml(s, 'move-from', {title: 'Pickup'})}<div class="form-grid two"><label><span>Pickup floor</span><input type="number" min="0" max="30" name="fromFloor" value="${esc(d.fromFloor)}" data-mv-field></label><label><span>Lift at pickup?</span><select name="fromLift" data-mv-field><option value="yes">Yes</option><option value="no" ${d.fromLift ? '' : 'selected'}>No</option></select></label></div>
-      ${LOC.pickerHtml(s, 'move-to', {title: 'Drop'})}<div class="form-grid two"><label><span>Drop floor</span><input type="number" min="0" max="30" name="toFloor" value="${esc(d.toFloor)}" data-mv-field></label><label><span>Lift at drop?</span><select name="toLift" data-mv-field><option value="yes">Yes</option><option value="no" ${d.toLift ? '' : 'selected'}>No</option></select></label></div>
-      <label><span>Distance (km)${autoKm ? ` · estimated ${autoKm} km from the two addresses` : ''}</span><input type="number" min="1" name="distanceKm" value="${esc(d.distanceKm || autoKm || '')}" placeholder="${autoKm || 'e.g. 12'}" data-mv-field></label></fieldset>` : ''}
-    ${l.count ? `<fieldset><legend>4. Vehicle <small class="muted">prices for ${km} km</small></legend><div class="mv-vehicles">${VEHICLES.map(v => { const ok = fits(v, l); return `<label class="mv-vehicle ${vehicle === v.id ? 'selected' : ''} ${ok ? '' : 'disabled'}" data-mv-vehicle-card="${v.id}"><input type="radio" name="vehicle" value="${v.id}" ${vehicle === v.id ? 'checked' : ''} ${ok ? '' : 'disabled'} data-mv-pick><span class="mv-icon" aria-hidden="true">${v.icon}</span><span><b>${esc(v.label)}</b>${v.id === rec.id ? ' <span class="status-pill success">Recommended</span>' : ''}<small>${v.kg >= 1000 ? `${v.kg / 1000} t` : `${v.kg} kg`} · ${esc(v.good)}</small>${ok ? '' : '<small class="field-error">Won\'t fit</small>'}</span><b class="mv-price">${inr(vehicleFare(v, km))}</b></label>`; }).join('')}</div></fieldset>
-    <fieldset><legend>5. Help with loading</legend><div class="mv-help">${HELP_OPTIONS.map(([k, t]) => { const bad = helpError(k, l); return `<label class="mv-help-opt ${help === k ? 'selected' : ''} ${bad ? 'disabled' : ''}"><input type="radio" name="help" value="${k}" ${help === k ? 'checked' : ''} ${bad ? 'disabled' : ''} data-mv-pick><span><b>${esc(t)}</b>${k === suggestHelp(l, d.what) ? ' <span class="status-pill info">Suggested</span>' : ''}${bad ? `<small class="field-error">Not for heavy items</small>` : ''}</span><b class="mv-price">${inr(helperCost(k, floors))}</b></label>`; }).join('')}</div><small class="muted">₹${HELPER_RATE} per helper, plus ₹${FLOOR_RATE} per helper per floor without a lift.</small></fieldset>
-    <fieldset><legend>6. Extras (optional)</legend><div class="check-grid">
-      <label><input type="checkbox" name="x-packing" ${d.extras.packing ? 'checked' : ''} data-mv-field> Packing: ${l.boxes} cartons + wrap ${l.big} items · ${inr(l.boxes * EXTRA_RATES.carton + l.big * EXTRA_RATES.wrap)}</label>
-      ${l.dismantle ? `<label><input type="checkbox" name="x-dismantle" ${d.extras.dismantle ? 'checked' : ''} data-mv-field> Dismantle & reassemble ${l.dismantle} items · ${inr(l.dismantle * EXTRA_RATES.dismantle)}</label>` : ''}
-      ${l.ac ? `<label><input type="checkbox" name="x-ac" ${d.extras.ac ? 'checked' : ''} data-mv-field> AC uninstall & install × ${l.ac} · ${inr(l.ac * EXTRA_RATES.ac)}</label>` : ''}
-      <label><input type="checkbox" name="x-stop" ${d.extras.stop ? 'checked' : ''} data-mv-field> Extra stop on the way · ${inr(small(vehicleById(vehicle) || rec) ? EXTRA_RATES.stopSmall : EXTRA_RATES.stopTruck)}</label>
-      <label><input type="checkbox" name="x-return" ${d.extras.returnTrip ? 'checked' : ''} data-mv-field> Return trip · ${inr(Math.round(vehicleFare(vehicleById(vehicle) || rec, km) * EXTRA_RATES.returnPct))}</label>
-      <label class="wide"><span>Insure goods — declared value ₹ (1%)</span><input type="number" min="0" name="x-value" value="${esc(d.extras.declaredValue || '')}" data-mv-field></label></div></fieldset>
-    <fieldset><legend>7. When?</legend><div class="form-grid"><label><span>Date</span><input type="date" name="date" value="${date}" min="${minDate}" max="${addDays(minDate, 30)}" data-mv-field></label></div><div class="slot-grid" role="radiogroup" aria-label="Time slot">${SLOTS.map(([k, t]) => { const bad = slotError(date, k); return `<label class="slot-chip ${bad ? 'disabled' : ''}"><input type="radio" name="slot" value="${k}" ${d.slot === k && !bad ? 'checked' : ''} ${bad ? 'disabled' : ''}><span>${t}</span></label>`; }).join('')}</div></fieldset>
-    <section class="hs-summary" data-mv-summary><h3>Price</h3>${q.partnerLines.map(([a, b]) => `<p class="price-line"><span>${esc(a)}</span><b>${inr(b)}</b></p>`).join('')}${q.feeLines.map(([a, b]) => `<p class="price-line"><span>${esc(a)}</span><b>${inr(b)}</b></p>`).join('')}<p class="price-line total"><span>Total</span><b data-mv-total>${inr(q.total)}</b></p>
-      <small class="muted">${q.bookingKind === 'vehicle' ? 'Vehicle booking: a driver with the help you chose. No packing team or survey.' : q.survey ? 'Packers & movers. For this size or distance a free survey comes first, then a fixed quote.' : 'Packers & movers: the nearest approved mover branch does the job.'}</small></section>` : ''}
+  <form id="move-book-form" class="panel form-panel narrow wiz" data-step="${step}">${WIZ.head(STEPS, step, summaries(s, d))}
+    <section class="wiz-step" data-mv-step="${step}"><h2>${esc(STEPS[step - 1])}</h2>${body}</section>
     <p class="field-error" id="move-book-error" hidden></p>
-    <div class="form-actions"><button type="button" class="button secondary" data-route="home">Back</button>${l.count ? '<button class="button primary">Review and book</button>' : ''}</div>
+    ${WIZ.bar({total: q ? q.total : null, totalNote: q ? (q.bookingKind === 'vehicle' ? 'Vehicle booking' : 'Packers & movers') : 'Price appears once you add items', cur: step, next: step === 5 ? 'Review and book' : 'Next'})}
   </form>`;
 }
 
 function read(root, s, {pickers = true} = {}) {
   const d = draftOf(s), f = new FormData(root), g = n => f.get(n);
-  if (g('fromFloor') != null) { d.fromFloor = Number(g('fromFloor')) || 0; d.fromLift = g('fromLift') !== 'no'; d.toFloor = Number(g('toFloor')) || 0; d.toLift = g('toLift') !== 'no'; }
+  if (g('fromFloor') != null) { d.fromFloor = Number(g('fromFloor')) || 0; d.fromLift = g('fromLift') !== 'no'; }
+  if (g('toFloor') != null) { d.toFloor = Number(g('toFloor')) || 0; d.toLift = g('toLift') !== 'no'; }
   if (g('distanceKm') != null) d.distanceKm = g('distanceKm') ? Number(g('distanceKm')) : '';
   if (g('vehicle')) d.vehicle = g('vehicle'); if (g('help')) d.help = g('help');
   if (root.querySelector('[name="x-stop"]')) d.extras = {packing: f.has('x-packing'), dismantle: f.has('x-dismantle'), ac: f.has('x-ac'), stop: f.has('x-stop'), returnTrip: f.has('x-return'), declaredValue: Number(g('x-value')) || 0};
-  if (g('date')) d.date = g('date'); d.slot = g('slot') || d.slot;
+  if (root.querySelector('[name="date"]')) { d.date = WIZ.readDate(f, d.date); d.slot = g('slot') || ''; }
   if (pickers) for (const k of ['move-from', 'move-to']) if (root.querySelector(`[data-loc-picker="${k}"]`)) LOC.readPicker(root, s, k);
   return d;
+}
+// Checks only the fields of one step.
+export function stepError(s, step) {
+  const d = draftOf(s), l = load(d.items);
+  if (step === 1) { const from = LOC.finalLocation(s, 'move-from'), to = LOC.finalLocation(s, 'move-to'); if (from.error) return `Pickup: ${from.error}`; if (to.error) return `Drop: ${to.error}`; if (from.line === to.line && from.pincode === to.pincode) return 'Pickup and drop cannot be the same.'; return ''; }
+  if (step === 2) return d.what ? (l.count ? '' : 'Add at least one item.') : 'Choose what you are moving.';
+  if (step === 3) { const v = vehicleById(pickedVehicle(d, l)); return v && fits(v, l) ? '' : `Choose ${recommended(l).label} or bigger.`; }
+  if (step === 4) return helpError(d.help || suggestHelp(l, d.what), l);
+  if (step === 5) return slotError(d.date, d.slot);
+  return '';
 }
 // Builds the booking draft used by the existing review + pay + mover-branch flow.
 export function toBookingDraft(s) {
@@ -157,14 +193,22 @@ export function toBookingDraft(s) {
 export function bind(root, api) {
   const form = root.querySelector('#move-book-form'); if (!form) return;
   const S = () => api.getState(), redraw = () => { api.save(); api.render(); };
-  form.querySelectorAll('[data-mv-what]').forEach(r => r.onchange = () => { const s = S(); read(form, s); const d = draftOf(s); d.what = r.value; d.items = {...WHAT[r.value].items}; d.vehicle = ''; d.help = ''; d.showAll = false; d.extras = {...d.extras, packing: WHAT[r.value].kind === 'packers'}; redraw(); });
-  form.querySelectorAll('[data-mv-qty]').forEach(b => b.onclick = () => { const s = S(); read(form, s); const d = draftOf(s), k = b.dataset.mvQty; d.items[k] = Math.max(0, Math.min(99, (d.items[k] || 0) + Number(b.dataset.d))); if (d.vehicle && !fits(vehicleById(d.vehicle), load(d.items))) d.vehicle = ''; if (d.help === 'driver' && load(d.items).heavy) d.help = ''; redraw(); });
+  const show = m => { const el = form.querySelector('#move-book-error'); el.textContent = m; el.hidden = !m; if (m) el.scrollIntoView?.({block: 'center'}); };
+  form.querySelectorAll('[data-mv-what]').forEach(r => r.onchange = () => { const s = S(); read(form, s); const d = draftOf(s); d.what = r.value; d.items = {...WHAT[r.value].items}; d.vehicle = ''; d.help = ''; d.showAll = false; d.editItems = r.value === 'few'; d.extras = {...d.extras, packing: WHAT[r.value].kind === 'packers'}; redraw(); });
+  form.querySelectorAll('[data-mv-qty]').forEach(b => b.onclick = () => { const s = S(); read(form, s); const d = draftOf(s), k = b.dataset.mvQty; d.items[k] = Math.max(0, Math.min(99, (d.items[k] || 0) + Number(b.dataset.d))); d.editItems = true; if (d.vehicle && !fits(vehicleById(d.vehicle), load(d.items))) d.vehicle = ''; if (d.help === 'driver' && load(d.items).heavy) d.help = ''; redraw(); });
   form.querySelector('[data-mv-all]')?.addEventListener('click', () => { const s = S(); read(form, s); draftOf(s).showAll = true; redraw(); });
-  form.querySelectorAll('[data-mv-pick], [data-mv-field]').forEach(x => x.addEventListener('change', () => { read(form, S()); redraw(); }));
+  form.querySelectorAll('[data-mv-items]').forEach(b => b.onclick = () => { const s = S(); read(form, s); draftOf(s).editItems = b.dataset.mvItems === 'open'; redraw(); });
+  form.querySelector('[data-mv-editkm]')?.addEventListener('click', () => { const s = S(); read(form, s); draftOf(s).editKm = true; redraw(); });
+  form.querySelector('[data-mv-extras]')?.addEventListener('toggle', e => { draftOf(S()).extrasOpen = e.target.open; });
+  form.querySelectorAll('[data-mv-pick], [data-wiz-field]').forEach(x => x.addEventListener('change', () => { read(form, S()); redraw(); }));
   LOC.bind(form, api, {onChange: () => { read(form, S(), {pickers: false}); redraw(); }});
+  form.querySelectorAll('[data-wiz-go]').forEach(b => b.onclick = () => { const s = S(); read(form, s); draftOf(s).step = Number(b.dataset.wizGo); redraw(); });
+  form.querySelector('[data-wiz="back"]')?.addEventListener('click', () => { const s = S(); read(form, s); const d = draftOf(s); d.step = Math.max(1, (d.step || 1) - 1); redraw(); });
   form.onsubmit = e => {
-    e.preventDefault(); const s = S(); read(form, s); const r = toBookingDraft(s);
-    if (r.error) { const el = form.querySelector('#move-book-error'); el.textContent = r.error; el.hidden = false; el.scrollIntoView?.({block: 'center'}); return; }
+    e.preventDefault(); const s = S(); read(form, s); const d = draftOf(s), step = d.step || 1;
+    const err = stepError(s, step); if (err) return show(err);
+    if (step < 5) { d.step = step + 1; if (d.step === 3 && !d.vehicle) d.vehicle = recommended(load(d.items)).id; if (d.step === 4 && !d.help) d.help = suggestHelp(load(d.items), d.what); if (d.step === 5 && !d.date) d.date = WIZ.defaultDate(); return redraw(); }
+    const r = toBookingDraft(s); if (r.error) return show(r.error);
     s.bookingDraft = r.draft; api.save(); api.navigate('bookingReview');
   };
 }

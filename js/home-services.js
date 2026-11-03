@@ -11,6 +11,7 @@
 import {clock, partnerBlocked, wallet, walletPanel} from './pay.js';
 import * as Bill from './customer-billing.js';
 import * as LOC from './location.js';
+import * as WIZ from './wizard.js';
 import {km, roadKm} from './geo.js';
 import * as GeoMap from './geo.js';
 
@@ -287,28 +288,38 @@ export function activatePro(s, c) {
 }
 
 // ---------- customer screens ----------
-const draftOf = s => (s.homeDraft ||= {category: 'electrician', qty: {}, date: '', slot: '', addressId: addresses(s)[0]?.id || 'new'});
+const draftOf = s => (s.homeDraft ||= {step: 1, category: 'electrician', qty: {}, date: '', slot: '', addressId: addresses(s)[0]?.id || 'new'});
+export const BOOK_STEPS = ['Job', 'Address', 'Time', 'Review'];
+const draftItems = d => { const cat = CATS[d.category] ? d.category : 'electrician'; return CATS[cat].inspection ? [{id: 'inspect', qty: 1}] : Object.entries(d.qty || {}).filter(([k, q]) => q > 0 && itemOf(cat, k)).map(([id, qty]) => ({id, qty})); };
+function draftAddress(s, d) { if (d.addressId && d.addressId !== 'new') return addresses(s).find(a => a.id === d.addressId) || null; const loc = LOC.makeLocation(LOC.draftOf(s, 'hs-addr')); return loc.error ? null : loc; }
+export function bookStepError(s, step) {
+  const d = draftOf(s), c = CATS[d.category] || CATS.electrician;
+  if (step === 1) { if (!c.inspection && !draftItems(d).length) return 'Choose at least one job.'; if (c.inspection && String(d.description || '').trim().length < 5) return 'Tell us what needs painting (rooms, walls or area) so the pro can plan the inspection.'; return ''; }
+  if (step === 2) { if (d.addressId && d.addressId !== 'new') return addresses(s).some(a => a.id === d.addressId) ? '' : 'Choose an address.'; const loc = LOC.finalLocation(s, 'hs-addr'); return loc.error || ''; }
+  if (step === 3) return slotError(d.date, d.slot);
+  return '';
+}
 export function bookScreen(s) {
-  const d = draftOf(s), c = CATS[d.category] || CATS.electrician, cat = CATS[d.category] ? d.category : 'electrician';
-  const minDate = todayIso(), date = d.date && d.date >= minDate ? d.date : (freeSlots(minDate).length ? minDate : addDays(minDate, 1));
-  const items = Object.entries(d.qty || {}).filter(([k, q]) => q > 0 && itemOf(cat, k)).map(([id, qty]) => ({id, qty}));
-  const q = quoteFor(cat, c.inspection ? [{id: 'inspect', qty: 1}] : items);
-  const slots = SLOTS.map(([k, l]) => { const bad = slotError(date, k); return `<label class="slot-chip ${bad ? 'disabled' : ''}"><input type="radio" name="slot" value="${k}" ${d.slot === k && !bad ? 'checked' : ''} ${bad ? 'disabled' : ''}><span>${l}</span></label>`; }).join('');
-  const saved = addresses(s);
-  return `${head('Home services', 'Choose the job, see the fixed price, pick a time. Pay after the work is done.')}
-  <form id="home-book-form" class="panel form-panel narrow">
-    <fieldset><legend>What do you need?</legend><div class="hs-cats">${Object.entries(CATS).map(([k, x]) => `<label class="hs-cat ${k === cat ? 'selected' : ''}"><input type="radio" name="category" value="${k}" ${k === cat ? 'checked' : ''} data-hs-cat><span aria-hidden="true">${x.icon}</span><b>${esc(x.label)}</b></label>`).join('')}</div></fieldset>
+  const d = draftOf(s), step = Math.min(4, Math.max(1, d.step || 1)), cat = CATS[d.category] ? d.category : 'electrician', c = CATS[cat];
+  const items = draftItems(d), q = quoteFor(cat, items), saved = addresses(s), addr = draftAddress(s, d);
+  const sums = {1: items.length && !c.inspection ? `${c.icon} ${c.label} · ${items.map(x => `${itemOf(cat, x.id)[1]}${x.qty > 1 ? ` × ${x.qty}` : ''}`).join(', ')}` : c.inspection ? `${c.icon} ${c.label} · free inspection` : '', 2: addr ? `📍 ${addr.label && addr.id ? `${addr.label}: ` : ''}${addr.line}${addr.village ? `, ${addr.village}` : ''}` : '', 3: d.date && d.slot ? `🕑 ${d.date} · ${slotLabel(d.slot)}` : ''};
+  let body = '';
+  if (step === 1) body = `<div class="hs-cats">${Object.entries(CATS).map(([k, x]) => `<label class="hs-cat ${k === cat ? 'selected' : ''}"><input type="radio" name="category" value="${k}" ${k === cat ? 'checked' : ''} data-hs-cat><span aria-hidden="true">${x.icon}</span><b>${esc(x.label)}</b></label>`).join('')}</div>
     ${c.inspection ? `<div class="info-banner"><b>Free inspection, then a fixed quote</b><span>A painter visits, measures and sends a written quote in the app. You pay only if you approve it.</span></div>`
       : `<fieldset><legend>Choose jobs</legend><div class="hs-items">${c.items.map(([k, l, p]) => `<div class="hs-item"><span><b>${esc(l)}</b><small>${inr(p)}</small></span><span class="qty"><button type="button" class="button secondary compact" data-hs-qty="${k}" data-d="-1" aria-label="Fewer ${esc(l)}">−</button><output data-hs-count="${k}">${d.qty?.[k] || 0}</output><button type="button" class="button secondary compact" data-hs-qty="${k}" data-d="1" aria-label="More ${esc(l)}">+</button></span></div>`).join('')}</div></fieldset>`}
-    <div class="form-grid"><label class="wide"><span>${c.inspection ? 'What needs painting?' : 'Anything the pro should know? (optional)'}</span><textarea name="description" rows="2" placeholder="${c.inspection ? 'e.g. 2 bedrooms and hall, walls only, some damp patches' : 'e.g. fan makes noise and wobbles'}">${esc(d.description || '')}</textarea></label>
-    <label class="wide"><span>Photo of the problem (optional)</span><input type="file" name="photo" accept="image/*"></label></div>
-    <fieldset><legend>Address</legend><div class="hs-addresses">${saved.map(a => `<label class="hs-address"><input type="radio" name="addressId" value="${a.id}" ${d.addressId === a.id ? 'checked' : ''}><span><b>${esc(a.label)}</b> ${LOC.labelChip(a)}<small>${esc(LOC.oneLine(a))}</small></span></label>`).join('')}<label class="hs-address"><input type="radio" name="addressId" value="new" ${d.addressId === 'new' || !saved.length ? 'checked' : ''}><span><b>New address</b></span></label></div>
-      <div data-hs-new-address ${d.addressId !== 'new' && saved.length ? 'hidden' : ''}>${LOC.pickerHtml(s, 'hs-addr', {title: 'Where is the work?'})}<div class="form-grid two"><label><span>Save as</span><select name="addrName"><option>Home</option><option>Work</option><option>Parents</option><option>Shop</option></select></label><label class="check-inline"><input type="checkbox" name="saveAddress" checked> Save this address</label></div></div></fieldset>
-    <fieldset><legend>When?</legend><div class="form-grid"><label><span>Date</span><input type="date" name="date" value="${date}" min="${minDate}" max="${addDays(minDate, 14)}" data-hs-date></label></div><div class="slot-grid" role="radiogroup" aria-label="Time slot">${slots}</div>${freeSlots(date).length ? '' : '<p class="muted">No slots left today. Choose another date.</p>'}</fieldset>
-    <section class="hs-summary"><div class="price-line"><span>${c.inspection ? 'Inspection' : 'Total (pay after the work)'}</span><b data-hs-total>${c.inspection ? 'Free' : inr(q.total)}</b></div>${!c.inspection && q.total === MIN_ORDER && items.reduce((a, x) => a + itemOf(cat, x.id)[2] * x.qty, 0) < MIN_ORDER && items.length ? `<small class="muted">Small jobs are charged at least ${inr(MIN_ORDER)}.</small>` : ''}
-      <details class="rate-card"><summary>If anything extra comes up</summary>${q.rateCard.map(([a, b]) => `<small class="block"><b>${esc(a)}:</b> ${esc(b)}</small>`).join('')}</details></section>
+    <details class="hs-note" ${d.description || c.inspection ? 'open' : ''}><summary>${c.inspection ? 'What needs painting?' : 'Add a note or photo for the pro (optional)'}</summary><div class="form-grid"><label class="wide"><span>${c.inspection ? 'Rooms, walls or area' : 'Note'}</span><textarea name="description" rows="2" placeholder="${c.inspection ? 'e.g. 2 bedrooms and hall, walls only, some damp patches' : 'e.g. fan makes noise and wobbles'}">${esc(d.description || '')}</textarea></label><label class="wide"><span>Photo of the problem</span><input type="file" name="photo" accept="image/*"></label></div></details>
+    ${!c.inspection && q.total === MIN_ORDER && items.length && items.reduce((a, x) => a + itemOf(cat, x.id)[2] * x.qty, 0) < MIN_ORDER ? `<small class="muted">Small jobs are charged at least ${inr(MIN_ORDER)}.</small>` : ''}`;
+  if (step === 2) body = `<div class="hs-addresses">${saved.map(a => `<label class="hs-address"><input type="radio" name="addressId" value="${a.id}" ${d.addressId === a.id ? 'checked' : ''} data-hs-addr><span><b>${esc(a.label)}</b> ${LOC.labelChip(a)}<small>${esc(LOC.oneLine(a))}</small></span></label>`).join('')}<label class="hs-address"><input type="radio" name="addressId" value="new" ${d.addressId === 'new' || !saved.length ? 'checked' : ''} data-hs-addr><span><b>+ New address</b></span></label></div>
+    ${d.addressId === 'new' || !saved.length ? `<div data-hs-new-address>${LOC.pickerHtml(s, 'hs-addr', {title: 'Where is the work?'})}<div class="form-grid two"><label><span>Save as</span><select name="addrName"><option>Home</option><option>Work</option><option>Parents</option><option>Shop</option></select></label><label class="check-inline"><input type="checkbox" name="saveAddress" ${d.saveAddress === false ? '' : 'checked'}> Save this address</label></div></div>` : ''}`;
+  if (step === 3) body = WIZ.whenHtml(d.date, d.slot);
+  if (step === 4) body = `<section class="hs-review"><p class="price-line"><span>${c.icon} ${esc(c.label)}</span><span></span></p>${q.partnerLines.map(([a, b]) => `<p class="price-line"><span>${esc(a)}</span><b>${inr(b)}</b></p>`).join('')}<p class="price-line total"><span>${c.inspection ? 'Inspection' : 'Total · pay after the work'}</span><b data-hs-total>${c.inspection ? 'Free' : inr(q.total)}</b></p>
+    <p>📍 ${addr ? esc(LOC.oneLine(addr)) : ''} ${addr ? LOC.labelChip(addr) : ''}</p><p>🕑 ${esc(d.date)} · ${esc(slotLabel(d.slot))}</p>${d.description ? `<p class="muted">“${esc(d.description)}”</p>` : ''}
+    <details class="rate-card"><summary>If anything extra comes up</summary>${q.rateCard.map(([a, b]) => `<small class="block"><b>${esc(a)}:</b> ${esc(b)}</small>`).join('')}</details><p class="muted">Free to change the time or cancel until the pro is on the way.</p></section>`;
+  return `${head('Home services', 'Choose the job, see the fixed price, pick a time. Pay after the work is done.')}
+  <form id="home-book-form" class="panel form-panel narrow wiz" data-step="${step}">${WIZ.head(BOOK_STEPS, step, sums)}
+    <section class="wiz-step" data-hs-step="${step}"><h2>${esc(['What do you need?', 'Where is the work?', 'When should the pro come?', 'Check and book'][step - 1])}</h2>${body}</section>
     <p class="field-error" id="home-book-error" hidden></p>
-    <div class="form-actions"><button type="button" class="button secondary" data-route="home">Back</button><button class="button primary">Book ${c.inspection ? 'free inspection' : 'now'}</button></div>
+    ${WIZ.bar({total: c.inspection ? null : (items.length ? q.total : null), totalNote: c.inspection ? 'Free inspection, quote later' : items.length ? 'Pay after the work' : 'Choose a job to see the price', cur: step, next: step === 4 ? (c.inspection ? 'Book free inspection' : 'Book now') : 'Next'})}
   </form>`;
 }
 
@@ -443,17 +454,27 @@ export function bind(root, api) {
   const err = (id, m) => { const e = root.querySelector('#' + id); if (e) { e.textContent = m; e.hidden = !m; e.scrollIntoView?.({block: 'center'}); } else api.toast(m); };
   const book = root.querySelector('#home-book-form');
   if (book) {
-    const keep = (pick) => { const s = S(), d = draftOf(s), f = new FormData(book); d.description = f.get('description') || ''; d.date = f.get('date') || d.date; d.slot = f.get('slot') || ''; d.addressId = f.get('addressId') || d.addressId; if (pick !== false) LOC.readPicker(book, s, 'hs-addr'); };
-    LOC.bind(book, api, {onChange: () => { keep(false); api.save(); api.render(); }});
-    book.querySelectorAll('[data-hs-cat]').forEach(r => r.onchange = () => { keep(); const d = draftOf(S()); d.category = r.value; d.qty = {}; api.save(); api.render(); });
-    book.querySelectorAll('[data-hs-qty]').forEach(b => b.onclick = () => { keep(); const d = draftOf(S()), k = b.dataset.hsQty; d.qty[k] = Math.max(0, Math.min(10, (d.qty[k] || 0) + Number(b.dataset.d))); api.save(); api.render(); });
-    book.querySelector('[data-hs-date]')?.addEventListener('change', () => { keep(); api.save(); api.render(); });
-    book.querySelectorAll('[name="addressId"]').forEach(r => r.onchange = () => { const n = book.querySelector('[data-hs-new-address]'); if (n) n.hidden = r.value !== 'new'; });
+    const keep = (pick) => { const s = S(), d = draftOf(s), f = new FormData(book);
+      if (book.querySelector('[name="description"]')) d.description = f.get('description') || '';
+      if (book.querySelector('[name="photo"]')) { const ph = fileName(book, 'photo'); if (ph) d.photo = ph; }
+      if (book.querySelector('[name="date"]')) { d.date = WIZ.readDate(f, d.date); d.slot = f.get('slot') || ''; }
+      if (book.querySelector('[name="addressId"]')) d.addressId = f.get('addressId') || d.addressId;
+      if (book.querySelector('[name="addrName"]')) { d.addrName = f.get('addrName'); d.saveAddress = f.has('saveAddress'); }
+      if (pick !== false && book.querySelector('[data-loc-picker="hs-addr"]')) LOC.readPicker(book, s, 'hs-addr'); };
+    const redraw = () => { api.save(); api.render(); };
+    LOC.bind(book, api, {onChange: () => { keep(false); redraw(); }});
+    book.querySelectorAll('[data-hs-cat]').forEach(r => r.onchange = () => { keep(); const d = draftOf(S()); d.category = r.value; d.qty = {}; redraw(); });
+    book.querySelectorAll('[data-hs-qty]').forEach(b => b.onclick = () => { keep(); const d = draftOf(S()), k = b.dataset.hsQty; d.qty[k] = Math.max(0, Math.min(10, (d.qty[k] || 0) + Number(b.dataset.d))); redraw(); });
+    book.querySelectorAll('[data-hs-addr], [data-wiz-field]').forEach(x => x.addEventListener('change', () => { keep(); redraw(); }));
+    book.querySelectorAll('[data-wiz-go]').forEach(b => b.onclick = () => { keep(); draftOf(S()).step = Number(b.dataset.wizGo); redraw(); });
+    book.querySelector('[data-wiz="back"]')?.addEventListener('click', () => { keep(); const d = draftOf(S()); d.step = Math.max(1, (d.step || 1) - 1); redraw(); });
     book.onsubmit = e => {
-      e.preventDefault(); keep(); const s = S(), d = draftOf(s), f = new FormData(book);
-      const v = {category: d.category, items: Object.entries(d.qty || {}).map(([id, qty]) => ({id, qty})), description: f.get('description'), photo: fileName(book, 'photo'), date: f.get('date'), slot: f.get('slot'),
-        addressId: f.get('addressId') === 'new' ? null : f.get('addressId'), address: null, saveAddress: f.has('saveAddress')};
-      if (!v.addressId) { const loc = LOC.finalLocation(s, 'hs-addr'); if (loc.error) return err('home-book-error', loc.error); v.address = {...loc, name: f.get('addrName') || 'Home'}; }
+      e.preventDefault(); keep(); const s = S(), d = draftOf(s), step = d.step || 1;
+      const se = bookStepError(s, step); if (se) return err('home-book-error', se);
+      if (step < 4) { d.step = step + 1; if (d.step === 3 && !d.date) d.date = WIZ.defaultDate(); return redraw(); }
+      const v = {category: d.category, items: Object.entries(d.qty || {}).map(([id, qty]) => ({id, qty})), description: d.description, photo: d.photo || '', date: d.date, slot: d.slot,
+        addressId: d.addressId && d.addressId !== 'new' ? d.addressId : null, address: null, saveAddress: d.saveAddress !== false};
+      if (!v.addressId) { const loc = LOC.finalLocation(s, 'hs-addr'); if (loc.error) { d.step = 2; return err('home-book-error', loc.error); } v.address = {...loc, name: d.addrName || 'Home'}; }
       const r = createBooking(s, v, {pricing: api.pricing?.(s, 'general') || null});
       if (r.error) return err('home-book-error', r.error);
       s.homeDraft = null; if (s.locDrafts) delete s.locDrafts['hs-addr']; api.save(); api.navigate('serviceDetail');

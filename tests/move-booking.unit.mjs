@@ -57,6 +57,11 @@ const Q = o => MB.quote({extras: {}, fromFloor: 0, fromLift: true, toFloor: 0, t
   assert.equal(r.draft.vehicleId, '3w'); assert.equal(r.draft.help, 'dh1'); assert.ok(r.draft.distanceKm >= 3 && r.draft.distanceKm <= 8, `distance ${r.draft.distanceKm}`);
   assert.equal(r.draft.moveQuote.bookingKind, 'vehicle'); assert.match(r.draft.title, /A few items · 3-wheeler/); assert.match(r.draft.inventory, /1 × Fridge/); assert.equal(r.draft.fromLoc.precision, 'exact');
   // screen renders vehicle cards with prices and won't-fit
-  const html = MB.screen(s); assert.match(html, /Recommended/); assert.match(html, /2-wheeler[\s\S]*Won't fit/); assert.match(html, /Driver \+ 1 helper/); }
+  MB.draftOf(s).step = 3; const html = MB.screen(s); assert.match(html, /Step 3 of 5/); assert.match(html, /Recommended/); assert.match(html, /Too small for your items[\s\S]*2-wheeler[\s\S]*Won't fit/);
+  assert.match(html, /✓ Where\?/); MB.draftOf(s).step = 4; assert.match(MB.screen(s), /Driver \+ 1 helper/);
+  // each step checks only its own fields
+  for (let st = 1; st <= 5; st++) assert.equal(MB.stepError(s, st), '', `step ${st}`);
+  const s2 = fresh(); assert.match(MB.stepError(s2, 1), /Pickup/); assert.match(MB.stepError(s2, 2), /what you are moving/); MB.draftOf(s2).what = 'few'; assert.match(MB.stepError(s2, 2), /at least one item/);
+  Object.assign(MB.draftOf(s2), {items: {fridge: 1}, help: 'driver'}); assert.match(MB.stepError(s2, 4), /25 kg/); assert.match(MB.stepError(s2, 5), /date|slot/i); }
 
 console.log(JSON.stringify({status: 'PASS', suite: 'Moving: vehicle fit and prices, helpers and stairs, driver limit, extras, booking type, 8 scenarios, validation, booking draft'}));

@@ -101,7 +101,11 @@ const base = (o = {}) => ({category: 'electrician', items: [{id: 'fan', qty: 1}]
 // screens render
 { const s = fresh(); s.currentWorkspace = 'homePro';
   assert.match(HS.screen('home', s), /New jobs near you \(1\)/); assert.match(HS.screen('proJobs', s), /My Jobs/); assert.match(HS.screen('money', s), /MoveAI Pay wallet/);
-  s.currentWorkspace = 'personal'; const html = HS.bookScreen(s); assert.match(html, /Ceiling fan/); assert.match(html, /10 AM–12 PM/); assert.match(html, /Flat 402/);
+  s.currentWorkspace = 'personal'; assert.match(HS.bookScreen(s), /Ceiling fan/); assert.match(HS.bookScreen(s), /Step 1 of 4/);
+  assert.match(HS.bookStepError(s, 1), /at least one job/); s.homeDraft.qty = {fan: 1}; assert.equal(HS.bookStepError(s, 1), '');
+  s.homeDraft.step = 2; assert.match(HS.bookScreen(s), /Flat 402/); assert.equal(HS.bookStepError(s, 2), '');
+  s.homeDraft.step = 3; s.homeDraft.date = day(1); assert.match(HS.bookScreen(s), /10 AM–12 PM/); assert.match(HS.bookStepError(s, 3), /time slot/); s.homeDraft.slot = '10';
+  s.homeDraft.step = 4; const rv = HS.bookScreen(s); assert.match(rv, /Check and book/); assert.match(rv, /₹249/); assert.match(rv, /✓ Job/);
   assert.match(HS.customerScreen(s, s.serviceRequests.find(x => x.id === 'SR-703')), /Confirm work is done/); }
 
 // sign-up: a verified "Home service pro" gets the pro workspace
