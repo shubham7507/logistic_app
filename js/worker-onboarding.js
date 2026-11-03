@@ -14,14 +14,29 @@ export const WORKER_TYPES = {
   commercialDriver: {label: 'Commercial Driver', icon: '🚚', drives: 'commercial', summary: 'Trucks, tempos and goods vehicles'},
   personalDriver: {label: 'Personal Driver', icon: '🚗', drives: 'personal', summary: 'Cars for families and companies'},
   helper: {label: 'Khalasi / Helper', icon: '📦', drives: null, summary: 'Loading, packing, moving and warehouse work'},
+  vehicleDriver: {label: 'Driver with own vehicle', icon: '🛻', drives: 'commercial', summary: 'Your own bike, 3-wheeler, Tata Ace or pickup — deliver and shift goods'},
   homePro: {label: 'Home service pro', icon: '🛠', drives: null, summary: 'Electrician, plumber, carpenter, cleaning or painting in homes'},
   officeStaff: {label: 'Office staff', icon: '🗂', drives: null, summary: 'Operations, dispatch, accounts or documents'},
 };
+// Vehicles a driver can bring (ids match move-booking.js VEHICLES).
+export const OWN_VEHICLES = {bike: 'Two-wheeler (up to 20 kg)', '3w': '3-wheeler cargo', ace: 'Tata Ace / mini truck', pickup: 'Pickup (8 ft)'};
+const PLATE = /^[A-Z]{2}\s?\d{1,2}\s?[A-Z]{0,3}\s?\d{4}$/i;
+// Prototype VAHAN check: plate format, papers in date; plates ending 0000 are not found (upload instead).
+export function vehicleLookup(v = {}) {
+  const plate = String(v.plate || '').trim().toUpperCase(), today = new Date().toISOString().slice(0, 10);
+  if (!OWN_VEHICLES[v.vehicleId]) return {ok: false, reason: 'Choose your vehicle.'};
+  if (!PLATE.test(plate)) return {ok: false, reason: 'Enter the number plate, e.g. BR01 GA 4521.'};
+  if (/0000$/.test(plate.replace(/\s/g, ''))) return {ok: false, fallback: true, reason: 'VAHAN has no record of this plate. Upload the RC and insurance for manual review.'};
+  for (const [k, l] of [['insurance', 'Insurance'], ['fitness', 'Fitness'], ['puc', 'PUC']]) if (!v[k] || v[k] < today) return {ok: false, reason: `${l} must be valid today. Enter its expiry date.`};
+  if (!v.rcPhoto) return {ok: false, reason: 'Add a photo of the RC.'};
+  return {ok: true, data: {vehicleId: v.vehicleId, plate, docs: {rc: '2035-12-31', insurance: v.insurance, fitness: v.fitness, puc: v.puc}, source: 'VAHAN (prototype)'}};
+}
 export const CHECKS = {
   licence: {label: 'Driving licence', via: 'Instant check with Sarathi via DigiLocker', manualDocs: [['dl_front', 'Licence — front'], ['dl_back', 'Licence — back']]},
   selfie: {label: 'Live selfie', via: 'Face match with your licence or Aadhaar photo', manualDocs: []},
   aadhaar: {label: 'Aadhaar e-KYC', via: 'Instant from DigiLocker with OTP', manualDocs: [['id_proof', 'Government ID'], ['address_proof', 'Address proof']]},
   bank: {label: 'Bank account', via: '₹1 penny-drop name match', manualDocs: [['bank', 'Cancelled cheque or passbook']]},
+  vehicle: {label: 'Vehicle papers', via: 'RC checked with VAHAN; insurance, fitness and PUC dates', manualDocs: [['rc', 'RC — front and back'], ['insurance', 'Insurance policy']]},
   emergency: {label: 'Emergency contact', via: 'Someone we can call during a trip', manualDocs: []},
   police: {label: 'Police verification', via: 'Upload certificate for review', manualDocs: [['police', 'Police verification certificate']], badge: true},
   medical: {label: 'Medical fitness', via: 'Upload certificate for review', manualDocs: [['medical', 'Medical fitness certificate']], badge: true},
@@ -39,7 +54,7 @@ export const levelsOf = c => c?.workerType === 'homePro' ? [LEVELS[0], LEVELS[1]
 export const viaOf = (c, k) => (c?.workerType === 'homePro' ? {selfie: 'Face match with your Aadhaar photo', emergency: 'Someone we can call during a job'}[k] : drives(c || {}) ? null : {selfie: 'Face match with your Aadhaar photo'}[k]) || CHECKS[k].via;
 export function levelChecks(c) {
   const type = c.workerType;
-  const l2 = drives(c) ? ['licence', 'selfie'] : ['aadhaar', 'selfie'];
+  const l2 = type === 'vehicleDriver' ? ['licence', 'selfie', 'vehicle'] : drives(c) ? ['licence', 'selfie'] : ['aadhaar', 'selfie'];
   const l3 = drives(c) ? ['aadhaar', 'bank', 'emergency'] : ['bank', 'emergency'];
   const badges = type === 'commercialDriver' ? ['police', 'medical', 'hazardous'] : ['police'];
   return {l2, l3, badges};
@@ -132,6 +147,7 @@ export function runCheck(state, c, key, input) {
   else if (key === 'aadhaar') r = IDV.verify(state, workerIdKey(state, c), input, {name: c.name, purpose: 'Work profile'});
   else if (key === 'bank') { if (String(input.account).replace(/\D/g, '') !== String(input.confirm).replace(/\D/g, '')) return {error: 'Account numbers do not match.'}; r = pennyDrop({account: input.account, ifsc: input.ifsc, name: c.name}); }
   else if (key === 'selfie') r = faceMatch(input.file, checkOk(c, 'licence') ? 'licence photo' : checkOk(c, 'aadhaar') ? 'Aadhaar photo' : null);
+  else if (key === 'vehicle') r = vehicleLookup(input);
   else if (key === 'emergency') { const e = validateEmergency(input, c.mobile || state.auth?.mobile); if (e) return {error: e}; r = {ok: true, data: {name: input.name.trim(), phone: String(input.phone).replace(/\D/g, '')}}; }
   else return {error: 'This item needs a document upload.'};
   if (!r.ok) { if (r.fallback) c.checks[key] = {status: 'failed', reason: r.reason, at: stamp}; refresh(c); return {error: r.reason, fallback: Boolean(r.fallback)}; }
@@ -230,6 +246,7 @@ export function workerStatusScreen(state) {
   const next = c.level < 2 ? `Next: ${l2.filter(k => !checkOk(c, k)).map(k => CHECKS[k].label.toLowerCase()).join(' and ')} to apply for work.` : c.level < 3 ? `Next: become ${c.workerType === 'homePro' ? 'job' : 'trip'}-ready to accept paid work.` : 'You can apply, accept paid work and receive payouts.';
   return `${head('Work profile', `${c.name} · ${WORKER_TYPES[c.workerType].label} · ${c.locations?.[0] || ''}`, '<button class="button secondary" data-route="candidateProfile">Edit profile</button>')}${levelBar(c)}
   ${c.suspended ? `<div class="action-warning"><b>Suspended</b><span>${esc(c.suspendReason || 'Contact support to appeal.')}</span></div>` : `<div class="info-banner"><b>Level ${c.level} · ${esc(levelsOf(c)[c.level - 1]?.name || 'Browse')}</b><span>${esc(next)}</span></div>`}
+  ${c.workerType === 'vehicleDriver' && c.level >= 2 && !c.suspended ? `<section class="panel attention" data-od-start-jobs><h2>Start taking vehicle jobs</h2><p>Your licence, selfie and vehicle papers are verified. Small moves and deliveries near you come to your jobs app. ${c.level < 3 ? 'Add your bank account before your first weekly payout — you can accept jobs now.' : 'You are trip-ready.'}</p><button class="button primary" data-od-activate="${c.id}">Open my vehicle jobs</button></section>` : ''}
   ${c.workerType === 'homePro' && c.level >= 2 && !c.suspended ? `<section class="panel attention" data-hs-start-jobs><h2>Start taking home-service jobs</h2><p>You are verified. Your jobs app opens with bookings near you. ${c.level < 3 ? 'Add your bank account before your first payout — you can accept jobs now.' : 'You are job-ready.'}</p><button class="button primary" data-hs-activate="${c.id}">Open my home-service jobs</button></section>` : ''}
   ${invite && c.level >= 2 ? `<section class="panel attention"><h2>Join ${esc(invite.business)}</h2><p>${esc(invite.role)} · ₹${Number(invite.pay).toLocaleString('en-IN')} ${esc(invite.payType)}. Your employer vouches for you and pays your salary directly.</p><button class="button primary" data-worker-join="${invite.id}">Accept and join</button></section>` : ''}
   <div class="grid two"><section class="panel"><h2>Level 2 · Verified</h2><p class="muted">${esc(LEVELS[1].unlocks)}.</p><div class="document-list">${l2.map(k => checkRow(c, k)).join('')}</div></section>
@@ -249,6 +266,7 @@ export function workerVerifyScreen(state) {
   if (k === 'aadhaar') form = IDV.idBlock(state, {key: workerIdKey(state, c)});
   if (k === 'bank') form = `<label class="wide"><span>Account holder</span><input value="${esc(c.name)}" disabled></label><label><span>Account number</span><input name="account" inputmode="numeric" autocomplete="off"></label><label><span>Confirm account number</span><input name="confirm" inputmode="numeric" autocomplete="off"></label><label><span>IFSC</span><input name="ifsc" placeholder="SBIN0001234" autocapitalize="characters"></label>`;
   if (k === 'selfie') form = `<label class="wide"><span>Take a live selfie</span><input type="file" name="file" accept="image/*" capture="user"></label><p class="muted wide">Face the camera in good light. We compare it with your ${drives(c) ? 'licence' : 'Aadhaar'} photo.</p>`;
+  if (k === 'vehicle') form = `<label><span>Vehicle</span><select name="vehicleId">${Object.entries(OWN_VEHICLES).map(([v, l]) => `<option value="${v}" ${x.vehicleId === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label><label><span>Number plate</span><input name="plate" value="${esc(x.plate || '')}" placeholder="BR01 GA 4521" autocapitalize="characters"></label><label><span>Insurance valid until</span><input type="date" name="insurance"></label><label><span>Fitness valid until</span><input type="date" name="fitness"></label><label><span>PUC valid until</span><input type="date" name="puc"></label><label><span>Photo of the RC</span><input type="file" name="rcPhoto" accept="image/*"></label>`;
   if (k === 'emergency') form = `<label><span>Name</span><input name="name" value="${esc(x.name || '')}"></label><label><span>Mobile</span><input name="phone" inputmode="tel" value="${esc(x.phone || '')}"></label>`;
   const instant = !CHECKS[k].badge ? `<form class="panel form-panel narrow" data-worker-verify="${k}"><h2>${esc(CHECKS[k].label)}</h2><p class="muted">${esc(viaOf(c, k))}.</p><div class="form-grid two">${form}</div>${test}<p id="worker-verify-error" class="field-error" hidden></p><div class="form-actions">${back}<button class="button primary" type="submit">${k === 'emergency' ? 'Save' : k === 'selfie' ? 'Match my face' : 'Verify now'}</button></div></form>` : '';
   const upload = manual && CHECKS[k].manualDocs.length ? `<form class="panel form-panel narrow" data-worker-manual="${k}"><h2>${CHECKS[k].badge ? `Add ${esc(CHECKS[k].label)}` : 'Upload for manual review'}</h2>${x.reason ? `<div class="action-warning"><b>Why</b><span>${esc(x.reason)}</span></div>` : ''}<p class="muted">Clear photo or PDF, up to 5 MB each. A reviewer checks it, usually within 24 hours.</p><div class="form-grid two">${k === 'licence' ? `<label><span>Licence number</span><input name="number" value="${esc(x.number || '')}"></label><label><span>Valid until</span><input type="date" name="expiry"></label><label class="wide"><span>Vehicle classes printed on the licence</span><input name="classes" placeholder="${drives(c) === 'commercial' ? 'HMV, TRANS' : 'LMV'}"></label>` : ''}${CHECKS[k].manualDocs.map(([d, l]) => `<label class="wide"><span>${esc(l)}</span><input type="file" name="${d}" accept="image/*,application/pdf" capture="environment"></label>`).join('')}</div><p id="worker-manual-error" class="field-error" hidden></p><div class="form-actions">${CHECKS[k].badge ? back : ''}<button class="button ${CHECKS[k].badge ? 'primary' : 'secondary'}" type="submit">Submit for review</button></div></form>` : '';

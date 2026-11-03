@@ -246,6 +246,36 @@
     "error": ""
   },
   {
+    "id": "task-hire-driver",
+    "steps": 18,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-monthly-tools",
+    "steps": 7,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-truck-safety",
+    "steps": 9,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "task-own-vehicle-signup",
+    "steps": 10,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "role-owner-driver",
+    "steps": 5,
+    "ok": true,
+    "error": ""
+  },
+  {
     "id": "role-home-pro",
     "steps": 6,
     "ok": true,

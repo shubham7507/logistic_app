@@ -105,3 +105,15 @@ The guided tours and the 111 automated tests in `tests/ci-list.txt` describe the
 | Settlement | Customer pays one bill. Labour goes to the pro minus the commission; the part amount goes to the shop's settlement (seller commission applies there) with a GST invoice from the shop; reverse it from the pro's wallet when the pro was paid it. |
 | Report price | Ops queue with the bill, MRP and shop price side by side; refund the difference to the customer, recover it from the pro, record a strike, and pause the pro automatically after 3 strikes. |
 | Pro set-up | Training content (video + question bank per trade) with results stored. Work area as a point and radius. Working hours. Bank or UPI checked by penny drop. Remember the last workspace for each person. |
+
+
+## Drivers
+| Need | Server work |
+|---|---|
+| Driver matching | Same engine as home services, with two pools (personal drivers, drivers with their own vehicle). Eligibility adds car skills (manual or automatic, body type), vehicle type, documents in date, and an overlapping-time check. 60 s / 2 min timers in the queue. |
+| Daily selfie | Face match against the licence photo before the first acceptance each day. The account is blocked on a mismatch until reviewed. |
+| Trip time and billing | Server timestamps at start and end (never the phone clock). Extra hours and the night charge are computed on the server and sent to the customer for approval. Car photos and odometer readings are kept for disputes (S3, 180 days). |
+| Safety | An SOS goes to the safety desk with the last location. Long-stop detection runs on the server from location gaps. Share-trip links are signed and expire at trip end. |
+| Monthly drivers | Attendance, leave and extra-hour records; a monthly salary computation; the salary is collected from the customer and paid to the driver's wallet; notice period and replacement bookings. |
+| Document expiry | Nightly job: reminders at 30, 7 and 1 days; the driver is blocked at expiry; renewed documents go to the review queue. Vehicle papers checked through VAHAN and licences through Sarathi (licensed API providers). |
+| Truck trips | Driving-hour timer from "In transit", with break events; waiting time at pickup and drop with detention billed to the goods owner; a delivery code generated for the receiver and checked on "Delivered". |

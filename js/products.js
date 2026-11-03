@@ -7,7 +7,7 @@ import {retailOwnerAndManagers, workerWorkspaces} from './seller-roles.js';
 
 export const PRODUCTS = {
   customer: {name: 'MoveAI', tagline: 'Book moves, drivers and services', file: 'index.html', mark: 'M', roles: ['personal'], defaultWs: 'personal'},
-  partner: {name: 'MoveAI Partner', tagline: 'Deliveries, driving, helper and home-service work', file: 'partner.html', mark: 'P', roles: ['personal', 'commercialDriver', 'personalDriver', 'helper', 'homePro'], defaultWs: 'personal'},
+  partner: {name: 'MoveAI Partner', tagline: 'Deliveries, driving, helper and home-service work', file: 'partner.html', mark: 'P', roles: ['personal', 'commercialDriver', 'personalDriver', 'helper', 'homePro', 'ownerDriver'], defaultWs: 'personal'},
   business: {name: 'MoveAI Business', tagline: 'Stores, loads, fleet and teams', file: 'business.html', mark: 'B', roles: ['personal', 'goods', 'transporter', 'vehicle', 'movers', 'staff'], defaultWs: 'transporter'},
   admin: {name: 'MoveAI Admin', tagline: 'Internal console', file: 'admin.html', mark: 'A', roles: ['admin'], defaultWs: 'admin'},
   seller: {name: 'MoveAI Seller', tagline: 'Products, orders, teams and payouts', file: 'seller.html', mark: 'S', get roles() { return retailOwnerAndManagers(); }, defaultWs: 'grocery'},
@@ -17,7 +17,7 @@ export const PRODUCTS = {
 
 // Which product owns a workspace (the Personal workspace appears in three products with different purposes).
 export function productForWorkspace(ws) {
-  if (['commercialDriver', 'personalDriver', 'helper', 'homePro'].includes(ws)) return 'partner';
+  if (['commercialDriver', 'personalDriver', 'helper', 'homePro', 'ownerDriver'].includes(ws)) return 'partner';
   if (['goods', 'transporter', 'vehicle', 'movers', 'staff'].includes(ws)) return 'business';
   if (ws === 'admin') return 'admin';
   if (retailOwnerAndManagers().includes(ws)) return 'seller';

@@ -24,6 +24,13 @@ Seller review is risk-tiered, with a strict policy per state (Bihar on by defaul
 ## Moving and maps (November 2026)
 Moving: Home → **Packers & movers** → what you are moving → pickup / drop (GPS, pin, search, location link or landmark) → vehicle cards with prices → helpers → extras → slot → book. Home services: the pro taps **Navigate in Google Maps**, the customer watches a live map. Test locations: Patna flat, Motihari village house, Noida flat (demo buttons). Tours: `task-move-vehicle`, `task-home-service`.
 
+## Drivers (November 2026)
+- **Hire a driver:** Home → Hire a driver → Trip → Pickup → When → Car → Price → pay. The best-matched driver who can drive your car gets it. The driver takes a daily selfie, sends the start code, checks the car with photos and the odometer, and the bill uses the actual time.
+- **Monthly drivers:** attendance, leave, salary through MoveAI and a replacement day.
+- **Truck drivers:** document-expiry blocks, a break after 4 hours of driving, waiting-time charges and a receiver delivery code.
+- **Drivers with their own vehicle:** small moves with pickup and drop codes.
+- **Tours:** `task-hire-driver`, `task-monthly-tools`, `task-truck-safety`, `task-own-vehicle-signup`.
+
 ## Home services (November 2026)
 Customer: Home → **Home services** → fixed-price jobs → address → date and 2-hour slot → book (pay after). Pro: switch to **Home Service Pro** (MoveAI Partner) → accept → On the way → start with the customer's code → extras → done with a photo. Customer confirms, pays, rates; 30-day re-work. Tour: `index.html?demo=on&tour=task-home-service#/home`.
 Choosing the pro: only eligible pros (online, inside their area and hours, skill, free, rated 4.0+ or new) are asked. The top 3 by score get 60 seconds and the best match wins. Nobody accepts → a wider area, then the admin. "Book my pro again" asks your pro first. Parts: **Add part** from nearby MoveAI shops (price fixed by the shop) → the customer approves one card → delivery in about 35 min; with no shop nearby, a market bill and an MRP photo instead. Pro sign-up: Find work → Home service pro → Aadhaar OTP + selfie → Open my home-service jobs → training quiz, work area, hours, bank. Tours: `task-home-pro-signup`, `task-plumber-part`.

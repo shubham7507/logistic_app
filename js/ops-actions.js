@@ -1,4 +1,7 @@
 import * as WX from './work-extras.js';
+import * as PD from './personal-driver.js';
+import * as TX from './trip-extras.js';
+import * as OD from './owner-driver.js';
 // MoveAI One — operations actions. Every handler re-checks permissions (never rely on hidden buttons)
 // and writes an audit event. `api` is supplied by app.js so state stays single-sourced.
 import * as Pay from './pay.js';
@@ -103,7 +106,7 @@ export function bindOps(root, api) {
     'open-verification': (id) => { S().selectedVerificationId = id; return 'verificationItem'; },
     'open-vehicle-offer': (id) => { S().selectedVehicleOfferId = id; return 'vehicleOffer'; },
     'open-assign': (id) => { S().selectedTripId = id; S().assignDraft = {tripId: id, vehicleSource: 'own_fleet', crewSource: 'staff'}; return 'assignTrip'; },
-    'open-driver-job': (id) => { S().selectedServiceId = id; return 'driverJob'; },
+    'open-driver-job': (id) => { S().selectedServiceId = id; const r = S().serviceRequests.find(x => x.id === id); return r && (r.flow === 'steps' || r.hireType === 'monthly') ? 'driverTrip' : 'driverJob'; },
   };
 
   const ops = {
@@ -121,8 +124,9 @@ export function bindOps(root, api) {
       const surveyWanted = Boolean(root.querySelector('#survey-req')?.checked);
       const payType = d.service === 'moving' ? 'moving' : d.service === 'driver' ? 'driver' : 'general'; const pricing = Pay.resolvePricing(s, {service: payType, city: d.from || d.location || '', partner: payType === 'moving' ? (assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'))?.workspace || '') : payType === 'driver' ? 'personalDriver' : '', date: d.date}); const bookNow = surveyWanted ? 0 : Pay.bookingAmount(payType, q.total, pricing);
       const pm = {method: root.querySelector('input[name="pay-method"]:checked')?.value || 'upi', vpa: root.querySelector('#pay-vpa')?.value, card: root.querySelector('#pay-card')?.value};
-      let g = null; if (bookNow) { if (d.service === 'moving' && !assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'))) return api.toast('No approved Mover covers this pickup yet. Nothing was charged.'); g = Pay.gateway.collect({...pm, amount: bookNow}); if (!g.ok) { const e = root.querySelector('#pay-error'); if (e) { e.textContent = g.reason; e.hidden = false; } return; } }
+      let g = null; if (bookNow) { if (d.service === 'moving' && !OD.forOwner(d) && !assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'))) return api.toast('No approved Mover covers this pickup yet. Nothing was charged.'); g = Pay.gateway.collect({...pm, amount: bookNow}); if (!g.ok) { const e = root.querySelector('#pay-error'); if (e) { e.textContent = g.reason; e.hidden = false; } return; } }
       const base = {id, customer: 'personal', date: d.date, quote: q, paid: false, rating: null, createdAt: now(), billing: bill.billing, surveyRequested: surveyWanted, extras: []};
+      if (d.service === 'moving' && OD.forOwner(d)) { const r = OD.createJob(s, base, d); if (g) Pay.holdBooking(s, r, pm, g.ref, bookNow, g); r.billing = bill.billing; audit(s, `Customer booked ${id} (vehicle, own-vehicle drivers)`); s.bookingDraft = null; s.selectedServiceId = id; return done(r.status === 'accepted' ? `Booked. ${r.providerName} will come.` : 'Booked. We sent it to the best-matched drivers near the pickup.', 'serviceDetail'); }
       if (d.service === 'moving') {
         const branch = assignMoverBranch(d, s.movingBranches.filter(b => b.workspace === 'movers'));
         if (!branch) return api.toast('No approved Mover covers this pickup yet. Your request is saved; we will notify you.');
@@ -137,7 +141,7 @@ export function bindOps(root, api) {
         const conv = `CNV-${id}`;
         s.serviceRequests.unshift({...base, type: 'driver', title: `Personal Driver · ${d.hireType} · ${d.carType}`, hireType: d.hireType, duration: Number(d.duration), carType: d.carType, location: d.location, provider: null, providerName: null, status: 'searching', conversationId: conv, preferredWorkerId: d.favouriteWorkerId || null});
         s.conversations.unshift({id: conv, kind: 'job', ref: id, title: `${id} · Personal Driver booking`, participants: ['personal', 'personalDriver'], status: 'open', messages: []});
-        { const fav = d.favouriteWorkerId ? s.platformWorkers.find(w => w.id === d.favouriteWorkerId) : null; notify(s, ['personalDriver'], fav ? `${s.person?.name || 'Your regular customer'} asked for you again (${id}, ${d.location}).` : `New customer request ${id} near ${d.location}.`, id); }
+        if (d.flow === 'steps') PD.afterCreate(s, s.serviceRequests[0], d); else { const fav = d.favouriteWorkerId ? s.platformWorkers.find(w => w.id === d.favouriteWorkerId) : null; notify(s, ['personalDriver'], fav ? `${s.person?.name || 'Your regular customer'} asked for you again (${id}, ${d.location}).` : `New customer request ${id} near ${d.location}.`, id); }
       } else {
         s.serviceRequests.unshift({...base, type: 'general', title: `${d.category} visit`, category: d.category, provider: 'partner', providerName: 'Verified service partner', status: 'accepted', conversationId: null});
       }
@@ -170,10 +174,12 @@ export function bindOps(root, api) {
       let proof = root.querySelector('#milestone-proof')?.value?.trim() || fileName(root.querySelector('#milestone-proof-file'));
       if (key === 'dharamkata' && proof) proof += ` · net ${root.querySelector('#dharamkata-weight')?.value || t.quantity} t`;
       if (key === 'settled' && !t.settlementCreated) return api.toast('Create settlement entries first.');
+      if (key === 'delivered') { const ce = TX.checkCode(t, root.querySelector('#delivery-code')?.value); if (ce) return api.toast(ce); }
       const role = key === 'settled' ? (can(s, 'trip.settle', t) ? 'transporter' : 'none') : roleForMilestones(s);
       const res = advanceMilestone(t, key, {role, proof, by: opsCtx(s).persona.name, manual: Boolean(t.manualMode)});
       if (res.error) return api.toast(res.error);
       if (key === 'in_transit' && !t.gps.points.length) t.gps.points.push({place: t.from.split(',')[0], at: now()});
+      TX.stampMilestone(t, key); if (key === 'in_transit') TX.startDriving(t);
       if (key === 'settled') { state_release(s, t); }
       const msg = `${t.id}: ${t.milestones.find(m => m.key === key).label}${proof ? ` · 📎 ${proof}` : ''}`;
       s.conversations.find(c => c.id === t.conversationId)?.messages.push({id: uid('M'), from: `${opsCtx(s).persona.name} · ${opsCtx(s).persona.role}`, type: proof ? 'proof' : 'text', body: msg, at: now()});
@@ -275,6 +281,7 @@ export function bindOps(root, api) {
     'offer-accept': id => {
       const s = S(); const o = s.workOffers.find(x => x.id === id && x.to === s.currentWorkspace); if (!o || o.status !== 'pending') return;
       const worker = s.platformWorkers.find(w => w.persona === o.to);
+      { const xb = TX.expiryBlock(s, o.to); if (xb) return api.toast(xb); }
       { const why = canStartPaidWork(workerCandidate(s), o); if (why) return api.toast(why); }
       if (o.kind === 'trip' && o.ref) {
         const t = s.trips.find(x => x.id === o.ref);

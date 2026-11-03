@@ -42,7 +42,7 @@ with sync_playwright() as p:
     pg.locator(f'[data-po="cancel"][data-id="{cod["id"]}"]').click(); pg.wait_for_timeout(80)
     check(next(x for x in st()['customerOrders'] if x['id'] == cod['id'])['status'] == 'cancelled', 'COD cancelled')
     # hire a driver: nothing upfront, driver accepts, customer pays after, released minus 12%
-    go('home'); pg.click('[data-customer-service="driver"]'); pg.wait_for_timeout(80)
+    pg.evaluate("() => window.MoveAIVNextTest.setBookingDraft({service: 'driver'})"); go('book'); pg.wait_for_timeout(80)  # the older one-page driver form (the step-by-step one is tested in personal-driver tests)
     pg.locator('#booking-form button[type=submit]').click(); pg.wait_for_timeout(80); check('Nothing to pay now' in main(), 'driver: pay after')
     pg.click('[data-op="booking-publish"]'); pg.wait_for_timeout(100); r = st()['serviceRequests'][0]
     ws('personalDriver'); go('myJobs'); pg.locator(f'[data-id="{r["id"]}"]').first.click(); pg.wait_for_timeout(100)

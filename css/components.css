@@ -269,3 +269,7 @@ body.demo-off .mock-hint,body.demo-off #reset-demo,body.demo-off [data-action="r
 .hs-why{margin:6px 0}.hs-why summary{cursor:pointer;color:var(--accent,#0b6655);font-weight:600}
 .hs-video{display:grid;gap:6px;padding:12px;border-radius:12px;background:var(--soft,#f1f5f9)}
 details.panel>summary{cursor:pointer;display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+
+/* drivers */
+.drv-safety{margin-top:8px}.drv-photos{display:grid;gap:2px;margin:6px 0}.drv-salary{margin:10px 0}.drv-wait{margin:8px 0}
+.drv-hire .choice-chip small{color:var(--muted,#64748b)}

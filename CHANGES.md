@@ -1,5 +1,38 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-03 — Drivers: hire a personal driver in steps, monthly tools, truck safeguards, drivers with own vehicle
+**Hire a personal driver (`js/personal-driver.js`, `js/driver-dispatch.js`)** — rebuilt like DriveU and Uber.
+- **Booking in 5 short steps:** Trip (hour, day, one-way, outstation, month; a drop point for one-way and outstation) → Pickup (saved address or the location picker) → When (date + start time) → Car (make, type, manual or automatic, number plate, ₹49 trip protection) → Price. Then the usual review and pay.
+- **The best-matched driver:** only drivers who can drive that car (automatic, SUV, luxury), are inside their area and hours, free at that time, have papers in date and are rated 4.0+ are asked. The top 3 by score get 60 seconds and the best match wins. Nobody accepts → the area widens 5 → 10 → 15 km, then the admin is told. Your favourite driver is asked first for 2 minutes. A driver who cancels hands the trip to the next best.
+- **Driver side:**
+  - A daily selfie before accepting trips (as Uber does).
+  - Navigate to the car, then On the way with live tracking.
+  - At the car: photos of all four sides, the odometer and the customer's start code.
+  - Tolls and parking with a slip photo.
+  - End trip with photos and the odometer.
+- **Actual-time bill:** extra hours (₹150) and the night charge (after 10 pm) are worked out from the real start and end times and go to the customer to approve.
+- **Safety:** SOS for the customer and the driver, share trip, and a "the car has not moved for 15 minutes — are you OK?" check.
+- **Monthly driver:** "I'm here today" attendance; leave requests (2 paid a month, then unpaid); extra hours; the salary worked out and paid through MoveAI straight to the driver's wallet; a replacement driver for a leave day; 7 days' notice from either side.
+
+**Truck driver safeguards (`js/trip-extras.js`).**
+- Licence, police and medical reminders 30 days before expiry. Work is blocked once a document expires; the driver uploads the renewed one.
+- Driving time counts from "In transit". After 4 hours the driver and the business are told to take a 30-minute break.
+- Waiting time at pickup and drop: 2 hours free, then ₹200 an hour.
+- A delivery code for the receiver; "Delivered" needs it as well as the signed POD.
+
+**Drivers with their own vehicle (`js/owner-driver.js`)** — the Porter model.
+- A new worker type, "Driver with own vehicle": licence + selfie + vehicle papers (plate checked with VAHAN; insurance, fitness and PUC must be in date).
+- A new workspace, **Vehicle Driver**, in the partner app.
+- Small moves (bike, 3-wheeler, Tata Ace, pickup, with "I'll load myself" or "Driver helps") go to these drivers through the same matching; bigger ones still go to a mover branch.
+- Job: pickup code → loaded → drop code + photo. MoveAI keeps 10%; payouts are weekly.
+
+**Admin → Drivers:** personal-driver trips with their match score, and every driver with cars, area, rating, cancellations, document status and Pause.
+
+**Tests and tours:**
+- New tests: `personal-driver.unit`, `driver-extras.unit`, `drivers.e2e`. The older one-page driver form is still tested through `setBookingDraft`.
+- New tours, with Hindi: **Hire a personal driver**, **Monthly driver: attendance, leave and salary**, **Truck driver safeguards**, **Sign up as a driver with your own vehicle**, and the Vehicle Driver role tour.
+- `demoRevision` is 12.
+
 ## 2026-11-03 — Home services: choosing the pro, spare parts, pro sign-up
 **Choosing the pro (`js/hs-dispatch.js`).** A booking is no longer "first tap wins".
 - **Who is asked:** only pros who are online, inside their own work area and hours, have the skill, are free in that slot, and are rated 4.0+ (or new).

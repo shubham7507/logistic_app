@@ -13,7 +13,7 @@ const PRIMARY={
 export function mobileNavigation(product,workspace,nav){
   const map=new Map(nav);
   const preferred=(product==='seller'&&workspace.endsWith('Manager')?['home','shopOrders','shopSchedule','managerTimecards']:product==='picker'?['home','pickTasks','pickSchedule','pickEarnings']:PRIMARY[product]) || (workspace==='personal'?nav.map(([id])=>id):
-    ['commercialDriver','personalDriver','helper'].includes(workspace)?['home','myJobs','work','money']:workspace==='homePro'?['home','proJobs','messages','money']:MOBILE_PRIMARY);
+    ['commercialDriver','personalDriver','helper'].includes(workspace)?['home','myJobs','work','money']:workspace==='homePro'?['home','proJobs','messages','money']:workspace==='ownerDriver'?['home','odJob','messages','money']:MOBILE_PRIMARY);
   const shown=preferred.filter(id=>map.has(id)).slice(0,workspace==='personal'&&!PRIMARY[product]&&nav.length<=5?5:4);
   return {shown:shown.map(id=>[id,map.get(id)]),more:nav.filter(([id])=>!shown.includes(id))};
 }
