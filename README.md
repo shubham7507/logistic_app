@@ -21,6 +21,9 @@ New stores list products from **Products and stock** (approved categories, MRP a
 
 Seller review is risk-tiered, with a strict policy per state (Bihar on by default) that adds identity, shop and stock checks; new stores start on probation; food listings carry batch and expiry dates. UPI orders are confirmed only by the bank (demo button in the prototype) and expire after 15 minutes. See `SELLER-TRUST-AND-PAYMENT-REPORT.md`.
 
+## Moving and maps (November 2026)
+Moving: Home → **Packers & movers** → what you are moving → pickup / drop (GPS, pin, search, location link or landmark) → vehicle cards with prices → helpers → extras → slot → book. Home services: the pro taps **Navigate in Google Maps**, the customer watches a live map. Test locations: Patna flat, Motihari village house, Noida flat (demo buttons). Tours: `task-move-vehicle`, `task-home-service`.
+
 ## Home services (November 2026)
 Customer: Home → **Home services** → fixed-price jobs → address → date and 2-hour slot → book (pay after). Pro: switch to **Home Service Pro** (MoveAI Partner) → accept → On the way → start with the customer's code → extras → done with a photo. Customer confirms, pays, rates; 30-day re-work. Tour: `index.html?demo=on&tour=task-home-service#/home`.
 

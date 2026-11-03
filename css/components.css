@@ -212,3 +212,19 @@ body.demo-off .mock-hint,body.demo-off #reset-demo,body.demo-off [data-action="r
 .hs-summary .price-line{display:flex;justify-content:space-between;gap:10px;font-size:1.05rem}
 .wh-status{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .price-line{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:6px 0}
+/* Location picker and moving booking */
+.loc-picker{display:grid;gap:10px}.loc-ways{display:grid;gap:8px}.loc-ways>.button{min-height:48px}
+.loc-search{display:flex;gap:8px}.loc-search input{flex:1;min-width:0}
+.loc-msg{margin:0}.loc-map .geo-map-wrap{min-height:160px}.loc-summary{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.loc-link summary{cursor:pointer;font-weight:700;color:var(--brand);padding:6px 0}.loc-label.success{background:#e8f6ee;color:#145c32}
+.hs-landmark{display:block;margin-top:6px;padding:8px 10px;border-radius:10px;background:#fff7e0;font-size:1.1rem;font-weight:800}
+.hs-nav{display:grid;gap:6px;margin:10px 0}.hs-nav .button{min-height:48px;justify-content:center}
+.hs-live{display:grid;gap:6px;margin:10px 0}.hs-live .geo-map-wrap{min-height:180px}
+.mv-vehicles,.mv-help{display:grid;gap:8px}
+.mv-vehicle,.mv-help-opt{position:relative;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;cursor:pointer}
+.mv-help-opt{grid-template-columns:1fr auto}
+.mv-vehicle input,.mv-help-opt input{position:absolute;opacity:0}.mv-vehicle small,.mv-help-opt small{display:block;color:var(--muted,#5b6b65)}
+.mv-vehicle.selected,.mv-help-opt.selected,.mv-vehicle:has(input:checked),.mv-help-opt:has(input:checked){border-color:var(--brand);background:var(--brand-soft)}
+.mv-vehicle:focus-within,.mv-help-opt:focus-within{outline:2px solid var(--brand);outline-offset:2px}
+.mv-vehicle.disabled,.mv-help-opt.disabled{opacity:.55;cursor:not-allowed}.mv-icon{font-size:26px}.mv-price{white-space:nowrap}
+.hs-cat small{color:var(--muted,#5b6b65);font-size:.8rem}.price-line.total{border-top:1px solid var(--line);padding-top:8px;font-size:1.1rem}

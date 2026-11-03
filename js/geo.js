@@ -4,6 +4,7 @@
 // Navigate link, location on delivery proof, location check on failed delivery, distance from real coordinates.
 // Maps are drawn as simple SVG (no tile provider yet); "Open in Google Maps" links use real coordinates.
 import {esc, inr} from './ops.js';
+import * as LOC from './location.js';
 
 export const AREAS = {'Rajendra Place, Delhi': [28.6420, 77.1780], 'Karol Bagh, Delhi': [28.6519, 77.1909], 'Connaught Place, Delhi': [28.6315, 77.2167], 'Lajpat Nagar, Delhi': [28.5677, 77.2433], 'Dwarka Sector 10, Delhi': [28.5810, 77.0590], 'Sector 62, Noida': [28.6270, 77.3727]};
 const STORE_COORDS = {'ABC Grocery': [28.6512, 77.1903], 'Fresh Mart': [28.5683, 77.2420], 'Sharma Electricals': [28.6505, 77.1880], 'City Fashion': [28.6328, 77.2195]};
@@ -210,12 +211,12 @@ function hydrate(root, api) {
   const wraps = root.querySelectorAll('.geo-map-wrap'); if (!wraps.length || api.getState().mapMode === 'sketch') return;
   loadLeaflet(() => wraps.forEach(w => { if (w.dataset.live) return; let d; try { d = JSON.parse(w.dataset.geoMap); } catch { return; }
     const L = window.L, div = document.createElement('div'); div.className = 'leaflet-host'; w.innerHTML = ''; w.appendChild(div); w.dataset.live = '1';
-    const map = L.map(div, {scrollWheelZoom: false}); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap contributors'}).addTo(map);
+    const map = L.map(div, {scrollWheelZoom: false}); const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap contributors'}).addTo(map); if (d.satellite) L.control.layers({Street: street, Satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19, attribution: 'Imagery © Esri'})}).addTo(map);
     const icon = (e) => L.divIcon({className: 'geo-pin-icon', html: `<span>${e}</span>`, iconSize: [30, 30]});
     const all = []; d.pts.forEach(p => { const m = L.marker(p.at, {icon: icon(p.icon), draggable: d.drag && p.icon === '🏠'}).addTo(map); if (p.label) m.bindTooltip(p.label); all.push(p.at);
-      if (d.drag && p.icon === '🏠') m.on('dragend', () => { const ll = m.getLatLng(), s = api.getState(); s.checkoutPin = {label: 'Pinned on map', lat: ll.lat, lng: ll.lng}; api.save(); api.render(); }); });
+      if (d.drag && p.icon === '🏠') m.on('dragend', () => { const ll = m.getLatLng(), s = api.getState(); if (d.dragKey) LOC.pinDragged(s, d.dragKey, ll.lat, ll.lng); else s.checkoutPin = {label: 'Pinned on map', lat: ll.lat, lng: ll.lng}; api.save(); api.render(); }); });
     if (d.plan) L.polyline(d.plan, {dashArray: '6 6', color: '#9aa8a3'}).addTo(map); if (d.path?.length) L.polyline(d.path, {color: '#0b6655', weight: 4}).addTo(map); if (d.poly) L.polygon(d.poly, {color: '#3d3f94', weight: 1, fillOpacity: .08}).addTo(map);
-    map.fitBounds(L.latLngBounds(all).pad(0.3)); }));
+    map.fitBounds(L.latLngBounds(all).pad(0.3), {maxZoom: 17}); }));
 }
 export function bind(root, api) {
   hydrate(root, api);

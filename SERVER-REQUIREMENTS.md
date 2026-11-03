@@ -79,3 +79,15 @@ Store only what is needed: masked Aadhaar (last 4), document file references, an
 6. Payouts, reconciliation and tax invoices.
 
 The guided tours and the 111 automated tests in `tests/ci-list.txt` describe the expected behaviour of every flow; they can be pointed at the real backend as acceptance tests.
+
+
+## Maps and location (home services and moving)
+| Need | Prototype | Live app |
+|---|---|---|
+| Pro / driver navigation | "Navigate" opens the Google Maps app (`/maps/dir/?api=1&destination=lat,lng&travelmode=two-wheeler`), landmark search for area-only addresses | Same deep link (free). Optional later: Google Navigation SDK inside a native app |
+| Map display (pin picker, live tracking) | Leaflet + OpenStreetMap tiles, Esri satellite layer, SVG sketch fallback | Google Maps JavaScript API (India pricing: free monthly calls per SKU), or Mappls (MapmyIndia) / Ola Maps. OSM's public tile servers are not for production traffic |
+| Address search | Small demo list (Patna, Noida, Gurugram, Delhi); Motihari "not on the map" | Places Autocomplete + Geocoding (Google / Mappls / Ola) |
+| Distance and arrival time | Straight line × 1.3, 22 km/h | Routes / Distance Matrix API |
+| Live location | `navigator.geolocation.watchPosition` or demo drive, stored on the job | Native background location every 10–15 s while "On the way" only; store on the server; stop at job start |
+| Location link | Demo token in state | SMS / WhatsApp link to a page that reads GPS once and posts it |
+| DIGIPIN | Encoded in the browser (`js/location.js`, India Post algorithm) | Same, or India Post API |

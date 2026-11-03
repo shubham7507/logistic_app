@@ -128,9 +128,10 @@ export function bindOps(root, api) {
         if (!branch) return api.toast('No approved Mover covers this pickup yet. Your request is saved; we will notify you.');
         const jobId = `MOV-${600 + s.movingJobs.length + 1}`; const conv = `CNV-${jobId}`;
         s.movingJobs.unshift({id: jobId, owner: branch.workspace, branchId: branch.id, customer: 'personal', customerName: s.person?.name || 'Shubham Kumar', serviceRequestId: id, from: d.from, to: d.to, date: d.date, size: d.size, pkg: d.pkg, vehicleNeed: q.vehicle, price: q.components, total: q.total, customerOtp: String(1000 + Math.floor(Math.random() * 8999)), status: 'auto_assigned', vehicle: null, vehicleSource: null, crew: [], inventory: (inventoryList(d.inventory).length ? inventoryList(d.inventory) : ['Beds and mattresses', 'Wardrobe', 'Kitchen cartons', 'TV and electronics']).map(item => ({item, packed: false, source: 'customer'})), loadingProof: null, gps: {consent: false, status: 'not_started', points: []}, parties: ['personal', branch.workspace], conversationId: conv, window: {from: `${d.date}T08:00`, to: `${d.date}T18:00`}, payoutsCreated: false, history: [{status: 'auto_assigned', at: now(), by: 'Platform'}]});
+        if (d.moveQuote) { const slotH = Number(d.slot) || 8; Object.assign(s.movingJobs[0], {bookingKind: d.moveQuote.bookingKind, vehicleId: d.vehicleId, vehicleNeed: d.moveQuote.vehicle, helpers: d.moveQuote.workers, help: d.help, extrasChosen: d.extras, slot: d.slot, distanceKm: d.distanceKm, fromLoc: d.fromLoc, toLoc: d.toLoc, route: d.fromLoc?.lat && d.toLoc?.lat ? {from: [d.fromLoc.lat, d.fromLoc.lng], to: [d.toLoc.lat, d.toLoc.lng]} : undefined, window: {from: `${d.date}T${String(slotH).padStart(2, '0')}:00`, to: `${d.date}T${String(slotH + 2).padStart(2, '0')}:00`}}); if (!s.movingJobs[0].route) delete s.movingJobs[0].route; }
         branch.openJobs = (branch.openJobs || 0) + 1;
         s.conversations.unshift({id: conv, kind: 'job', ref: jobId, title: `${jobId} · ${d.size} ${d.from} → ${d.to}`, participants: ['personal', branch.workspace], status: 'open', messages: [{id: 'M1', from: 'MoveAI', type: 'text', body: `Assigned to ${branch.name}. The branch confirms your slot next.`, at: now()}]});
-        s.serviceRequests.unshift({...base, type: 'moving', title: `${d.size} move · ${d.from} → ${d.to}`, movingJobId: jobId, status: 'confirmed', conversationId: conv});
+        s.serviceRequests.unshift({...base, type: 'moving', title: d.title || `${d.size} move · ${d.from} → ${d.to}`, slot: d.slot || '', bookingKind: d.moveQuote?.bookingKind || 'packers', movingJobId: jobId, status: 'confirmed', conversationId: conv});
         notify(s, [branch.workspace], `New auto-assigned request ${jobId} for ${branch.name}.`, jobId);
       } else if (d.service === 'driver') {
         const conv = `CNV-${id}`;
@@ -443,6 +444,7 @@ export function bindOps(root, api) {
       if (d.service === 'products') return api.navigate('search');
       if (d.service === 'moving' && (!d.from?.trim() || !d.to?.trim())) return err('booking-error', 'Enter both pickup and drop locations.');
       if (d.service === 'moving' && d.from.trim().toLowerCase() === d.to.trim().toLowerCase()) return err('booking-error', 'Pickup and drop cannot be the same.');
+      if (d.service === 'moving' && d.date && d.date < new Date().toISOString().slice(0, 10)) return err('booking-error', 'That date has passed. Choose today or a later date.');
       if (d.service === 'driver' && !d.location?.trim()) return err('booking-error', 'Enter the pickup location.');
       S().bookingDraft = d; done(null, 'bookingReview');
     },

@@ -47,7 +47,7 @@ with sync_playwright() as p:
     go('services'); pg.locator(f'[data-op="open-service"][data-id="{r["id"]}"]').first.click(); pg.wait_for_timeout(100)
     pg.locator('[data-bill-doc="invoice"]').first.click(); pg.wait_for_timeout(100); check('Not GST-registered' in main() or 'Tax invoice' in main(), 'invoice document'); shot('104-invoice')
     # 2. movers: inventory quote with floors + insurance; 3 BHK recommends survey
-    go('home'); pg.click('[data-customer-service="moving"]'); pg.wait_for_timeout(80)
+    go('book'); pg.wait_for_timeout(80)
     pg.select_option('#booking-form [name=size]', '3 BHK'); pg.select_option('#booking-form [name=dropLift]', 'no'); pg.fill('#booking-form [name=dropFloors]', '2'); pg.fill('#booking-form [name=declaredValue]', '300000')
     pg.fill('#booking-form [name=inventory]', '3 beds, 3 wardrobes, Sofa, Fridge, Washing machine, 60 cartons'); pg.locator('#booking-form button[type=submit]').click(); pg.wait_for_timeout(100)
     t = main(); check('Mover’s charges' in t and 'Drop floor 2, no lift' in t and 'Transit insurance' in t and 'video survey' in t, 'inventory quote + survey offer'); shot('105-mover-quote')

@@ -10,6 +10,7 @@ import * as Pay from '../js/pay.js';
 
 const fresh = () => ({...JSON.parse(JSON.stringify(SEED)), person: {id: 'PER-1001', name: 'Shubham Kumar'}, currentWorkspace: 'personal'});
 const day = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+const arrive = (s, r) => { for (let i = 0; i < 40 && !r.arrivedAt; i++) HS.demoDrive(s, 'homePro', r.id, 1); };
 const base = (o = {}) => ({category: 'electrician', items: [{id: 'fan', qty: 1}], addressId: 'AD-HOME', date: day(1), slot: '10', description: 'Fan wobbles', ...o});
 
 // catalogue and minimum charge
@@ -25,9 +26,10 @@ const base = (o = {}) => ({category: 'electrician', items: [{id: 'fan', qty: 1}]
 { const s = fresh();
   assert.match(HS.createBooking(s, base({items: []})).error, /at least one job/);
   assert.match(HS.createBooking(s, base({addressId: null, address: {line: 'Flat 1', pincode: '12'}})).error, /PIN code/);
+  assert.match(HS.createBooking(s, base({addressId: null, address: {line: 'Flat 1', pincode: '201301'}})).error, /No map point/);
   assert.match(HS.createBooking(s, base({date: day(-2)})).error, /passed/);
   assert.match(HS.createBooking(s, base({category: 'painting', items: [], description: ''})).error, /what needs painting/);
-  const r0 = HS.createBooking(s, base({addressId: null, address: {line: 'C-9, Sector 21, Noida', pincode: '201301', label: 'Parents'}, saveAddress: true}));
+  const r0 = HS.createBooking(s, base({addressId: null, address: {line: 'C-9', village: 'Sector 21', landmark: 'Near metro', pincode: '201301', name: 'Parents'}, saveAddress: true}));
   assert.ok(r0.request); assert.equal(HS.addresses(s).length, 2, 'new address saved');
   const {request: r, notified} = HS.createBooking(s, base());
   assert.equal(r.status, 'searching'); assert.equal(notified, 1, 'only the electrician pro is told'); assert.match(r.startOtp, /^\d{4}$/);
@@ -49,7 +51,10 @@ const base = (o = {}) => ({category: 'electrician', items: [{id: 'fan', qty: 1}]
   assert.match(HS.reschedule(s, r.id, day(-1), '10'), /passed/); assert.equal(HS.reschedule(s, r.id, day(2), '14'), ''); assert.equal(r.date, day(2));
   assert.equal(HS.onTheWay(s, 'homePro', r.id), ''); assert.match(HS.reschedule(s, r.id, day(3), '10'), /on the way/);
   assert.match(Pay.cancellationQuote(s, r).note, /on the way/);
-  assert.match(HS.startJob(s, 'homePro', r.id, '0000'), /wrong/); assert.equal(HS.startJob(s, 'homePro', r.id, r.startOtp), ''); assert.equal(r.status, 'in_progress');
+  assert.match(HS.startJob(s, 'homePro', r.id, r.startOtp), /live location/, 'exact address needs the pro there');
+  HS.demoDrive(s, 'homePro', r.id); assert.match(HS.startJob(s, 'homePro', r.id, r.startOtp), /km from the customer/);
+  arrive(s, r); assert.ok(r.arrivedAt);
+  assert.match(HS.startJob(s, 'homePro', r.id, '0000'), /wrong/); assert.equal(HS.startJob(s, 'homePro', r.id, r.startOtp), ''); assert.equal(r.status, 'in_progress'); assert.equal(r.geo.live, false, 'sharing stops at start');
   assert.equal(HS.proposeExtra(s, 'homePro', r.id, {kind: 'extra_labour', qty: 1, note: 'capacitor'}), '');
   assert.match(HS.markDone(s, 'homePro', r.id, {afterPhoto: 'x.jpg'}), /not answered/);
   Bill.decideExtra(s, r, r.extras[0].id, 'approve');
@@ -64,7 +69,7 @@ const base = (o = {}) => ({category: 'electrician', items: [{id: 'fan', qty: 1}]
   assert.match(HS.requestRework(s, r.id, {problem: 'again', date: day(3), slot: '10'}).error, /already booked/); }
 
 // no work possible → visit charge only
-{ const s = fresh(); const {request: r} = HS.createBooking(s, base()); HS.acceptJob(s, 'homePro', r.id); HS.onTheWay(s, 'homePro', r.id); HS.startJob(s, 'homePro', r.id, r.startOtp);
+{ const s = fresh(); const {request: r} = HS.createBooking(s, base()); HS.acceptJob(s, 'homePro', r.id); HS.onTheWay(s, 'homePro', r.id); arrive(s, r); HS.startJob(s, 'homePro', r.id, r.startOtp);
   assert.match(HS.markDone(s, 'homePro', r.id, {noWork: true}), /why/);
   assert.equal(HS.markDone(s, 'homePro', r.id, {noWork: true, reason: 'Fan motor burnt, needs a new fan'}), ''); assert.equal(r.quote.total, HS.NO_WORK_CHARGE); assert.ok(!HS.inWarranty({...r, status: 'paid'})); }
 
@@ -72,7 +77,7 @@ const base = (o = {}) => ({category: 'electrician', items: [{id: 'fan', qty: 1}]
 { const s = fresh(); HS.proOf(s).skills.push('painting');
   const {request: r} = HS.createBooking(s, base({category: 'painting', items: [], description: '2 bedrooms and hall'}));
   assert.equal(r.inspection, true); assert.equal(r.quote.total, 0);
-  HS.acceptJob(s, 'homePro', r.id); HS.onTheWay(s, 'homePro', r.id); HS.startJob(s, 'homePro', r.id, r.startOtp);
+  HS.acceptJob(s, 'homePro', r.id); HS.onTheWay(s, 'homePro', r.id); arrive(s, r); HS.startJob(s, 'homePro', r.id, r.startOtp);
   assert.match(HS.proposeExtra(s, 'homePro', r.id, {kind: 'extra_labour'}), /quote/);
   assert.match(HS.markDone(s, 'homePro', r.id, {afterPhoto: 'x.jpg'}), /quote/);
   assert.match(HS.sendQuote(s, 'homePro', r.id, {amount: 100, note: 'x'}), /full price/);
@@ -80,7 +85,7 @@ const base = (o = {}) => ({category: 'electrician', items: [{id: 'fan', qty: 1}]
   assert.equal(HS.decideQuote(s, r.id, 'approve'), ''); assert.equal(r.quote.total, 18500);
   assert.equal(HS.markDone(s, 'homePro', r.id, {afterPhoto: 'walls.jpg'}), '');
   const s2 = fresh(); HS.proOf(s2).skills.push('painting'); const {request: d} = HS.createBooking(s2, base({category: 'painting', items: [], description: 'Hall walls'}));
-  HS.acceptJob(s2, 'homePro', d.id); HS.onTheWay(s2, 'homePro', d.id); HS.startJob(s2, 'homePro', d.id, d.startOtp); HS.sendQuote(s2, 'homePro', d.id, {amount: 9000, note: 'Hall, 2 coats, 1 day'});
+  HS.acceptJob(s2, 'homePro', d.id); HS.onTheWay(s2, 'homePro', d.id); arrive(s2, d); HS.startJob(s2, 'homePro', d.id, d.startOtp); HS.sendQuote(s2, 'homePro', d.id, {amount: 9000, note: 'Hall, 2 coats, 1 day'});
   assert.equal(HS.decideQuote(s2, d.id, 'decline'), ''); assert.equal(d.status, 'closed'); assert.equal(Pay.paySummary(s2, d).due, 0, 'nothing to pay after a declined quote'); }
 
 // cancel before the pro is on the way is free; seeded booking uses the pro as payee

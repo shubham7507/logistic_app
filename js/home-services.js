@@ -10,6 +10,9 @@
 // Pure state functions are exported for unit tests; screens return HTML; bind() wires the buttons.
 import {clock, partnerBlocked, wallet, walletPanel} from './pay.js';
 import * as Bill from './customer-billing.js';
+import * as LOC from './location.js';
+import {km, roadKm} from './geo.js';
+import * as GeoMap from './geo.js';
 
 const esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m]));
 const inr = n => `₹${Number(n || 0).toLocaleString('en-IN')}`;
@@ -77,20 +80,20 @@ export function validateBooking(s, v) {
   const items = (v.items || []).filter(x => itemOf(v.category, x.id) && x.qty > 0);
   if (!c.inspection && !items.length) return 'Choose at least one job.';
   if (c.inspection && String(v.description || '').trim().length < 5) return 'Tell us what needs painting (rooms, walls or area) so the pro can plan the inspection.';
-  const a = v.addressId ? addresses(s).find(x => x.id === v.addressId) : v.address;
-  if (!a || !String(a.line || '').trim() || !/^\d{6}$/.test(String(a.pincode || ''))) return 'Add the address with house number, area and a 6-digit PIN code.';
+  if (v.addressId) { if (!addresses(s).find(x => x.id === v.addressId)) return 'Choose an address.'; }
+  else { const loc = v.address?.precision ? v.address : LOC.makeLocation(v.address || {}); if (loc.error) return loc.error; }
   return slotError(v.date, v.slot);
 }
 export function createBooking(s, v, {pricing = null} = {}) {
   const err = validateBooking(s, v); if (err) return {error: err};
   const c = CATS[v.category];
-  let address = v.addressId ? addresses(s).find(x => x.id === v.addressId) : {...v.address, line: String(v.address.line).trim()};
-  if (!v.addressId && v.saveAddress) { address = {id: uid('AD'), label: v.address.label || 'Home', ...address}; addresses(s).push(address); }
+  let address = v.addressId ? addresses(s).find(x => x.id === v.addressId) : (v.address.precision ? {...v.address} : LOC.makeLocation(v.address));
+  if (!v.addressId && v.saveAddress) { address = {...address, id: uid('AD'), label: v.address.name || v.address.label || 'Home'}; addresses(s).push(address); }
   const items = c.inspection ? [{id: 'inspect', qty: 1}] : v.items.filter(x => itemOf(v.category, x.id) && x.qty > 0).map(x => ({id: x.id, qty: Math.min(10, Number(x.qty) || 1)}));
   const first = itemOf(v.category, items[0].id)[1];
   const id = uid('SR');
   const r = {id, customer: 'personal', customerName: s.person?.name || 'Customer', type: 'general', category: v.category, title: `${c.label} · ${first}${items.length > 1 ? ` + ${items.length - 1} more` : ''}`,
-    items, inspection: !!c.inspection, description: String(v.description || '').trim(), photo: v.photo || '', address: {label: address.label || 'Home', line: address.line, pincode: address.pincode, city: address.city || ''},
+    items, inspection: !!c.inspection, description: String(v.description || '').trim(), photo: v.photo || '', address: {label: address.label || 'Home', line: address.line, pincode: address.pincode, city: address.city || '', village: address.village || '', landmark: address.landmark || '', postOffice: address.postOffice || '', voiceNote: address.voiceNote || '', lat: address.lat ?? null, lng: address.lng ?? null, accuracy: address.accuracy ?? null, source: address.source || 'landmark', precision: address.precision || LOC.labelFor(address.source, address.accuracy), digipin: address.digipin || (address.lat ? LOC.digipin(address.lat, address.lng) : '')},
     date: v.date, slot: v.slot, quote: quoteFor(v.category, items), pricing, status: 'searching', provider: null, providerName: null, proId: null, paid: false, rating: null, extras: [],
     startOtp: String(1000 + Math.floor(Math.random() * 9000)), createdAt: stamp(), createdAtMs: clock(), timeline: [{at: stamp(), text: 'Booked'}], conversationId: null, payMigrated: true};
   s.serviceRequests.unshift(r); s.selectedServiceId = id;
@@ -145,10 +148,49 @@ export function onTheWay(s, ws, id) {
   notify(s, 'personal', `${r.id}: ${r.providerName} is on the way (about 25 min). Share your start code ${r.startOtp} only when they reach your door.`, r.id, 'serviceDetail');
   return '';
 }
+// ---------- live location while on the way ----------
+export const SPEED_KMH = 22;
+const dest = r => LOC.point(r.address);
+export const proHere = r => (r.track?.length ? [r.track.at(-1).lat, r.track.at(-1).lng] : null);
+export function distLeft(r) { const a = proHere(r), b = dest(r); return a && b ? km(a, b) : null; }
+export const etaOf = r => { const d = distLeft(r); return d == null ? null : Math.max(1, Math.round(roadKm(proHere(r), dest(r)) / SPEED_KMH * 60)); };
+export const lastSeenMin = r => (r.geo?.lastAt ? Math.floor((Date.now() - r.geo.lastAt) / 60000) : null);
+function startPoint(s, r) { const p = proById(s, r.proId), d = dest(r) || [26.647, 84.909]; return p?.coords && km(p.coords, d) < 30 ? p.coords : [d[0] + 0.03, d[1] + 0.03]; }
+export function shareLocation(s, ws, id, lat, lng, src = 'gps') {
+  const r = mine(s, ws, id); if (!r || r.status !== 'on_the_way') return 'Location is shared only while you are on the way.';
+  (r.track ||= []).push({lat, lng, at: Date.now(), src}); r.geo = {...(r.geo || {}), live: true, lastAt: Date.now(), src};
+  const d = distLeft(r), lab = LOC.LABELS[r.address?.precision] || LOC.LABELS.area;
+  if (d == null) return '';
+  r.etaMins = etaOf(r);
+  if (lab.callKm && d <= lab.callKm && !r.geo.callPrompted) { r.geo.callPrompted = true; notify(s, ws, `${r.id}: you are about ${d.toFixed(1)} km away. The address is ${lab.text.toLowerCase()} — call ${r.customerName || 'the customer'} now for directions.`, r.id, 'proJob'); }
+  if (d <= 0.6 && !r.geo.arrivingSent) { r.geo.arrivingSent = true; notify(s, 'personal', `${r.id}: ${r.providerName} is arriving in about 2 minutes.`, r.id, 'serviceDetail'); }
+  if (d <= 0.1 && !r.arrivedAt) { r.arrivedAt = stamp(); r.timeline.push({at: stamp(), text: 'Arrived (GPS)'}); notify(s, 'personal', `${r.id}: ${r.providerName} has arrived. Share your start code ${r.startOtp}.`, r.id, 'serviceDetail'); }
+  return '';
+}
+// Demo / prototype: move the pro towards the customer.
+export function demoDrive(s, ws, id, stepKm = 1) {
+  const r = mine(s, ws, id); if (!r || r.status !== 'on_the_way') return 'Tap "On the way" first.';
+  const here = proHere(r) || startPoint(s, r), to = dest(r);
+  if (!r.track?.length) return shareLocation(s, ws, id, here[0], here[1], 'demo');
+  if (!to) return 'This address has no map point. Call the customer for directions.';
+  const d = km(here, to); if (d < 0.02) return 'You are at the customer\'s place.';
+  const f = Math.min(1, stepKm / d); return shareLocation(s, ws, id, here[0] + (to[0] - here[0]) * f, here[1] + (to[1] - here[1]) * f, 'demo');
+}
+// Area-only address: the customer shares their live location so the pro can find them.
+export function customerShares(s, id, lat, lng) {
+  const r = job(s, id); if (!r || !['accepted', 'on_the_way'].includes(r.status)) return 'Share your location once a pro is assigned.';
+  Object.assign(r.address, {lat, lng, accuracy: 15, source: 'live', precision: 'exact', digipin: LOC.digipin(lat, lng)}); r.timeline.push({at: stamp(), text: 'Customer shared live location'});
+  if (r.provider) notify(s, r.provider, `${r.id}: the customer shared their exact location. Navigate now goes to their door.`, r.id, 'proJob');
+  return '';
+}
 export function startJob(s, ws, id, otp, beforePhoto = '') {
   const r = mine(s, ws, id); if (!r || r.status !== 'on_the_way') return 'Tap "On the way" first.';
+  const lab = LOC.LABELS[r.address?.precision] || LOC.LABELS.area;
+  if (lab.arriveKm != null) { const d = distLeft(r); if (d == null) return 'Share your live location first so we can confirm you are at the customer\'s place.'; if (d > lab.arriveKm) return `You are ${d.toFixed(1)} km from the customer. Start when you reach the place (within ${Math.round(lab.arriveKm * 1000)} m).`; }
   if (String(otp || '').trim() !== r.startOtp) { r.otpTries = (r.otpTries || 0) + 1; return r.otpTries >= 3 ? 'Wrong code 3 times. Ask the customer to read the code from their MoveAI app, or call support.' : 'That code is wrong. Ask the customer for the 4-digit start code in their app.'; }
-  r.status = 'in_progress'; r.startedAt = stamp(); if (beforePhoto) r.beforePhoto = beforePhoto; r.timeline.push({at: stamp(), text: r.inspection ? 'Inspection started' : 'Work started'});
+  r.status = 'in_progress'; r.startedAt = stamp(); if (beforePhoto) r.beforePhoto = beforePhoto;
+  if (r.geo) r.geo.live = false; // sharing stops when the job starts
+  const at = proHere(r); if (at && r.address?.precision !== 'exact') { LOC.learn(s, r.address, at); r.timeline.push({at: stamp(), text: 'Exact location saved for next time'}); } r.timeline.push({at: stamp(), text: r.inspection ? 'Inspection started' : 'Work started'});
   notify(s, 'personal', `${r.id}: ${r.inspection ? 'inspection' : 'work'} started.`, r.id, 'serviceDetail');
   return '';
 }
@@ -194,6 +236,12 @@ export function markDone(s, ws, id, {afterPhoto = '', noWork = false, reason = '
   return '';
 }
 
+export function fixPin(s, ws, id, at) {
+  const r = mine(s, ws, id); if (!r || !['on_the_way', 'in_progress'].includes(r.status)) return 'Fix the pin when you are at the customer\'s place.';
+  const p = at || proHere(r); if (!p) return 'Share your live location first.';
+  LOC.learn(s, r.address, p); r.timeline.push({at: stamp(), text: 'Pin fixed by the pro'}); return '';
+}
+
 // ---------- after the job ----------
 export const warrantyUntil = r => r.date ? addDays(r.date, WARRANTY_DAYS) : '';
 export const inWarranty = r => ['completed', 'paid', 'closed'].includes(r.status) && !r.noWork && todayIso() <= warrantyUntil(r) && !r.closedReason;
@@ -215,7 +263,9 @@ export function requestRework(s, id, {problem, date, slot}) {
 
 // ---------- admin ----------
 export function adminRows(s) {
-  return (s.serviceRequests || []).filter(r => r.type === 'general').map(r => ({r, flag: stillSearching(s, r) ? 'No pro yet after 30 min' : r.status === 'searching' && r.date < todayIso() ? 'Slot passed' : ''}));
+  const slotStart = r => new Date(`${r.date}T${r.slot}:00:00`).getTime();
+  return (s.serviceRequests || []).filter(r => r.type === 'general').map(r => ({r, flag: stillSearching(s, r) ? 'No pro yet after 30 min' : r.status === 'searching' && r.date < todayIso() ? 'Slot passed'
+    : r.status === 'accepted' && clock() > slotStart(r) + 15 * 60000 ? 'Late — pro not on the way yet' : r.status === 'on_the_way' && (lastSeenMin(r) ?? 0) >= 10 ? `No location for ${lastSeenMin(r)} min` : r.status === 'on_the_way' && clock() > slotStart(r) + 2 * 3600000 ? 'Possible no-show' : ''}));
 }
 export function adminAssign(s, id, proId) {
   const r = job(s, id), p = proById(s, proId); if (!r || r.status !== 'searching' || !p?.ws) return 'Only an unassigned job can be given to an active pro.';
@@ -252,8 +302,8 @@ export function bookScreen(s) {
       : `<fieldset><legend>Choose jobs</legend><div class="hs-items">${c.items.map(([k, l, p]) => `<div class="hs-item"><span><b>${esc(l)}</b><small>${inr(p)}</small></span><span class="qty"><button type="button" class="button secondary compact" data-hs-qty="${k}" data-d="-1" aria-label="Fewer ${esc(l)}">−</button><output data-hs-count="${k}">${d.qty?.[k] || 0}</output><button type="button" class="button secondary compact" data-hs-qty="${k}" data-d="1" aria-label="More ${esc(l)}">+</button></span></div>`).join('')}</div></fieldset>`}
     <div class="form-grid"><label class="wide"><span>${c.inspection ? 'What needs painting?' : 'Anything the pro should know? (optional)'}</span><textarea name="description" rows="2" placeholder="${c.inspection ? 'e.g. 2 bedrooms and hall, walls only, some damp patches' : 'e.g. fan makes noise and wobbles'}">${esc(d.description || '')}</textarea></label>
     <label class="wide"><span>Photo of the problem (optional)</span><input type="file" name="photo" accept="image/*"></label></div>
-    <fieldset><legend>Address</legend><div class="hs-addresses">${saved.map(a => `<label class="hs-address"><input type="radio" name="addressId" value="${a.id}" ${d.addressId === a.id ? 'checked' : ''}><span><b>${esc(a.label)}</b><small>${esc(a.line)} · ${esc(a.pincode)}</small></span></label>`).join('')}<label class="hs-address"><input type="radio" name="addressId" value="new" ${d.addressId === 'new' || !saved.length ? 'checked' : ''}><span><b>New address</b></span></label></div>
-      <div class="form-grid two" data-hs-new-address ${d.addressId !== 'new' && saved.length ? 'hidden' : ''}><label class="wide"><span>House / flat, building, area</span><input name="line" placeholder="Flat 12, Shanti Apartments, Sector 50"></label><label><span>City</span><input name="city" value="Noida"></label><label><span>PIN code</span><input name="pincode" inputmode="numeric" maxlength="6"></label><label><span>Save as</span><select name="label"><option>Home</option><option>Work</option><option>Parents</option></select></label><label class="check-inline"><input type="checkbox" name="saveAddress" checked> Save this address</label></div></fieldset>
+    <fieldset><legend>Address</legend><div class="hs-addresses">${saved.map(a => `<label class="hs-address"><input type="radio" name="addressId" value="${a.id}" ${d.addressId === a.id ? 'checked' : ''}><span><b>${esc(a.label)}</b> ${LOC.labelChip(a)}<small>${esc(LOC.oneLine(a))}</small></span></label>`).join('')}<label class="hs-address"><input type="radio" name="addressId" value="new" ${d.addressId === 'new' || !saved.length ? 'checked' : ''}><span><b>New address</b></span></label></div>
+      <div data-hs-new-address ${d.addressId !== 'new' && saved.length ? 'hidden' : ''}>${LOC.pickerHtml(s, 'hs-addr', {title: 'Where is the work?'})}<div class="form-grid two"><label><span>Save as</span><select name="addrName"><option>Home</option><option>Work</option><option>Parents</option><option>Shop</option></select></label><label class="check-inline"><input type="checkbox" name="saveAddress" checked> Save this address</label></div></div></fieldset>
     <fieldset><legend>When?</legend><div class="form-grid"><label><span>Date</span><input type="date" name="date" value="${date}" min="${minDate}" max="${addDays(minDate, 14)}" data-hs-date></label></div><div class="slot-grid" role="radiogroup" aria-label="Time slot">${slots}</div>${freeSlots(date).length ? '' : '<p class="muted">No slots left today. Choose another date.</p>'}</fieldset>
     <section class="hs-summary"><div class="price-line"><span>${c.inspection ? 'Inspection' : 'Total (pay after the work)'}</span><b data-hs-total>${c.inspection ? 'Free' : inr(q.total)}</b></div>${!c.inspection && q.total === MIN_ORDER && items.reduce((a, x) => a + itemOf(cat, x.id)[2] * x.qty, 0) < MIN_ORDER && items.length ? `<small class="muted">Small jobs are charged at least ${inr(MIN_ORDER)}.</small>` : ''}
       <details class="rate-card"><summary>If anything extra comes up</summary>${q.rateCard.map(([a, b]) => `<small class="block"><b>${esc(a)}:</b> ${esc(b)}</small>`).join('')}</details></section>
@@ -271,13 +321,21 @@ function proCard(s, r, {customer = true} = {}) {
   return `<div class="hs-pro"><span class="avatar">${esc(p.name.split(' ').map(x => x[0]).join(''))}</span><span><b>${esc(p.name)}</b><small>★ ${rt.avg || 'New'}${rt.n ? ` (${rt.n})` : ''} · ${p.jobsDone || 0} jobs · ✓ ID verified${p.trained ? ' · ✓ Trained' : ''}</small></span>
     ${customer ? `<span class="row-actions"><button class="button secondary compact" data-wx="call" data-name="${esc(p.name)}">📞 Call</button>${r.conversationId ? `<button class="button secondary compact" data-op="open-conversation" data-id="${r.conversationId}">Message</button>` : ''}</span>` : ''}</div>`;
 }
+function liveCard(r) {
+  const here = proHere(r), to = dest(r), d = distLeft(r), seen = lastSeenMin(r);
+  const status = r.arrivedAt ? `${esc(r.providerName)} has arrived` : d != null ? `${esc(r.providerName)} is ${d.toFixed(1)} km away · about ${etaOf(r)} min` : `${esc(r.providerName)} is on the way`;
+  const fresh = seen == null ? 'Location appears when they start sharing.' : seen < 1 ? 'Live location · updated just now' : `Last seen ${seen} min ago${seen >= 2 ? ' · weak network, it will update when their phone reconnects' : ''}`;
+  return `<section class="hs-live" data-hs-live><b>${status}</b>${here || to ? mapSvgPts([to && {at: to, icon: '🏠', label: 'You'}, here && {at: here, icon: '🧰', label: r.providerName, fill: '#0b6655'}], (r.track || []).map(p => [p.lat, p.lng])) : ''}<small class="block muted">${fresh}</small></section>`;
+}
+function mapSvgPts(pts, path) { return GeoMap.mapSvg(pts.filter(Boolean), {path, label: 'Live tracking map'}); }
 export function customerScreen(s, r) {
   const steps = STEPS(r), cur = Math.max(0, steps.findIndex(([k]) => k === (r.status === 'completed' ? 'provider_done' : r.status)));
   const status = r.status;
   const where = `${r.date} · ${slotLabel(r.slot)} · ${r.address ? `${r.address.label}: ${r.address.line}` : ''}`;
   let next = '';
   if (status === 'searching') next = `<p>${stillSearching(s, r) ? '<b>No pro has accepted yet.</b> Try another slot, or cancel for free.' : 'We sent your job to verified pros near you. Most jobs are accepted within 30 minutes.'}</p>`;
-  if (['accepted', 'on_the_way'].includes(status)) next = `${status === 'on_the_way' ? `<div class="info-banner"><b>${esc(r.providerName)} is on the way</b><span>About ${r.etaMins || 25} minutes.</span></div>` : `<p>${esc(r.providerName)} will come on ${esc(r.date)}, ${esc(slotLabel(r.slot))}.</p>`}
+  if (['accepted', 'on_the_way'].includes(status)) next = `${status === 'on_the_way' ? liveCard(r) : `<p>${esc(r.providerName)} will come on ${esc(r.date)}, ${esc(slotLabel(r.slot))}.</p>`}
+    ${r.address?.precision === 'area' ? `<div class="action-warning"><b>Help ${esc(r.providerName)} find you</b><span>Your address has no exact map point.</span><button type="button" class="button primary compact" data-hs="cust-share" data-id="${r.id}">📍 Share my live location</button><button type="button" class="button text compact" data-hs="cust-share-demo" data-id="${r.id}">Demo: share from the house</button></div>` : ''}
     <div class="otp-share"><small>Start code · share only when the pro is at your door</small><b data-hs-otp>${esc(r.startOtp)}</b></div>`;
   if (status === 'in_progress') next = r.inspectionQuote?.status === 'proposed' ? `<div class="extra-approve"><div><b>Quote · ${inr(r.inspectionQuote.amount)}</b><small class="block muted">${esc(r.inspectionQuote.note)}</small></div><span class="row-actions"><button class="button primary compact" data-hs="quote-approve" data-id="${r.id}">Approve quote</button><button class="button secondary compact" data-hs="quote-decline" data-id="${r.id}">Decline (pay nothing)</button></span></div>`
     : `<p>${r.inspection && r.inspectionQuote?.status !== 'approved' ? 'The painter is inspecting. You will get a written quote here.' : 'Work in progress. Any extra charge appears below for you to approve first.'}</p>`;
@@ -325,21 +383,31 @@ export function proJobsScreen(s) {
   <div class="segmented" role="tablist">${[['new', 'New'], ['upcoming', 'Upcoming'], ['done', 'Done']].map(([k, l]) => `<button type="button" role="tab" class="${tab === k ? 'active' : ''}" aria-selected="${tab === k}" data-hs-tab="${k}">${l}</button>`).join('')}</div>
   <section class="panel">${lists[tab] || '<p class="muted">Nothing here yet.</p>'}</section>`;
 }
+function navBlock(r) {
+  const lab = LOC.LABELS[r.address?.precision] || LOC.LABELS.area;
+  return `<div class="hs-nav"><a class="button primary" target="_blank" rel="noopener" data-hs-nav href="${esc(LOC.navUrl(r.address, 'two-wheeler'))}">🧭 Navigate in Google Maps</a><small class="muted">${r.address?.precision === 'exact' ? 'Goes to the customer\'s door.' : r.address?.precision === 'approx' ? 'Goes to the pin. Check the landmark and call when close.' : 'Goes to the landmark / village. Call the customer when you are 1 km away.'}${lab.callKm ? ` We remind you to call at ${lab.callKm} km.` : ''}</small></div>`;
+}
+function proLive(r) {
+  const d = distLeft(r), seen = lastSeenMin(r);
+  return `<div class="hs-live"><b>${r.geo?.live ? '● Sharing your location' : 'Location not shared yet'}</b>${d != null ? ` · ${d.toFixed(1)} km to go · about ${etaOf(r)} min` : ''}${r.geo?.callPrompted && !r.arrivedAt ? `<div class="info-banner"><b>Call the customer now</b><span>You are close and the address is ${esc((LOC.LABELS[r.address?.precision] || LOC.LABELS.area).text.toLowerCase())}.</span><button class="button secondary compact" data-wx="call" data-name="${esc(r.customerName || 'Customer')}">📞 Call</button></div>` : ''}${r.arrivedAt ? '<p class="avail-chip">✓ Arrived — ask for the start code</p>' : ''}
+  <div class="row-actions"><button type="button" class="button secondary compact" data-hs="share-live" data-id="${r.id}">Share live location (GPS)</button><button type="button" class="button text compact" data-hs="drive" data-id="${r.id}">Demo: drive 1 km</button></div>${seen != null && seen >= 2 ? `<small class="muted">Last update ${seen} min ago</small>` : ''}</div>`;
+}
 export function proJobScreen(s) {
   const r = jobsOf(s).find(x => x.id === s.selectedProJobId) || offersFor(s).find(x => x.id === s.selectedProJobId);
   if (!r) return proJobsScreen(s);
   const assigned = r.provider === 'homePro';
   const extraForm = `<form class="form-grid two" data-hs-extra="${r.id}"><label><span>Extra</span><select name="kind"><option value="extra_labour">Extra labour · ₹${EXTRA_HOUR}/hour</option><option value="parts">Spare part (shop bill)</option></select></label><label><span>Hours</span><input name="qty" type="number" min="1" value="1"></label><label><span>₹ (for parts)</span><input name="amount" type="number"></label><label><span>Bill photo (parts)</span><input name="proof" type="file" accept="image/*"></label><label class="wide"><span>Why?</span><input name="note" placeholder="e.g. capacitor needs replacing"></label><button class="button secondary">Send to customer for approval</button></form>`;
   const actions = !assigned ? `<div class="row-actions"><button class="button secondary" data-hs="decline" data-id="${r.id}">Not for me</button><button class="button primary" data-hs="accept" data-id="${r.id}">Accept</button></div>`
-    : r.status === 'accepted' ? `<button class="button primary full" data-hs="on-the-way" data-id="${r.id}">On the way</button>`
-    : r.status === 'on_the_way' ? `<form class="form-grid two" data-hs-start="${r.id}"><label><span>Customer's 4-digit start code</span><input name="otp" inputmode="numeric" maxlength="4" autocomplete="off"></label><label><span>Before photo (optional)</span><input name="before" type="file" accept="image/*" capture="environment"></label><button class="button primary">Start job</button></form>`
+    : r.status === 'accepted' ? `${navBlock(r)}<button class="button primary full" data-hs="on-the-way" data-id="${r.id}">On the way</button>`
+    : r.status === 'on_the_way' ? `${navBlock(r)}${proLive(r)}<form class="form-grid two" data-hs-start="${r.id}"><label><span>Customer's 4-digit start code</span><input name="otp" inputmode="numeric" maxlength="4" autocomplete="off"></label><label><span>Before photo (optional)</span><input name="before" type="file" accept="image/*" capture="environment"></label><button class="button primary">Start job</button></form>`
     : r.status === 'in_progress' ? `${r.inspection ? (r.inspectionQuote?.status === 'approved' ? '<p class="avail-chip">✓ Quote approved — do the work</p>' : r.inspectionQuote?.status === 'proposed' ? `<p class="muted">Quote ${inr(r.inspectionQuote.amount)} sent. Waiting for the customer.</p>` : `<form class="form-grid two" data-hs-quote="${r.id}"><label><span>Full price ₹</span><input name="amount" type="number" min="500"></label><label class="wide"><span>What is included</span><input name="note" placeholder="2 rooms + hall, 2 coats, 3 days, paint included"></label><button class="button primary">Send quote</button></form>`) : `<details><summary class="button secondary compact">Add an extra charge</summary>${extraForm}</details>${Bill.pendingExtras(r).length ? `<p class="muted">Waiting for the customer to approve ${Bill.pendingExtras(r).length} extra.</p>` : ''}`}
+      <button type="button" class="button text compact" data-hs="fix-pin" data-id="${r.id}">📍 Fix pin — save my location as the customer's door</button>
       <form class="form-grid two" data-hs-done="${r.id}"><label class="wide"><span>Photo of the finished work</span><input name="after" type="file" accept="image/*" capture="environment"></label><button class="button primary">Mark done</button></form>
       <details><summary class="button text compact">No work possible?</summary><form class="inline-form" data-hs-nowork="${r.id}"><input name="reason" placeholder="e.g. part not available, customer away"><button class="button secondary compact">Close with ${inr(NO_WORK_CHARGE)} visit charge</button></form></details>`
     : `<p class="muted">${r.status === 'provider_done' ? 'Waiting for the customer to confirm and pay.' : r.paid ? 'Paid. Thank you!' : String(r.status).replace(/_/g, ' ')}</p>`;
   return `${head(r.title, `${r.id} · ${r.date} · ${slotLabel(r.slot)}`, r.conversationId && assigned ? `<button class="button secondary" data-op="open-conversation" data-id="${r.conversationId}">Customer chat</button>` : '')}
   <div class="grid two"><section class="panel"><h2>Job</h2><ul>${(r.items || []).map(x => { const it = itemOf(r.category, x.id); return it ? `<li>${esc(it[1])}${x.qty > 1 ? ` × ${x.qty}` : ''}</li>` : ''; }).join('')}</ul>${r.description ? `<p class="muted">“${esc(r.description)}”</p>` : ''}${r.photo ? `<p class="muted">Customer photo: ${esc(r.photo)}</p>` : ''}
-    <p><b>${assigned ? esc(r.customerName || 'Customer') : 'Customer'}</b><small class="block">${assigned ? `${esc(r.address?.line)} · ${esc(r.address?.pincode)}` : `${esc(areaOf(r.address))} (full address after you accept)`}</small></p>${assigned ? `<button class="button text compact" data-wx="call" data-name="${esc(r.customerName || 'Customer')}">📞 Call customer via MoveAI</button>` : ''}
+    <p><b>${assigned ? esc(r.customerName || 'Customer') : 'Customer'}</b> ${LOC.labelChip(r.address)}<small class="block">${assigned ? esc(LOC.oneLine(r.address)) : `${esc(areaOf(r.address))} (full address after you accept)`}</small>${assigned && r.address?.landmark ? `<span class="hs-landmark">📌 ${esc(r.address.landmark)}${r.address.village ? ` · ${esc(r.address.village)}` : ''}</span>` : ''}${assigned && r.address?.voiceNote ? `<small class="block">🎙 Voice note: ${esc(r.address.voiceNote)}</small>` : ''}${assigned && r.address?.digipin ? `<small class="block muted">DIGIPIN ${esc(r.address.digipin)}</small>` : ''}</p>${assigned ? `<button class="button text compact" data-wx="call" data-name="${esc(r.customerName || 'Customer')}">📞 Call customer via MoveAI</button>` : ''}
     <p id="hs-pro-error" class="field-error" hidden></p>${actions}</section>
   ${Bill.partnerEarnings(s, r, 'partner')}</div>`;
 }
@@ -356,7 +424,7 @@ export function proProfileScreen(s) {
 export function adminScreen(s) {
   const rows = adminRows(s), active = pros(s).filter(p => p.ws);
   return `${head('Home services', 'Every home-service booking. Jobs nobody has taken are flagged so you can give them to a pro.')}
-  <section class="panel"><div class="table-wrap"><table class="price-table"><thead><tr><th>Booking</th><th>When</th><th>Status</th><th>Pro</th><th></th></tr></thead><tbody>${rows.map(({r, flag}) => `<tr data-hs-admin="${r.id}"><td><b>${esc(r.id)}</b><small class="block">${esc(r.title)}</small></td><td>${esc(r.date)} ${esc(slotLabel(r.slot))}</td><td>${esc(String(r.status).replace(/_/g, ' '))}${flag ? `<small class="block field-error">${esc(flag)}</small>` : ''}</td><td>${esc(r.providerName || '—')}</td><td>${r.status === 'searching' ? `<select name="pro">${active.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select><button class="button secondary compact" data-hs="admin-assign" data-id="${r.id}">Give to pro</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5">No bookings yet.</td></tr>'}</tbody></table></div></section>`;
+  <section class="panel"><div class="table-wrap"><table class="price-table"><thead><tr><th>Booking</th><th>When</th><th>Status</th><th>Pro</th><th>Last location</th><th></th></tr></thead><tbody>${rows.map(({r, flag}) => `<tr data-hs-admin="${r.id}"><td><b>${esc(r.id)}</b><small class="block">${esc(r.title)}</small></td><td>${esc(r.date)} ${esc(slotLabel(r.slot))}</td><td>${esc(String(r.status).replace(/_/g, ' '))}${flag ? `<small class="block field-error">${esc(flag)}</small>` : ''}</td><td>${esc(r.providerName || '—')}</td><td>${proHere(r) ? `${distLeft(r) != null ? `${distLeft(r).toFixed(1)} km from customer` : 'shared'} · ${lastSeenMin(r) ? `${lastSeenMin(r)} min ago` : 'now'}` : '—'}</td><td>${r.status === 'searching' ? `<select name="pro">${active.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select><button class="button secondary compact" data-hs="admin-assign" data-id="${r.id}">Give to pro</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6">No bookings yet.</td></tr>'}</tbody></table></div></section>`;
 }
 
 export const ROUTES = {homeBook: bookScreen, proJobs: proJobsScreen, proJob: proJobScreen, proProfile: proProfileScreen, homeServicesAdmin: adminScreen};
@@ -368,13 +436,15 @@ export function screen(route, s) {
 }
 
 // ---------- bindings ----------
+let watchId = null;
 const fileName = (form, n) => form.querySelector(`[name="${n}"]`)?.files?.[0]?.name || '';
 export function bind(root, api) {
   const S = () => api.getState(), ws = () => S().currentWorkspace;
   const err = (id, m) => { const e = root.querySelector('#' + id); if (e) { e.textContent = m; e.hidden = !m; e.scrollIntoView?.({block: 'center'}); } else api.toast(m); };
   const book = root.querySelector('#home-book-form');
   if (book) {
-    const keep = () => { const s = S(), d = draftOf(s), f = new FormData(book); d.description = f.get('description') || ''; d.date = f.get('date') || d.date; d.slot = f.get('slot') || ''; d.addressId = f.get('addressId') || d.addressId; };
+    const keep = (pick) => { const s = S(), d = draftOf(s), f = new FormData(book); d.description = f.get('description') || ''; d.date = f.get('date') || d.date; d.slot = f.get('slot') || ''; d.addressId = f.get('addressId') || d.addressId; if (pick !== false) LOC.readPicker(book, s, 'hs-addr'); };
+    LOC.bind(book, api, {onChange: () => { keep(false); api.save(); api.render(); }});
     book.querySelectorAll('[data-hs-cat]').forEach(r => r.onchange = () => { keep(); const d = draftOf(S()); d.category = r.value; d.qty = {}; api.save(); api.render(); });
     book.querySelectorAll('[data-hs-qty]').forEach(b => b.onclick = () => { keep(); const d = draftOf(S()), k = b.dataset.hsQty; d.qty[k] = Math.max(0, Math.min(10, (d.qty[k] || 0) + Number(b.dataset.d))); api.save(); api.render(); });
     book.querySelector('[data-hs-date]')?.addEventListener('change', () => { keep(); api.save(); api.render(); });
@@ -382,10 +452,11 @@ export function bind(root, api) {
     book.onsubmit = e => {
       e.preventDefault(); keep(); const s = S(), d = draftOf(s), f = new FormData(book);
       const v = {category: d.category, items: Object.entries(d.qty || {}).map(([id, qty]) => ({id, qty})), description: f.get('description'), photo: fileName(book, 'photo'), date: f.get('date'), slot: f.get('slot'),
-        addressId: f.get('addressId') === 'new' ? null : f.get('addressId'), address: {line: String(f.get('line') || '').trim() ? `${String(f.get('line')).trim()}${f.get('city') ? `, ${f.get('city')}` : ''}` : '', city: f.get('city'), pincode: String(f.get('pincode') || '').trim(), label: f.get('label')}, saveAddress: f.has('saveAddress')};
+        addressId: f.get('addressId') === 'new' ? null : f.get('addressId'), address: null, saveAddress: f.has('saveAddress')};
+      if (!v.addressId) { const loc = LOC.finalLocation(s, 'hs-addr'); if (loc.error) return err('home-book-error', loc.error); v.address = {...loc, name: f.get('addrName') || 'Home'}; }
       const r = createBooking(s, v, {pricing: api.pricing?.(s, 'general') || null});
       if (r.error) return err('home-book-error', r.error);
-      s.homeDraft = null; api.save(); api.navigate('serviceDetail');
+      s.homeDraft = null; if (s.locDrafts) delete s.locDrafts['hs-addr']; api.save(); api.navigate('serviceDetail');
       api.toast(r.notified ? 'Booked. We sent your job to verified pros near you.' : 'Booked. We are looking for a pro near you.');
     };
   }
@@ -393,14 +464,23 @@ export function bind(root, api) {
     accept: id => acceptJob(S(), ws(), id), decline: id => declineJob(S(), ws(), id), 'on-the-way': id => onTheWay(S(), ws(), id),
     'quote-approve': id => decideQuote(S(), id, 'approve'), 'quote-decline': id => decideQuote(S(), id, 'decline'),
     'admin-assign': (id, b) => adminAssign(S(), id, b.closest('tr')?.querySelector('[name="pro"]')?.value),
+    drive: id => demoDrive(S(), ws(), id, 1), 'fix-pin': id => fixPin(S(), ws(), id),
+    'cust-share-demo': id => { const r = job(S(), id), sp = /^845/.test(r?.address?.pincode || '') ? LOC.DEMO_SPOTS.motihari : /^80/.test(r?.address?.pincode || '') ? LOC.DEMO_SPOTS.patna : LOC.DEMO_SPOTS.noida; return customerShares(S(), id, sp.at[0], sp.at[1]); },
   };
   root.querySelectorAll('[data-hs]').forEach(b => b.onclick = () => {
     const k = b.dataset.hs, id = b.dataset.id, s = S();
     if (k === 'toggle-online') { const st = ((s.workerStatus ||= {}).homePro ||= {online: true}); st.online = !st.online; api.save(); return api.render(); }
     if (k === 'open') { s.selectedProJobId = id; api.save(); return api.navigate('proJob'); }
+    if (k === 'share-live' || k === 'cust-share') {
+      if (!navigator.geolocation) return api.toast('This phone cannot share location. Use the demo button.');
+      const fn = k === 'share-live' ? p => shareLocation(S(), ws(), id, p.coords.latitude, p.coords.longitude, 'gps') : p => customerShares(S(), id, p.coords.latitude, p.coords.longitude);
+      if (k === 'share-live') { if (watchId != null) navigator.geolocation.clearWatch(watchId); watchId = navigator.geolocation.watchPosition(p => { const e = fn(p); if (e) { navigator.geolocation.clearWatch(watchId); watchId = null; } api.save(); api.render(); }, e => api.toast(`Location permission needed (${e.message})`), {enableHighAccuracy: true, maximumAge: 10000}); }
+      else navigator.geolocation.getCurrentPosition(p => { const e = fn(p); if (e) return api.toast(e); api.save(); api.render(); api.toast('Location shared with the pro'); }, e => api.toast(`Location permission needed (${e.message})`), {enableHighAccuracy: true, timeout: 10000});
+      return api.toast(k === 'share-live' ? 'Sharing your location until the job starts' : 'Asking for location permission…');
+    }
     const e = act[k]?.(id, b); if (e) return err(root.querySelector('#hs-pro-error') ? 'hs-pro-error' : 'none', e);
     if (k === 'accept') { s.selectedProJobId = id; api.save(); api.navigate('proJob'); return api.toast('Job accepted. The customer has been told.'); }
-    api.save(); api.render(); api.toast({decline: 'Hidden from your list', 'on-the-way': 'Customer told you are on the way', 'quote-approve': 'Quote approved', 'quote-decline': 'Quote declined · nothing to pay', 'admin-assign': 'Given to the pro'}[k] || 'Done');
+    api.save(); api.render(); api.toast({drive: 'Moved 1 km (demo)', 'fix-pin': 'Saved as the exact door for next time', 'cust-share-demo': 'Location shared with the pro', decline: 'Hidden from your list', 'on-the-way': 'Customer told you are on the way', 'quote-approve': 'Quote approved', 'quote-decline': 'Quote declined · nothing to pay', 'admin-assign': 'Given to the pro'}[k] || 'Done');
   });
   root.querySelectorAll('[data-hs-tab]').forEach(b => b.onclick = () => { S().proJobsTab = b.dataset.hsTab; api.save(); api.render(); });
   const form = (sel, fn, ok) => root.querySelectorAll(sel).forEach(f => f.onsubmit = e => { e.preventDefault(); const r = fn(f, new FormData(f)); const m = typeof r === 'string' ? r : r?.error; if (m) return err(root.querySelector('#hs-pro-error') ? 'hs-pro-error' : 'none', m); api.save(); api.render(); api.toast(ok); });

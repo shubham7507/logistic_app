@@ -62,7 +62,7 @@ with sync_playwright() as p:
     pg.check('input[name="pay-method"][value="card"]'); pg.fill('#pay-card', '4111111111111111'); pg.click('[data-pay-balance="SR-703"]'); pg.wait_for_timeout(100)
     rel = next(x for x in st()['ledger'] if x['type'] == 'wallet_credit' and x.get('serviceId') == 'SR-703'); check(rel['commission'] == round(679 * 0.15), 'home service released minus 15%')
     # movers booking amount (covered in pay.smoke) — quick check of 20%
-    go('home'); pg.click('[data-customer-service="moving"]'); pg.wait_for_timeout(80); pg.locator('#booking-form button[type=submit]').click(); pg.wait_for_timeout(80)
+    go('book'); pg.wait_for_timeout(80); pg.locator('#booking-form button[type=submit]').click(); pg.wait_for_timeout(80)
     check('Pay the booking amount' in main(), 'movers: booking amount')
     check(not errors, f'runtime errors: {errors[:3]}')
     b.close()

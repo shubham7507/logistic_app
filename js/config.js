@@ -73,6 +73,7 @@ export const WORK_EXTRA_ROUTES={
   driverChoice:{title:'Choose your monthly driver',roles:['personal']},
   idChecks:{title:'ID checks',roles:['admin']},
   homeBook:{title:'Home services',roles:['personal']},
+  moveBook:{title:'Move house or items',roles:['personal']},
   proJobs:{title:'My Jobs',roles:['homePro']},
   proJob:{title:'Job',roles:['homePro']},
   proProfile:{title:'My profile',roles:['homePro']},

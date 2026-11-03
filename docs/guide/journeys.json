@@ -222,8 +222,14 @@
     "error": ""
   },
   {
+    "id": "task-move-vehicle",
+    "steps": 13,
+    "ok": true,
+    "error": ""
+  },
+  {
     "id": "task-home-service",
-    "steps": 17,
+    "steps": 22,
     "ok": true,
     "error": ""
   },

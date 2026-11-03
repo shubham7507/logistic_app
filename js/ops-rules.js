@@ -155,7 +155,8 @@ export function parseInventory(text) {
 export function quoteMoving({size = '2 BHK', pkg = 'standard', floors = 0, lift = true, dropFloors = 0, dropLift = true, distanceKm = 32, inventory = '', longCarry = false, declaredValue = 0, date = '', gstRate = 18}) {
   const items = parseInventory(inventory || {'1 BHK': 'Bed, Wardrobe, Fridge, 20 cartons', '2 BHK': 'Beds and mattresses, Wardrobe, Kitchen cartons, TV and electronics', '3 BHK': '3 beds, 3 wardrobes, Sofa, Fridge, Washing machine, 60 cartons', Office: '12 desks, 60 cartons'}[size] || '');
   const units = items.reduce((a, i) => a + i.units * i.count, 0);
-  const [, vehicle, truckRate, workers] = TRUCKS.find(([max]) => units <= max);
+  const byUnits = TRUCKS.findIndex(([max]) => units <= max), minIdx = {'2 BHK': 1, '3 BHK': 2, Office: 2}[size] ?? 0, maxIdx = {'1 BHK': 1}[size] ?? TRUCKS.length - 1;
+  const [, vehicle, truckRate, workers] = TRUCKS[Math.min(maxIdx, Math.max(byUnits, minIdx))];
   const km = Math.max(0, Number(distanceKm) || 0), intercity = km > 300, rc = MOVE_RATE_CARD;
   const noLift = v => v === false || v === 'no';
   const lines = [[intercity ? `${vehicle} · door to door` : vehicle, intercity ? Math.round(km * rc.intercityPerKm) + truckRate : truckRate], [`${workers} workers`, workers * rc.worker]];
@@ -169,7 +170,7 @@ export function quoteMoving({size = '2 BHK', pkg = 'standard', floors = 0, lift 
   if (noLift(dropLift) && Number(dropFloors) > 0) lines.push([`Drop floor ${dropFloors}, no lift`, Number(dropFloors) * rc.floorNoLift]);
   if (longCarry === true || longCarry === 'on' || longCarry === 'yes') lines.push(['Long carry (truck parks 50 m+ away)', rc.longCarry]);
   const d = date ? new Date(date) : null;
-  if (d && !isNaN(d) && (d.getDay() === 0 || d.getDay() === 6 || d.getDate() >= 28)) { const sub = lines.reduce((a, [, v]) => a + v, 0); lines.push(['Peak date (weekend / month-end) 10%', Math.round(sub * rc.peakPct)]); }
+  if (d && !isNaN(d) && d.getTime() >= Date.now() - 86400000 && (d.getDay() === 0 || d.getDay() === 6 || d.getDate() >= 28)) { const sub = lines.reduce((a, [, v]) => a + v, 0); lines.push(['Peak date (weekend / month-end) 10%', Math.round(sub * rc.peakPct)]); }
   const partnerTotal = lines.reduce((a, [, v]) => a + v, 0), gst = Math.round(partnerTotal * gstRate / 100);
   const insurance = Number(declaredValue) > 0 ? Math.round(Number(declaredValue) * rc.insurancePct) : 0;
   const feeLines = [[`GST ${gstRate}% (per the mover’s GST setting)`, gst], ...(insurance ? [[`Transit insurance (1% of ₹${Number(declaredValue).toLocaleString('en-IN')})`, insurance]] : [])];

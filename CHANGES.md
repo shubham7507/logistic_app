@@ -1,5 +1,37 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-03 — Maps and live tracking for home services; choose vehicle and helpers for moving
+**Location that works in Patna and in Motihari (`js/location.js`).** One address picker for home services and moving:
+1. "I'm at the place now" (phone GPS, works in villages too);
+2. move the pin on the map (street or satellite);
+3. search the address (Patna, Noida, Gurugram, Delhi areas; Motihari shows "not on the map");
+4. send a location link by SMS / WhatsApp to someone at the place;
+5. landmark details: house or owner's name, mohalla / tola / village, landmark, post office, PIN, voice note.
+
+Each address is labelled **Exact**, **Approximate** or **Area only**, shows its India Post **DIGIPIN**, and warns "Is this the place where the work is?" when the pin is far from the PIN code.
+
+**Home services: Navigate and live tracking.**
+- The pro gets a **Navigate in Google Maps** button: two-wheeler directions to the exact pin, or to the landmark for area-only addresses, which are shown in large text with the voice note.
+- While "On the way" the pro's location is shared; it stops when the job starts.
+- The customer sees a live map with distance and arrival time, "last seen N min ago" on a weak network, and alerts at "arriving in 2 minutes" and "arrived".
+- The app reminds the pro to call at 500 m (approximate) or 1 km (area only). Area-only customers can tap "Share my live location".
+- Arrival checks: arrived is marked automatically within 100 m. The start code works only within 200 m (exact) or 500 m (approximate); area only relies on the code.
+- The pro's point at job start is saved to the address, so the next visit is Exact. The pro can also tap "Fix pin".
+- Admin sees the last location and flags late or no-location jobs.
+
+**Moving, Lalamove / Porter style (`js/move-booking.js`).**
+- "What are you moving?" (a few items, 1 RK, 1 BHK, 2 BHK, 3 BHK, office) with item counts.
+- Pickup and drop use the location picker with floors and lifts; the distance is estimated from the two pins.
+- Vehicle cards (2-wheeler to 32 ft container) show the price for the distance. The smallest that fits is "Recommended"; too-small ones show "Won't fit" and can't be picked.
+- Helpers: load myself / driver helps (light items only) / driver + 1 helper / 1–4 helpers, each priced, with ₹100 per helper per floor without a lift.
+- Extras: packing, dismantle, AC, insurance, extra stop, return trip. Date and 2-hour slot. One live price summary.
+- Booking type: small moves without packing on small vehicles are a vehicle booking (no GST); packing, big vehicles, 3 BHK, office or another city go to packers & movers (survey first for the last three).
+- The mover branch sees the vehicle, helpers, extras, slot and map route. The customer sees the vehicle on the map. A new Patna branch covers Bihar.
+
+**Fixes:** old moving form defaulted to a past date, charged a peak fee on past dates, and put a 2 BHK in an 8 ft truck.
+
+New tours "Choose vehicle and helpers" and an updated "Book a home service" (Navigate, live tracking, arrival), both in Hindi. New tests: `location-scenarios.unit.mjs`, `location.e2e.cjs`, `move-booking.unit.mjs`, `move-booking.e2e.cjs`. Demo data version bumped again.
+
 ## 2026-11-03 — Home services work end to end (customer and a new Home service pro role)
 - **Problem:** a home-service booking jumped to "Accepted" by a made-up "Verified service partner". No one received it, so it stayed "Waiting for the provider to finish" forever. The form had no address or time, defaulted to a past date, and showed a "Prototype: provider proposes an extra" box on the customer's screen.
 - **Booking (Urban Company style):** trade → specific jobs with fixed prices and quantities (₹199 minimum) → saved or new address with PIN code → date (today up to 14 days) and a 2-hour slot (past or too-soon slots cannot be picked) → note and optional photo. Pay after the work. Painting is a free inspection followed by a written quote.

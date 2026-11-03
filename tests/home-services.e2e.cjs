@@ -49,6 +49,11 @@ const tomorrow = () => new Date(Date.now() + 86400000).toISOString().slice(0, 10
 
   // Pro: wrong code refused, right code starts; extra charge; can't finish until answered
   await as(p, 'homePro', 'partner.html#/proJob');
+  assert.match(await p.getAttribute('[data-hs-nav]', 'href'), /google\.com\/maps\/dir\/.*destination=28\.62.*travelmode=two-wheeler/);
+  await p.fill(`[data-hs-start] [name=otp]`, otp); await p.locator('[data-hs-start]').dispatchEvent('submit'); await p.waitForTimeout(200);
+  assert.match(await text(p, '#hs-pro-error'), /live location/, 'cannot start before reaching an exact address');
+  for (let i = 0; i < 20 && !(await p.isVisible('text=Arrived — ask for the start code')); i++) { await p.click('[data-hs="drive"]'); await p.waitForTimeout(120); }
+  assert.ok(await p.isVisible('text=Arrived — ask for the start code'));
   await p.fill(`[data-hs-start] [name=otp]`, '0000'); await p.locator('[data-hs-start]').dispatchEvent('submit'); await p.waitForTimeout(200);
   assert.match(await text(p, '#hs-pro-error'), /code is wrong/);
   await p.fill(`[data-hs-start] [name=otp]`, otp); await p.locator('[data-hs-start]').dispatchEvent('submit'); await p.waitForTimeout(300);
