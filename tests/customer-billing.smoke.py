@@ -24,7 +24,7 @@ with sync_playwright() as p:
     go('home'); pg.click('[data-customer-service="driver"]'); pg.wait_for_timeout(80)
     pg.select_option('#booking-form [name=carType]', 'SUV automatic'); pg.locator('#booking-form button[type=submit]').click(); pg.wait_for_timeout(100)
     t = main(); check('the driver gets all of this' in t and 'MoveAI booking fee' in t and 'GST on booking fee' in t and 'Extra time beyond the booking' in t, 'driver breakdown + rate card'); shot('100-driver-quote')
-    pg.fill('#bill-gstin', '12345'); pg.click('[data-op="booking-publish"]'); pg.wait_for_timeout(60); check(len(st()['serviceRequests']) == 4, 'invalid GSTIN blocks booking')
+    pg.fill('#bill-gstin', '12345'); pg.click('[data-op="booking-publish"]'); pg.wait_for_timeout(60); check(len(st()['serviceRequests']) == 5, 'invalid GSTIN blocks booking')
     pg.fill('#bill-gstin', '09ABCDE1234F1Z5'); pg.click('[data-op="booking-publish"]'); pg.wait_for_timeout(100)
     r = st()['serviceRequests'][0]; check(r['billing']['gstin'] == '09ABCDE1234F1Z5', 'billing saved')
     # driver accepts, adds extras, finishes

@@ -84,7 +84,7 @@ const pr = (state, r) => r.pricing || DEFAULT_PRICING(serviceType(r));
 // ---------- consumer bookings ----------
 export const serviceType = r => r.type === 'moving' ? 'moving' : r.type === 'driver' ? 'driver' : 'general';
 export function bookingAmount(type, total, p) { const b = p ? {pct: p.bookingPct, min: p.bookingMin} : (POLICY.booking[type] || {pct: 0, min: 0}); return b.pct ? Math.min(total, Math.max(b.min || 0, round(total * b.pct))) : 0; }
-export const payeeOf = (state, r) => r.movingJobId ? (state.movingJobs.find(j => j.id === r.movingJobId)?.owner || 'movers') : r.type === 'driver' ? (r.provider || 'personalDriver') : 'external:service-partner';
+export const payeeOf = (state, r) => r.movingJobId ? (state.movingJobs.find(j => j.id === r.movingJobId)?.owner || 'movers') : r.type === 'driver' ? (r.provider || 'personalDriver') : (r.provider && r.provider !== 'partner' ? r.provider : 'external:service-partner');
 export const holdsOf = (state, r) => state.ledger.filter(x => x.serviceId === r.id && x.type === 'customer_payment');
 export function paySummary(state, r) {
   const total = round(r.quote?.total) + extrasTotal(r);
@@ -99,7 +99,7 @@ export function paySummary(state, r) {
 }
 // Seeded bookings made before MoveAI Pay existed get their ₹2,000 booking amount as a hold.
 export function ensurePay(state) {
-  state.payoutAccounts ||= {movers: {method: 'bank', accountNumber: '50100231845521', ifsc: 'HDFC0001842', holder: 'SafeMove Packers'}, personalDriver: {method: 'upi', vpa: 'anil.kumar@okicici', holder: 'Anil Kumar'}, transporter: {method: 'bank', accountNumber: '3921004455', ifsc: 'SBIN0001234', holder: 'Raj Logistics'}, vehicle: {method: 'upi', vpa: 'rajtransport@ybl', holder: 'Raj Transport'}};
+  state.payoutAccounts ||= {movers: {method: 'bank', accountNumber: '50100231845521', ifsc: 'HDFC0001842', holder: 'SafeMove Packers'}, personalDriver: {method: 'upi', vpa: 'anil.kumar@okicici', holder: 'Anil Kumar'}, homePro: {method: 'upi', vpa: 'suresh.kumar@okaxis', holder: 'Suresh Kumar'}, transporter: {method: 'bank', accountNumber: '3921004455', ifsc: 'SBIN0001234', holder: 'Raj Logistics'}, vehicle: {method: 'upi', vpa: 'rajtransport@ybl', holder: 'Raj Transport'}};
   for (const r of state.serviceRequests.filter(x => x.customer === 'personal' && x.movingJobId && !x.payMigrated)) {
     r.payMigrated = true;
     const legacy = state.ledger.find(x => x.type === 'customer_payment' && !x.serviceId && (x.sourceId === r.id || x.sourceId === r.movingJobId || String(x.sourceId || '').startsWith(`${r.id}-`)));
@@ -163,9 +163,9 @@ export function cancellationQuote(state, r, by = 'customer') {
   if (['cancelled', 'closed'].includes(r.status)) return {allowed: false, reason: 'Already closed.'};
   const s = paySummary(state, r);
   if (by === 'partner_no_show') return {allowed: true, fee: 0, refund: s.paidOnline, penalty: POLICY.noShowPenalty, note: 'Partner did not show up: full refund and a penalty on the partner.'};
-  const assigned = job ? ['resources_allocated', 'packed', 'loaded'].includes(job.status) : ['accepted'].includes(r.status) && r.type === 'driver';
+  const assigned = job ? ['resources_allocated', 'packed', 'loaded'].includes(job.status) : r.type === 'general' ? r.status === 'on_the_way' : ['accepted'].includes(r.status) && r.type === 'driver';
   const p0 = pr(state, r), c = {pct: p0.cancelPct, min: p0.cancelMin, max: p0.cancelMax}, fee = assigned ? Math.min(c.max, Math.max(c.min, round(s.total * c.pct)), s.paidOnline || c.max) : 0;
-  return {allowed: true, fee: Math.min(fee, s.paidOnline), refund: s.paidOnline - Math.min(fee, s.paidOnline), note: assigned ? 'Crew or driver already assigned, so a cancellation fee applies.' : 'Free cancellation before crew is assigned.'};
+  return {allowed: true, fee: Math.min(fee, s.paidOnline), refund: s.paidOnline - Math.min(fee, s.paidOnline), note: r.type === 'general' ? (assigned ? 'The pro is already on the way, so a cancellation fee applies.' : 'Free cancellation until the pro is on the way.') : assigned ? 'Crew or driver already assigned, so a cancellation fee applies.' : 'Free cancellation before crew is assigned.'};
 }
 export function cancel(state, r, by = 'customer', reason = '') {
   const q = cancellationQuote(state, r, by); if (!q.allowed) return {error: q.reason};
@@ -260,11 +260,11 @@ export function servicePayPanel(state, r) {
   const pend = s.pending ? `<div class="info-banner"><b>Payment processing · ${inr(s.pending)}</b><span>Your bank has not confirmed yet. This usually takes a few minutes. Do not pay again.</span><button class="button secondary compact" data-pay-check="${r.id}">Check status</button></div>` : '';
   const rfp = (s.refundPending || []).map(x => `<p class="muted">Refund ${inr(x.amount)} started · expected by ${new Date(x.expectedBy).toLocaleDateString('en-IN', {day: '2-digit', month: 'short'})} (usually 5 working days)</p>`).join('');
   return `<section class="panel pay-panel"><h2>Payment · MoveAI Pay</h2>${pend}${rfp}${r.cancelReason && r.status === 'cancelled' ? `<p class="muted">${esc(r.cancelReason)}</p>` : ''}<p class="muted">${s.held ? `${inr(s.held)} is held by MoveAI Pay until the job is done.` : s.due ? `${inr(s.due)} is due after the job.` : r.status === 'cancelled' ? 'Booking cancelled.' : 'Fully paid.'}</p>
-  ${q.allowed && r.status !== 'cancelled' ? `<details class="cancel-box"><summary>Cancel booking</summary><p>${esc(q.note)} Fee ${inr(q.fee)} · refund ${inr(q.refund)}.</p><input id="cancel-reason" placeholder="Reason (optional)"><button class="button secondary" data-pay-cancel="${r.id}">Cancel and refund ${inr(q.refund)}</button></details>` : ''}</section>`;
+  ${q.allowed && r.status !== 'cancelled' ? `<details class="cancel-box"><summary>Cancel booking</summary><p>${esc(q.note)}${q.fee || q.refund ? ` Fee ${inr(q.fee)} · refund ${inr(q.refund)}.` : ' Nothing has been paid, so nothing is charged.'}</p><input id="cancel-reason" placeholder="Reason (optional)"><button class="button secondary" data-pay-cancel="${r.id}">${q.refund ? `Cancel and refund ${inr(q.refund)}` : 'Cancel booking'}</button></details>` : ''}</section>`;
 }
 export function balanceFormHtml(state, r) {
   const s = paySummary(state, r); if (!s.due) return '';
-  return `<div class="pay-box"><h3>Pay ${inr(s.due)}</h3><div class="pay-methods"><label><input type="radio" name="pay-method" value="upi" checked> UPI</label><label><input type="radio" name="pay-method" value="card"> Card</label><label><input type="radio" name="pay-method" value="cash"> Cash to crew</label></div>
+  return `<div class="pay-box"><h3>Pay ${inr(s.due)}</h3><div class="pay-methods"><label><input type="radio" name="pay-method" value="upi" checked> UPI</label><label><input type="radio" name="pay-method" value="card"> Card</label><label><input type="radio" name="pay-method" value="cash"> ${r.type === 'general' ? 'Cash to the pro' : r.type === 'driver' ? 'Cash to the driver' : 'Cash to crew'}</label></div>
   <label class="pay-field" data-for="upi"><span>UPI ID</span><input id="pay-vpa" value="shubham@okaxis"></label><label class="pay-field" data-for="card" hidden><span>Card number</span><input id="pay-card" inputmode="numeric"></label>
   <p class="mock-hint">${esc(TEST)}</p><p id="pay-error" class="field-error" hidden></p><button class="button primary full" data-pay-balance="${r.id}">Pay ${inr(s.due)}</button></div>`;
 }

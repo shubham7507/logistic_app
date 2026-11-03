@@ -445,6 +445,7 @@ ROLES.splice(ROLES.findIndex(r => r.id === 'admin'), 0,
   {id: 'personal-driver', label: 'Personal driver', app: 'MoveAI Partner', around: 'role-personal-driver', tasks: ['task-worker-join']},
   {id: 'helper', label: 'Khalasi / helper', app: 'MoveAI Partner', around: 'role-helper', tasks: ['task-worker-join', 'task-verify-id']},
   {id: 'business-staff', label: 'Business staff', app: 'MoveAI Business', around: 'role-business-staff', tasks: ['task-staff']},
+  {id: 'home-pro', label: 'Home service pro', app: 'MoveAI Partner', around: 'role-home-pro', tasks: ['task-home-service']},
   {id: 'delivery-partner', label: 'Delivery partner', app: 'MoveAI Partner', around: 'role-delivery-partner', tasks: ['task-delivery-join', 'task-delivery']},
 );
 
@@ -557,10 +558,38 @@ Object.assign(JOURNEYS, {
 const rolesAdd = (id, tasks) => { const r = ROLES.find(x => x.id === id); if (r) r.tasks = [...new Set([...(r.tasks || []), ...tasks])]; };
 rolesAdd('transporter', ['task-hire-worker', 'task-regular-crew']); rolesAdd('goods-owner', ['task-hire-worker']); rolesAdd('truck-owner', ['task-regular-crew']);
 rolesAdd('commercial-driver', ['task-hire-worker', 'task-driver-safety']); rolesAdd('personal-driver', ['task-monthly-driver']); rolesAdd('helper', ['task-book-helpers']);
-rolesAdd('customer', ['task-book-helpers', 'task-monthly-driver']); rolesAdd('store-staff', ['task-picker-expiry']); rolesAdd('shop-owner', ['task-in-person-join']); rolesAdd('delivery-partner', ['task-practice-delivery']);
+rolesAdd('customer', ['task-book-helpers', 'task-monthly-driver', 'task-home-service']); rolesAdd('store-staff', ['task-picker-expiry']); rolesAdd('shop-owner', ['task-in-person-join']); rolesAdd('delivery-partner', ['task-practice-delivery']);
 
 // ---------- find work → apply → offer → hired ----------
 Object.assign(JOURNEYS, {
+  'task-home-service': {title: 'Book a home service (electrician)', who: 'Customer · Home service pro', minutes: 2,
+    verify: s => { const r = (s.serviceRequests || []).find(x => x.type === 'general' && x.customer === 'personal' && x.slot && x.rating); return r ? '' : 'Home-service booking was not paid and rated'; },
+    done: 'The customer chose a fixed-price job, an address and a 2-hour slot. Suresh accepted in MoveAI Partner, was on the way, started with the customer\'s code, asked for an extra the customer approved, and finished with a photo. The customer confirmed, paid through MoveAI (Suresh gets 85%), rated him, and has a free 30-day re-work promise.',
+    steps: [enterAs('Customer', 'personal', 'a customer (Shubham)'),
+      {role: 'Customer', title: 'Home services', say: 'Electrician, plumber, carpenter, cleaning or painting — each with fixed-price jobs.', at: 'index.html#/home', do: [{click: '[data-customer-service="general"]'}]},
+      {role: 'Customer', title: 'Choose the job', say: 'Pick the exact job and quantity, like "ceiling fan repair". The total updates; small jobs have a ₹199 minimum.', focus: '.hs-items', do: [{click: '[data-hs-qty="fan"][data-d="1"]'}, {see: '[data-hs-total]'}]},
+      {role: 'Customer', title: 'Address and time slot', say: 'A saved address, a date up to 14 days ahead and a 2-hour slot. Past dates and slots that are too soon cannot be picked.', focus: '.slot-grid',
+        do: [{fill: '#home-book-form [name=description]', value: 'Fan wobbles and makes noise'}, {fill: '#home-book-form [name=date]', value: () => dayIso(1)}, {check: '#home-book-form [name=slot][value="10"]'}, {submit: '#home-book-form'}]},
+      {role: 'Customer', title: 'Booked — finding a pro', say: 'The job goes to verified pros nearby. Pay after the work. Free to change the time or cancel until the pro is on the way.', focus: 'main', do: [{see: '[data-hs-next]'}]},
+      {role: 'Home service pro', title: 'New job on the pro\'s home', say: 'Suresh sees the area, slot, problem and exactly what he will earn after MoveAI\'s 15%.', at: 'index.html#/home', do: [switchTo('homePro')]},
+      {role: 'Home service pro', title: 'Accept', say: 'The full address and a chat with the customer open only after accepting.', at: 'partner.html#/home', focus: '.hs-offer', do: [{click: '.hs-offer [data-hs="accept"]'}]},
+      {role: 'Home service pro', title: 'On the way', say: 'The customer is told, with their 4-digit start code.', do: [{click: '[data-hs="on-the-way"]'}]},
+      {role: 'Home service pro', title: 'Start with the customer\'s code', say: 'At the door the customer reads out the code. This proves the pro actually arrived.', do: [{fill: '[data-hs-start] [name=otp]', value: c => { const r = (c.state().serviceRequests || []).find(x => x.type === 'general' && x.status === 'on_the_way'); return r?.startOtp || ''; }}, {submit: '[data-hs-start]'}]},
+      {role: 'Home service pro', title: 'Extra work needs approval', say: 'The capacitor is bad: Suresh asks for one extra hour. Nothing is added until the customer approves it.', do: [{run: () => document.querySelectorAll('details').forEach(d => { d.open = true; })}, {fill: '[data-hs-extra] [name=note]', value: 'Fan capacitor needs replacing'}, {submit: '[data-hs-extra]'}]},
+      {role: 'Customer', title: 'Approve the extra', say: 'The customer sees the charge and the reason, and approves or rejects it.', at: 'index.html#/home', do: [switchTo('personal')]},
+      {role: 'Customer', title: 'Approve', say: 'Approved extras are added to the bill.', at: 'index.html#/serviceDetail', focus: '.extra-approve', do: [{click: '[data-extra="approve"]'}]},
+      {role: 'Home service pro', title: 'Done, with a photo', say: 'A photo of the finished work is required.', at: 'index.html#/home', do: [switchTo('homePro')]},
+      {role: 'Home service pro', title: 'Mark done', say: 'The customer is asked to check and confirm.', at: 'partner.html#/proJobs', do: [{click: '[data-hs-tab="upcoming"]'}, {click: '[data-hs="open"]'}, {file: '[data-hs-done] [name=after]', value: 'fan-fixed.jpg'}, {submit: '[data-hs-done]'}]},
+      {role: 'Customer', title: 'Confirm, pay and rate', say: 'Confirm the work, pay by UPI, card or cash, and rate Suresh.', at: 'index.html#/home', do: [switchTo('personal')]},
+      {role: 'Customer', title: 'Confirm and pay', say: 'MoveAI keeps 15%; the rest goes to Suresh\'s wallet.', at: 'index.html#/serviceDetail', do: [{click: '[data-op="service-confirm"]'}, {click: '[data-pay-balance]'}]},
+      {role: 'Customer', title: 'Rate and 30-day promise', say: 'If the same problem comes back within 30 days, Suresh comes back for free.', do: [{click: '[data-op="service-rate"]'}, {see: '[data-hs-rework]'}], focus: '[data-hs-rework]'},
+    ]},
+  'role-home-pro': {title: 'Home service pro: every function', who: 'Home service pro', kind: 'around', minutes: 1, done: 'Electricians, plumbers, carpenters, cleaners and painters get nearby jobs, do them step by step and get paid through MoveAI.', steps: aroundAs({role: 'Home service pro', ws: 'homePro', label: 'a home service pro (Suresh)', file: 'partner.html', items: [
+    ['home', 'Home', 'Online switch, new jobs near you with what you earn, the job you are on now, and money.', '.wh-status'],
+    ['proJobs', 'My Jobs', 'New, upcoming and done jobs.'],
+    ['messages', 'Messages', 'A chat with each customer, without sharing phone numbers.'],
+    ['money', 'My Money', 'MoveAI Pay wallet: paid jobs minus 15%, weekly payout.'],
+    ['profile', 'Profile', 'The kinds of work you do, your area, ID verification and training.']]})},
   'task-verify-id': {title: 'Verify my ID (Aadhaar OTP)', who: 'Khalasi / helper · MoveAI admin', minutes: 2,
     verify: s => { const r = s.identityChecks?.['9123456792']?.record; return r?.status === 'verified' ? '' : `ID is ${r?.status || 'not verified'}`; },
     done: 'One "Verify my ID" step everywhere: consent, Aadhaar or VID, Send OTP, enter the code. A wrong code is caught with tries left, and after 3 wrong codes it locks for 30 minutes and offers an upload instead. Once verified, every other role (store picker, staff, delivery, seller) shows "Already verified" and the admin sees it in one ID checks list.',

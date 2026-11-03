@@ -222,6 +222,18 @@
     "error": ""
   },
   {
+    "id": "task-home-service",
+    "steps": 17,
+    "ok": true,
+    "error": ""
+  },
+  {
+    "id": "role-home-pro",
+    "steps": 6,
+    "ok": true,
+    "error": ""
+  },
+  {
     "id": "task-verify-id",
     "steps": 12,
     "ok": true,

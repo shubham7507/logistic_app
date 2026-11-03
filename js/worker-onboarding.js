@@ -14,6 +14,7 @@ export const WORKER_TYPES = {
   commercialDriver: {label: 'Commercial Driver', icon: '🚚', drives: 'commercial', summary: 'Trucks, tempos and goods vehicles'},
   personalDriver: {label: 'Personal Driver', icon: '🚗', drives: 'personal', summary: 'Cars for families and companies'},
   helper: {label: 'Khalasi / Helper', icon: '📦', drives: null, summary: 'Loading, packing, moving and warehouse work'},
+  homePro: {label: 'Home service pro', icon: '🛠', drives: null, summary: 'Electrician, plumber, carpenter, cleaning or painting in homes'},
   officeStaff: {label: 'Office staff', icon: '🗂', drives: null, summary: 'Operations, dispatch, accounts or documents'},
 };
 export const CHECKS = {
@@ -103,7 +104,7 @@ export function validateQuickStart(v) {
   if (!WORKER_TYPES[v.workerType]) return 'Choose the kind of work you want.';
   if (!String(v.name || '').trim()) return 'Enter your full name.';
   if (!String(v.location || '').trim()) return 'Enter your city or area.';
-  if (v.workerType === 'helper' && !(v.skills || []).length) return 'Select at least one skill.';
+  if (['helper', 'homePro'].includes(v.workerType) && !(v.skills || []).length) return 'Select at least one skill.';
   return '';
 }
 export function validateUpload(file) {
@@ -206,7 +207,7 @@ export function workerDetailsScreen(state) {
       <label class="wide"><span>Full name (as on your ID)</span><input name="name" value="${esc(c.name)}" autocomplete="name"></label>
       <label><span>City or area</span><input name="location" value="${esc(c.locations?.[0] || '')}" placeholder="e.g. Patna"></label>
       <label><span>Available from</span><input name="availability" value="${esc(c.availability || 'Available now')}"></label>
-      ${type === 'helper' ? `<fieldset class="wide"><legend>Skills</legend><div class="check-grid">${['Truck Khalasi', 'Loading / unloading', 'Moving helper / packer', 'Warehouse / assembly'].map(s => `<label><input type="checkbox" name="skills" value="${s}" ${(c.skills || []).includes(s) ? 'checked' : ''}> ${s}</label>`).join('')}</div><p id="skills-error" class="field-error" hidden></p></fieldset>` : ''}
+      ${['helper', 'homePro'].includes(type) ? `<fieldset class="wide"><legend>Skills</legend><div class="check-grid">${(type === 'homePro' ? ['Electrician', 'Plumber', 'Carpenter', 'Home cleaning', 'Painting'] : ['Truck Khalasi', 'Loading / unloading', 'Moving helper / packer', 'Warehouse / assembly']).map(s => `<label><input type="checkbox" name="skills" value="${s}" ${(c.skills || []).includes(s) ? 'checked' : ''}> ${s}</label>`).join('')}</div><p id="skills-error" class="field-error" hidden></p></fieldset>` : ''}
       ${drives(c) ? `<label class="wide"><span>${drives(c) === 'commercial' ? 'Vehicles you can drive' : 'Cars you can drive'} (optional)</span><input name="vehicleTypes" value="${esc((c.vehicleTypes || []).join(', '))}" placeholder="${drives(c) === 'commercial' ? '14-wheel, 22-ft closed' : 'Hatchback, SUV'}"></label><label><span>Driving experience in years (optional)</span><input type="number" min="0" name="experienceYears" value="${esc(c.experienceYears ?? '')}"></label>` : ''}
       <label><span>Work preference</span><select name="workPreference">${['Per trip', 'Hourly', 'Daily', 'Monthly', 'Permanent job'].map(p => `<option ${c.workPreference === p ? 'selected' : ''}>${p}</option>`).join('')}</select></label>
       <label><span>Expected pay ₹ (optional)</span><input type="number" min="0" name="expectedPay" value="${esc(c.expectedPay ?? '')}"></label>
@@ -229,6 +230,7 @@ export function workerStatusScreen(state) {
   <div class="grid two"><section class="panel"><h2>Level 2 · Verified</h2><p class="muted">${esc(LEVELS[1].unlocks)}.</p><div class="document-list">${l2.map(k => checkRow(c, k)).join('')}</div></section>
   <section class="panel"><h2>Level 3 · Trip-ready</h2><p class="muted">${esc(LEVELS[2].unlocks)}.</p><div class="document-list">${l3.map(k => checkRow(c, k)).join('')}</div></section></div>
   <section class="panel"><h2>Badges (optional)</h2><p class="muted">Businesses prefer workers with badges.${c.workerType === 'personalDriver' ? ' Police verification is required for monthly and live-in family jobs.' : ''}</p><div class="document-list">${badges.map(k => checkRow(c, k)).join('')}</div></section>
+  ${c.workerType === 'homePro' && c.level >= 2 ? `<section class="panel attention"><h2>Start taking home-service jobs</h2><p>You are verified. Open your jobs app to see bookings near you, accept them and get paid through MoveAI.</p><button class="button primary" data-hs-activate="${c.id}">Open my home-service jobs</button></section>` : ''}
   <div class="row-actions"><button class="button ${c.level >= 2 ? 'primary' : 'secondary'}" data-worker-find-work>${c.level >= 2 ? 'Find work' : 'Browse jobs'}</button></div>`;
 }
 

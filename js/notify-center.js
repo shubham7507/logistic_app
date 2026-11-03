@@ -78,6 +78,7 @@ export function actions(s, ws) {
     for (const o of (s.workOffers || []).filter(o => o.to === ws && o.status === 'pending')) out.push({ref: o.id, text: `Work offer: ${o.title || o.kind} · ${inr(o.pay || 0)}`, route: 'myJobs', cta: 'Respond'});
     if (ws === 'personalDriver') for (const r of (s.serviceRequests || []).filter(r => r.type === 'driver' && r.status === 'searching')) out.push({ref: r.id, text: 'New customer request near you', route: 'myJobs', cta: 'View'});
   }
+  if (ws === 'homePro') { const p = (s.homePros || []).find(x => x.ws === ws); for (const r of (s.serviceRequests || []).filter(r => r.type === 'general' && r.status === 'searching' && p && (p.skills || []).includes(r.category) && !(r.declinedBy || []).includes(p.id))) out.push({ref: r.id, text: `New ${r.category} job ${r.date}`, route: 'proJobs', cta: 'View'}); for (const r of (s.serviceRequests || []).filter(r => r.provider === ws && r.status === 'accepted')) out.push({ref: r.id, text: `Upcoming visit ${r.id} · ${r.date}`, route: 'proJobs', cta: 'Open'}); }
   if (ws === 'admin') { const v = (s.verificationQueue || []).filter(x => x.status === 'pending').length; if (v) out.push({ref: 'verification', text: `${v} verification(s) waiting`, route: 'verification', cta: 'Review'}); }
   if (/picker/i.test(ws)) for (const o of (s.customerOrders || []).filter(x => x.status === 'accepted' && x.pick && !x.pick.completedAt && x.pick.pickerWs === ws)) out.push({ref: o.id, text: 'Order assigned to you — start picking', route: 'pickTasks', cta: 'Open'});
   return out;

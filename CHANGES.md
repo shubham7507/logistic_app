@@ -1,5 +1,15 @@
 # Changes — staff/HR redesign (this session)
 
+## 2026-11-03 — Home services work end to end (customer and a new Home service pro role)
+- **Problem:** a home-service booking jumped to "Accepted" by a made-up "Verified service partner". No one received it, so it stayed "Waiting for the provider to finish" forever. The form had no address or time, defaulted to a past date, and showed a "Prototype: provider proposes an extra" box on the customer's screen.
+- **Booking (Urban Company style):** trade → specific jobs with fixed prices and quantities (₹199 minimum) → saved or new address with PIN code → date (today up to 14 days) and a 2-hour slot (past or too-soon slots cannot be picked) → note and optional photo. Pay after the work. Painting is a free inspection followed by a written quote.
+- **New role: Home service pro** (MoveAI Partner, demo pro Suresh Kumar): online switch, nearby jobs showing exactly what he earns, accept / "not for me", full address and chat only after accepting, On the way, start with the customer's 4-digit code, extra charges or an inspection quote the customer must approve, "no work possible" closes with a ₹199 visit charge, mark done with a photo, earnings after MoveAI's 15%, wallet and weekly payout, profile with trades and area.
+- **Customer booking page:** progress (finding a pro → assigned → on the way → started → done → paid → rated), pro card (name, rating, jobs, ID verified) with call and chat, start code, approve extras or quote, confirm, pay (UPI, card or "cash to the pro"), rate, timeline, change date/time until the pro is on the way, free cancel until then, and a **30-day re-work promise** (same pro, free).
+- People can sign up as a **Home service pro** (trades as skills); after ID verification "Open my home-service jobs" gives them the pro role.
+- **Admin → Home services:** every booking; jobs with no pro after 30 minutes are flagged and can be given to a pro.
+- New tours: **Book a home service** (customer and pro) and **Home service pro: every function**, in English and Hindi. New tests: `tests/home-services.unit.mjs`, `tests/home-services.e2e.cjs`.
+- Demo data version bumped (browsers reload the demo once).
+
 ## 2026-11-02 — One "Verify my ID" step everywhere (Aadhaar OTP)
 - **Problem:** the worker Aadhaar e-KYC screen had an OTP box but no way to get an OTP. Store pickers, logistics staff and in-person joining had the same gap, the seller without GST typed an Aadhaar number with no check at all, and every flow had its own rules and wording.
 - **One shared step** (`js/id-verify.js`) used by worker profiles, store pickers, logistics staff, delivery partners, sellers without GST and store staff "My ID": consent (never pre-ticked) → 12-digit Aadhaar or 16-digit VID → **Send OTP** (shows the masked mobile it went to) → enter OTP.

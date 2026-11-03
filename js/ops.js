@@ -1,5 +1,6 @@
 import * as WX from './work-extras.js';
 // MoveAI One — operations screens (draw.io pages 02, 03–11, 13, 15–20).
+import * as HS from './home-services.js';
 import {ROLE_TEMPLATES} from './people-rules.js';
 import * as Geo from './geo.js';
 import * as Pay from './pay.js';
@@ -118,7 +119,7 @@ export function bookScreen(state) {
       <label><span>Preferred date</span><input type="date" name="date" value="${esc(d.date || '2026-09-29')}"></label>` : '';
   return `${head('Book a service', 'Choose what you need. You see the full price before anything is booked.')}
   <form id="booking-form" data-op-form="booking-review" class="panel form-panel narrow">
-    <div class="arrangement-grid service-picker">${choice('moving', '🚚', 'Moving', 'House or office shifting with vehicle and package')}${choice('driver', '🧑‍✈️', 'Hire a personal Driver', 'By the hour, day or month')}${choice('products', '🛒', 'Buy products', 'Search products; the platform picks the store')}${choice('general', '🛠', 'General service', 'Carpenter, electrician, plumber, cleaning')}</div>
+    <div class="arrangement-grid service-picker">${choice('moving', '🚚', 'Moving', 'House or office shifting with vehicle and package')}${choice('driver', '🧑‍✈️', 'Hire a personal Driver', 'By the hour, day or month')}${choice('products', '🛒', 'Buy products', 'Search products; the platform picks the store')}<button type="button" class="arrangement-choice" data-route="homeBook"><span class="arrangement-icon">🛠</span><span><b>Home services</b><small>Electrician, plumber, carpenter, cleaning, painting</small></span></button></div>
     ${svc === 'products' ? `<div class="info-banner"><b>Product search</b><span>You search products, not stores. The platform assigns an eligible fulfilment partner.</span></div><div class="form-actions"><button type="button" class="button primary" data-route="search">Open product search</button></div>` : `
     <div class="voice-row"><label class="wide"><span>Describe your need</span><textarea name="description" rows="2" placeholder="e.g. Move 2 BHK from Noida to Gurugram on 4 October">${esc(d.description || '')}</textarea></label><button type="button" class="button secondary voice-button" data-op="booking-voice" aria-label="Speak your need">🎙 Speak</button></div>
     <p class="mock-hint" id="booking-voice-status">${esc(d.voiceNote || 'Voice fills the form; you still review the price.')}</p>
@@ -156,6 +157,7 @@ export function servicesScreen(state) {
 export function serviceDetailScreen(state) {
   const __r = state.serviceRequests.find(x => x.id === state.selectedServiceId && x.customer === 'personal') || state.serviceRequests.find(x => x.customer === 'personal');
   if (__r?.type === 'helpers') return helperRequestScreen(state, __r);
+  if (__r?.type === 'general' && __r.slot) return HS.customerScreen(state, __r) + Bill.billPanel(state, __r, Pay.paySummary(state, __r)) + (__r.status === 'completed' && !__r.paid ? `<section class="panel">${Pay.balanceFormHtml(state, __r)}</section>` : '') + Pay.servicePayPanel(state, __r) + (globalThis.__moveaiPlus?.serviceClaimHtml?.(state, __r) || '');
   const __extra = __r?.type === 'driver' ? (__r.hireType === 'monthly' && __r.status === 'searching' ? `<div class="info-banner"><b>Monthly driver: choose who you want</b><span>See 3 verified drivers near you, call them and book a paid trial day before choosing.</span><button class="button primary" data-route="driverChoice">Choose your driver</button></div>` : '') + WX.driverCardHtml(state, __r) : '';
   return __extra + serviceDetailBase(state) + (__r ? Bill.billPanel(state, __r, Pay.paySummary(state, __r)) + Pay.surveyPanel(state, __r) + Pay.servicePayPanel(state, __r) + (globalThis.__moveaiPlus?.serviceClaimHtml?.(state, __r) || '') : '');
 }

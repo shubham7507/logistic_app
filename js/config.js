@@ -10,6 +10,7 @@ const nav={
   commercialDriver:[['home','Home'],['myJobs','My Jobs'],['work','Find Work'],['messages','Messages'],['money','My Money'],['profile','Profile'],['myWork','My work & pay']],
   personalDriver:[['home','Home'],['myJobs','My Jobs'],['work','Find Work'],['messages','Messages'],['money','My Money'],['profile','Profile'],['myWork','My work & pay']],
   helper:[['home','Home'],['myJobs','My Jobs'],['work','Find Work'],['messages','Messages'],['money','My Money'],['profile','Profile'],['myWork','My work & pay']],
+  homePro:[['home','Home'],['proJobs','My Jobs'],['messages','Messages'],['money','My Money'],['profile','Profile']],
   staff:[['home','Home'],['work','My Work'],['trips','Trips'],['messages','Messages'],['money','My Money'],['profile','My Profile'],['myWork','My work & pay']],
   grocery:[['home','Home'],['easyStaff','Staff'],['shopOrders','Orders'],['shopIssues','Needs attention'],['shopBranches','Branches'],['shopTeam','Team'],['shopSchedule','Schedule'],['shopOffboarding','Offboarding'],['hiring','Hiring'],['shopCatalog','Products'],['shopCounter','In-store sale'],['shopCounterDelivery','Counter delivery'],['shopSales','Sales'],['shopEarnings','Money'],['plusReturns','Returns'],['plusAnalytics','Analytics'],['plusStore','Store setup'],['shopProfile','Store'],['branchesTeams','Branches & teams'],['staffPay','Pay workers'],['monthlyPayroll','Monthly payroll']],
   groceryFresh:[['home','Home'],['easyStaff','Staff'],['shopOrders','Orders'],['shopIssues','Needs attention'],['shopBranches','Branches'],['shopTeam','Team'],['shopSchedule','Schedule'],['shopOffboarding','Offboarding'],['hiring','Hiring'],['shopCatalog','Products'],['shopCounter','In-store sale'],['shopCounterDelivery','Counter delivery'],['shopSales','Sales'],['shopEarnings','Money'],['plusReturns','Returns'],['plusAnalytics','Analytics'],['plusStore','Store setup'],['shopProfile','Store'],['branchesTeams','Branches & teams'],['staffPay','Pay workers'],['monthlyPayroll','Monthly payroll']],
@@ -25,11 +26,11 @@ const nav={
   pickerFashion:[['home','Home'],['pickTasks','Tasks'],['pickSchedule','My schedule'],['myHR','My work & pay'],['pickProfile','Profile']],
   deliveryPartner:[['home','Home'],['deliveryJobs','Deliveries'],['deliveryEarnings','Money'],['deliveryCash','COD cash'],['deliveryProfile','Profile']],
   deliveryPartner2:[['home','Home'],['deliveryJobs','Deliveries'],['deliveryEarnings','Money'],['deliveryCash','COD cash'],['deliveryProfile','Profile']],
-  admin:[['home','Overview'],['commerceOrders','Orders'],['commercePartners','Partners'],['commercePayments','Payments'],['commerceIssues','Issues'],['plusApprovals','Listing approvals'],['plusClaims','Returns & claims'],['plusSettings','Commerce settings'],['plusReports','Commerce reports'],['verification','Verification'],['idChecks','ID checks'],['payOps','MoveAI Pay'],['approvals','Approvals'],['cases','Operations cases'],['documents','Documents'],['users','Users'],['audit','Audit']],
+  admin:[['home','Overview'],['commerceOrders','Orders'],['commercePartners','Partners'],['commercePayments','Payments'],['commerceIssues','Issues'],['plusApprovals','Listing approvals'],['plusClaims','Returns & claims'],['plusSettings','Commerce settings'],['plusReports','Commerce reports'],['verification','Verification'],['idChecks','ID checks'],['homeServicesAdmin','Home services'],['payOps','MoveAI Pay'],['approvals','Approvals'],['cases','Operations cases'],['documents','Documents'],['users','Users'],['audit','Audit']],
 };
 
 for(const items of Object.values(nav))items.push(['helpDesk',items===nav.admin?'Help Desk':'Help']);
-ICONS.helpDesk='?';
+ICONS.helpDesk='?';ICONS.proJobs='▦';ICONS.profile??='☺';ICONS.homeServicesAdmin='🛠';
 
 export const ROLE_CONFIG={
   personal:{label:'Personal',subtitle:'Customer and personal activities',icon:'P',nav:nav.personal,branches:false,homePhase:'P1'},
@@ -40,6 +41,7 @@ export const ROLE_CONFIG={
   commercialDriver:{label:'Commercial Driver',subtitle:'Driver · Independent',icon:'D',nav:nav.commercialDriver,branches:false,homePhase:'P3'},
   personalDriver:{label:'Personal Driver',subtitle:'Driver · Independent',icon:'D',nav:nav.personalDriver,branches:false,homePhase:'P3'},
   helper:{label:'Khalasi & Helper',subtitle:'Worker · Independent',icon:'H',nav:nav.helper,branches:false,homePhase:'P3'},
+  homePro:{label:'Home Service Pro',subtitle:'Electrician · plumber · carpenter',icon:'🛠',nav:nav.homePro,branches:false,homePhase:'P3'},
   staff:{label:'Staff workspace',subtitle:'Invited staff · Role-specific access',icon:'S',nav:nav.staff,branches:false,homePhase:'P3'},
   admin:{label:'Platform Admin',subtitle:'Verification and safety',icon:'A',nav:nav.admin,branches:false,homePhase:'P2'},
   grocery:{label:'ABC Grocery',subtitle:'Grocery Store · Approved',icon:'S',nav:nav.grocery,branches:false,homePhase:'P16'},
@@ -70,6 +72,11 @@ export const WORK_EXTRA_ROUTES={
   bookHelpers:{title:'Book helpers',roles:['personal']},
   driverChoice:{title:'Choose your monthly driver',roles:['personal']},
   idChecks:{title:'ID checks',roles:['admin']},
+  homeBook:{title:'Home services',roles:['personal']},
+  proJobs:{title:'My Jobs',roles:['homePro']},
+  proJob:{title:'Job',roles:['homePro']},
+  proProfile:{title:'My profile',roles:['homePro']},
+  homeServicesAdmin:{title:'Home services',roles:['admin']},
   inPersonJoin:{title:'Join a worker in person',roles:['grocery','groceryFresh','electrical','fashion','groceryManager','groceryFreshManager','electricalManager','fashionManager','transporter','goods','vehicle','movers']},
 };
 export const ROUTES={
@@ -123,7 +130,7 @@ export const HUB_OF_ROUTE={
   shopBranches:'business',plusAnalytics:'business',plusStore:'business',shopProfile:'business',branches:'business',business:'business',bank:'business',serviceExpansion:'business',managerProfile:'business',account:'business',pickProfile:'business',deliveryProfile:'business',
 };
 // MoveAI admin: group the console instead of hiding every function under "More".
-Object.assign(HUB_OF_ROUTE,{commerceOrders:'orders',commerceIssues:'orders',plusClaims:'orders',cases:'orders',commercePartners:'review',verification:'review',idChecks:'review',approvals:'review',documents:'review',plusApprovals:'review',users:'review',commercePayments:'money',payOps:'money',plusSettings:'settings',plusReports:'settings',audit:'settings',
+Object.assign(HUB_OF_ROUTE,{commerceOrders:'orders',commerceIssues:'orders',plusClaims:'orders',cases:'orders',commercePartners:'review',verification:'review',idChecks:'review',homeServicesAdmin:'orders',approvals:'review',documents:'review',plusApprovals:'review',users:'review',commercePayments:'money',payOps:'money',plusSettings:'settings',plusReports:'settings',audit:'settings',
   findTalent:'staff',talentProfile:'staff',hireOffers:'staff',inPersonJoin:'staff'});
 export const hubForRoute=route=>HUB_OF_ROUTE[route]||'other';
 export function groupNavByHub(nav){

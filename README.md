@@ -21,6 +21,9 @@ New stores list products from **Products and stock** (approved categories, MRP a
 
 Seller review is risk-tiered, with a strict policy per state (Bihar on by default) that adds identity, shop and stock checks; new stores start on probation; food listings carry batch and expiry dates. UPI orders are confirmed only by the bank (demo button in the prototype) and expire after 15 minutes. See `SELLER-TRUST-AND-PAYMENT-REPORT.md`.
 
+## Home services (November 2026)
+Customer: Home → **Home services** → fixed-price jobs → address → date and 2-hour slot → book (pay after). Pro: switch to **Home Service Pro** (MoveAI Partner) → accept → On the way → start with the customer's code → extras → done with a photo. Customer confirms, pays, rates; 30-day re-work. Tour: `index.html?demo=on&tour=task-home-service#/home`.
+
 ## Verify my ID (November 2026)
 Every joining flow uses one step (`js/id-verify.js`): consent → Aadhaar or VID → **Send OTP** → enter OTP. Verified once, it shows "Already verified" in every other role. Test data: OTP `123456`; Aadhaar ending `0000` DigiLocker down, `9999` no mobile linked, `2222` name mismatch, `1717` under 18. Admin → **ID checks** lists every check. Tour: `index.html?demo=on&tour=task-verify-id#/home`.
 

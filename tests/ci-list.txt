@@ -111,3 +111,5 @@ tests/worker-hub.smoke.py
 tests/workforce.smoke.py
 tests/id-verify.unit.mjs
 tests/id-verify.e2e.cjs
+tests/home-services.unit.mjs
+tests/home-services.e2e.cjs
